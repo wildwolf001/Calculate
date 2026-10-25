@@ -54,7 +54,7 @@ def member_list_plan(dim: str | None, slots: Slots, sem: SemanticLayer) -> Query
     notes.append("成员清单来自维度表；order_count 为该成员覆盖的已送达订单数。")
     if slots.time:
         notes.append(
-            f"时间 {slots.time.start}~{slots.time.end} 同时约束成员：只保留该期间"
+            f"时间 {slots.time.start} 至 {slots.time.end} 同时约束成员：只保留该期间"
             "有已送达订单的成员，覆盖数也只统计期间内订单。"
         )
     # A member list is exhaustive by nature; truncation is reported, not
@@ -86,7 +86,7 @@ def plan_from_slots(slots: Slots, sem: SemanticLayer) -> QueryPlan:
             lo, hi = sem.time_range
             time = TimeRange(start=lo, end=hi)
             notes.append(
-                f"未指定时间，默认使用数据全集 {lo} ~ {hi}（右开区间，与全量口径等价）。"
+                f"未指定时间，默认使用数据全集 {lo} 至 {hi}（右开区间，与全量口径等价）。"
             )
 
     dims = [d for d in slots.dimensions if d != "none"]

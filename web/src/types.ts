@@ -22,6 +22,69 @@ export interface HistoryItem {
   row_count: number
   columns?: string[]
   seq?: number
+  turn?: number
+  kind?: 'query' | 'subquestion' | 'interpretation' | 'analysis' | string
+  label?: string
+  analysis_section?: string
+  metric?: string
+  dimensions?: string[]
+  time?: { start: string; end: string }
+  comparison?: { label?: string; current?: any; baseline?: any } | null
+  filters?: Record<string, any>
+  limit?: number
+  degraded_reason?: string | null
+  plan?: PlanSummary
+  sql?: string
+  params?: string[]
+  fingerprint?: string
+  duration_ms?: number
+  truncated?: boolean
+  warehouse_version?: string | null
+  preview?: any[][]
+  checks?: CheckIssue[]
+  facts?: Record<string, any>
+  blocked?: boolean
+  status?: string
+  answer?: string
+}
+
+export interface VerifyResult {
+  result_id?: string
+  verdict: 'reproduced' | 'data_changed' | 'query_changed' | 'error' | 'unavailable'
+  message?: string
+  stored?: {
+    fingerprint?: string
+    sql?: string
+    row_count?: number
+    truncated?: boolean
+    result_hash?: string
+    warehouse_version?: string | null
+  }
+  current?: {
+    fingerprint?: string
+    sql?: string
+    row_count?: number
+    truncated?: boolean
+    columns?: string[]
+    result_hash?: string
+    warehouse_version?: string | null
+    duration_ms?: number
+  }
+  checks?: {
+    sql_match?: boolean
+    fingerprint_match?: boolean
+    columns_match?: boolean
+    rows_match?: boolean
+  }
+  warehouse_changed?: boolean
+}
+
+export interface HistoryResponse {
+  history: HistoryItem[]
+  dataset?: string
+  semantic_version?: number
+  compiler_version?: number
+  warehouse_version?: string
 }
 
 export interface CheckIssue {
@@ -44,6 +107,52 @@ export interface ResultArtifact {
   duration_ms: number
   question?: string
   meta?: Record<string, any>
+}
+
+export interface AnalysisModule {
+  id: string
+  label: string
+  section: string
+  description: string
+  default: boolean
+}
+
+export interface AnalysisOptions {
+  sections: string[]
+  customText?: string
+  customTitle?: string
+}
+
+export interface AnalysisHints {
+  categories: string[]
+  products: string[]
+  sellers: string[]
+  time_range: string[]
+}
+
+export interface AnalysisSection {
+  id: string
+  section: string
+  title: string
+  result_id: string
+  insights: string[]
+}
+
+export interface AnalysisReport {
+  report: string
+  summary: string
+  result_id: string | null
+  sections: AnalysisSection[]
+  failures?: { id: string; section: string; title: string; reason: string }[]
+  reference_count?: number
+  status?: string
+  writer?: 'llm' | 'template'
+  core_conclusions?: string[]
+  watchouts?: string[]
+  modules?: string[]
+  module_labels?: string[]
+  custom_text?: string
+  custom_title?: string
 }
 
 export interface PlanSummary {

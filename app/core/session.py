@@ -10,6 +10,7 @@ from app.core.controller import Controller
 from app.core.event_store import EventStore
 from app.core.events import Event
 from app.core.state import SessionState
+from app.domain.records import verify_record
 
 
 class SessionService:
@@ -34,6 +35,11 @@ class SessionService:
             async for ev in self.controller.run_turn(session_id, text):
                 yield ev
 
+    async def analysis(self, session_id: str, options: dict | None = None):
+        async with self._lock(session_id):
+            async for ev in self.controller.run_analysis(session_id, options):
+                yield ev
+
     def state(self, session_id: str) -> SessionState:
         return self.store.replay(session_id)
 
@@ -46,6 +52,12 @@ class SessionService:
 
     def history(self, session_id: str) -> list[dict]:
         return self.store.history(session_id)
+
+    def verify(self, session_id: str, result_id: str) -> dict:
+        artifact = self.result(session_id, result_id)
+        if not artifact:
+            raise KeyError("result_id 不存在")
+        return verify_record(artifact, self.controller.sem)
 
     def export_csv(self, session_id: str, result_id: str) -> tuple[str, str]:
         artifact = self.result(session_id, result_id)

@@ -89,7 +89,10 @@ def run_checks(plan: QueryPlan, metric, result: ResultSet, sem: SemanticLayer,
                                  f"可能还有更多分组。"))
 
     # ---- additive share check ----
-    additive = bool(metric.raw.get("additive")) and not plan.filters and not plan.compare
+    # Explicit period-vs-period comparisons (plan.comparison) have no "value"
+    # column; the share of total must be checked per period, so skip here.
+    additive = (bool(metric.raw.get("additive")) and not plan.filters
+                and not plan.compare and not plan.comparison)
     if additive and plan.dimensions and not possibly_truncated:
         try:
             idx = result.columns.index("value")

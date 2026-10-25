@@ -7,6 +7,7 @@ from app.core.session import SessionService
 from app.core.trace import Tracer
 from app.domain.resolver import RuleGrounder
 from app.domain.semantic.loader import load_semantic
+from app.llm.analyze import LLMAnalysisWriter
 from app.llm.client import LLMClient
 from app.llm.compose_answer import LLMComposer
 from app.llm.parse_intent import LLMIntentParser
@@ -25,6 +26,7 @@ def build_service(store: EventStore | None = None, with_trace: bool = True) -> S
         grounder,
         composer,
         tracer=Tracer(enabled=with_trace),
+        analysis_writer=LLMAnalysisWriter(client=client),
     )
     return SessionService(controller, controller.store)
 

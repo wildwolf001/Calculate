@@ -178,7 +178,7 @@ class RuleParser:
             m2 = int(m.group(4))
             s, _ = _month_bounds(y1, m1)
             _, e = _month_bounds(y2, m2)
-            return (s, _clamp(e, self.sem)), f"显式区间 {y1}-{m1:02d} ~ {y2}-{m2:02d}"
+            return (s, _clamp(e, self.sem)), f"显式区间 {y1}-{m1:02d} 至 {y2}-{m2:02d}"
 
         # month range without year: 1月至6月
         m = re.search(r"(\d{1,2})\s*月\s*(?:至|到|~|—|–|-)\s*(\d{1,2})\s*月", text)

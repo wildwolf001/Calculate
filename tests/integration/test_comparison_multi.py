@@ -7,6 +7,7 @@ year-over-year windows. The parser now decides both ranges explicitly.
 from __future__ import annotations
 
 import asyncio
+from datetime import date
 
 import pytest
 
@@ -14,6 +15,8 @@ from app.core.controller import Controller
 from app.core.event_store import EventStore
 from app.core.interfaces import ParseResult
 from app.core.state import Status
+from app.domain.pipeline import execute_prepared, prepare
+from app.domain.plan import CompareSpec, ComparisonSpec, OrderSpec, QueryPlan, TimeRange
 from app.domain.resolver import RuleGrounder
 from app.llm.compose_answer import TemplateComposer
 
@@ -95,6 +98,62 @@ def test_explicit_comparison_uses_both_periods(tmp_path, sem):
     answer = next(e.payload["text"] for e in events if e.type == "answer.composed")
     assert "2025年7月 vs 2025年3月" in answer
     assert store.replay("s1").status is Status.DONE
+
+
+APR_VS_MAR = ComparisonSpec(
+    current=TimeRange(start=date(2025, 4, 1), end=date(2025, 5, 1)),
+    baseline=TimeRange(start=date(2025, 3, 1), end=date(2025, 4, 1)),
+    label="2025年4月 vs 2025年3月",
+)
+
+
+def test_ratio_explicit_comparison_uses_grain_sums(sem):
+    """Ratio metrics must be compared as num/den per period, not row averages."""
+    plan = QueryPlan(metric="delay_rate", comparison=APR_VS_MAR, limit=10)
+    compiled, issues = prepare(plan, sem)
+    assert not [i for i in issues if i.severity == "error"]
+    result = execute_prepared(compiled)
+    assert result.columns == ["current", "baseline", "delta", "growth_rate"]
+    cur, base, delta, growth = result.rows[0]
+    assert cur == pytest.approx(102 / 409, abs=1e-6)
+    assert base == pytest.approx(94 / 369, abs=1e-6)
+    assert delta == pytest.approx(cur - base, abs=1e-6)
+    assert growth == pytest.approx((102 / 409 - 94 / 369) / (94 / 369), abs=2e-6)
+
+
+def test_ratio_implicit_compare_uses_prev_period(sem):
+    """The parser sometimes emits compare=prev_period for "同期/环比"."""
+    plan = QueryPlan(
+        metric="delay_rate",
+        time=TimeRange(start=date(2025, 4, 1), end=date(2025, 5, 1)),
+        compare=CompareSpec(type="prev_period"),
+        limit=10,
+    )
+    compiled, issues = prepare(plan, sem)
+    assert not [i for i in issues if i.severity == "error"]
+    result = execute_prepared(compiled)
+    cur, base, _, _ = result.rows[0]
+    assert cur == pytest.approx(102 / 409, abs=1e-6)
+    assert base == pytest.approx(94 / 369, abs=1e-6)
+
+
+def test_ratio_explicit_comparison_by_dimension(sem):
+    plan = QueryPlan(
+        metric="avg_order_value",
+        dimensions=["category"],
+        comparison=APR_VS_MAR,
+        order_by=[OrderSpec(field="growth_rate", direction="desc")],
+        limit=10,
+    )
+    compiled, issues = prepare(plan, sem)
+    assert not [i for i in issues if i.severity == "error"]
+    result = execute_prepared(compiled)
+    assert result.columns == ["category", "current", "baseline", "delta", "growth_rate"]
+    rows = {r[0]: r for r in result.rows}
+    cur, base = rows["数码家电"][1], rows["数码家电"][2]
+    assert cur == pytest.approx(398.657196969697, abs=1e-5)
+    assert base == pytest.approx(391.1857843137256, abs=1e-5)
+    assert rows["数码家电"][4] == pytest.approx((cur - base) / base, abs=1e-6)
 
 
 def test_multi_interpretations_execute_both_and_prefer_one(tmp_path, sem):

@@ -11,6 +11,9 @@ import re
 from pathlib import Path
 from string import Template
 
+from app.core.logging import log_event, logger
+from app.llm.client import LLMTruncated
+
 
 def fmt_number(value, unit: str | None = None) -> str:
     if value is None:
@@ -97,23 +100,45 @@ class TemplateComposer:
             current_idx = cols.index("current") if "current" in cols else 0
             base_idx = cols.index("baseline") if "baseline" in cols else 1
             growth_idx = cols.index("growth_rate") if "growth_rate" in cols else 3
-            first = rows[0]
-            cur = fmt_number(first[current_idx], unit)
-            base = fmt_number(first[base_idx], unit)
-            growth = first[growth_idx]
             comparison = ctx.get("comparison") or {}
             label = comparison.get("label")
             period_txt = f"{label}，" if label else ""
-            if growth is None:
+            if dims:
+                # With a dimension, rows[0] is one member, not the whole scope:
+                # every row must be named or the headline number is misleading.
+                delta_idx = cols.index("delta") if "delta" in cols else None
+                lines = []
+                for i, row in enumerate(rows[:5], 1):
+                    name = row[0]
+                    cur = fmt_number(row[current_idx], unit) if current_idx < len(row) else "—"
+                    base = fmt_number(row[base_idx], unit) if base_idx < len(row) else "—"
+                    growth = row[growth_idx] if growth_idx < len(row) else None
+                    growth_txt = ("无法计算" if growth is None
+                                  else f"{float(growth) * 100:+.2f}%")
+                    delta_txt = (f"，增量 {fmt_number(row[delta_idx], unit)}"
+                                 if delta_idx is not None and delta_idx < len(row) else "")
+                    lines.append(f"{i}. {name}：本期 {cur}，基期 {base}，"
+                                 f"变化 {growth_txt}{delta_txt}")
+                more = f"（共 {ctx.get('row_count')} 组，展示前 {min(5, len(rows))} 组）"
                 parts.append(
-                    f"{period_txt}{scope}{metric_name}本期为 {cur}，基期为 {base}，"
-                    f"基期为空或 0，无法计算增长率。"
+                    f"{period_txt}{scope}{metric_name}按{'、'.join(dims)}如下{more}：\n"
+                    + "\n".join(lines)
                 )
             else:
-                parts.append(
-                    f"{period_txt}{scope}{metric_name}本期为 {cur}，基期为 {base}，"
-                    f"{'增长' if float(growth) >= 0 else '下降'} {abs(float(growth)) * 100:.2f}%。"
-                )
+                first = rows[0]
+                cur = fmt_number(first[current_idx], unit)
+                base = fmt_number(first[base_idx], unit)
+                growth = first[growth_idx]
+                if growth is None:
+                    parts.append(
+                        f"{period_txt}{scope}{metric_name}本期为 {cur}，基期为 {base}，"
+                        f"基期为空或 0，无法计算增长率。"
+                    )
+                else:
+                    parts.append(
+                        f"{period_txt}{scope}{metric_name}本期为 {cur}，基期为 {base}，"
+                        f"{'增长' if float(growth) >= 0 else '下降'} {abs(float(growth)) * 100:.2f}%。"
+                    )
         elif not dims:
             first = rows[0]
             value_idx = cols.index("value") if "value" in cols else len(first) - 1
@@ -180,6 +205,10 @@ def allowed_numbers(ctx: dict) -> set[str]:
     _collect_numbers(ctx.get("row_count"), raw)
     _collect_numbers(ctx.get("time"), raw)
     _collect_numbers(ctx.get("notes"), raw)
+    # Sibling sub-questions in the same turn are already-computed facts.
+    _collect_numbers(ctx.get("siblings"), raw)
+    # Analysis sections: the writer may cite any section's provided numbers.
+    _collect_numbers(ctx.get("sections"), raw)
     allowed: set[str] = set()
     for v in raw:
         variants = {v, abs(v), v * 100, v / 100, v / 10000, v / 1e8, round(v, 2)}
@@ -222,13 +251,22 @@ class LLMComposer:
         try:
             system = self._system.substitute()
             user = self._user.substitute(context=json.dumps(ctx, ensure_ascii=False, default=str))
-            budget = 3000 if ctx.get("interpretations") else 2000
-            text = self.client.complete_text(system, user, max_tokens=budget,
-                                             stage="compose_answer")
+            # Cross-question synthesis needs more room than a single result.
+            budget = 3000 if (ctx.get("interpretations") or ctx.get("siblings")) else 2000
+            try:
+                text = self.client.complete_text(system, user, max_tokens=budget,
+                                                 stage="compose_answer")
+            except LLMTruncated:
+                # A truncated draft is unusable; give the model one bigger try
+                # before dropping to the deterministic template.
+                text = self.client.complete_text(system, user, max_tokens=budget + 1500,
+                                                 stage="compose_answer")
             if not text.strip():
                 raise ValueError("empty answer")
             if not numbers_are_grounded(text, ctx):
                 raise ValueError("answer contains ungrounded numbers")
             return text.strip()
-        except Exception:
+        except Exception as exc:
+            log_event(logger, "composer.llm_fallback",
+                      error=f"{type(exc).__name__}: {exc}")
             return self.fallback.compose(ctx)

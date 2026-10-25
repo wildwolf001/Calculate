@@ -66,6 +66,87 @@ def test_turn_stream_and_state(client):
     assert "SELECT" in artifact["sql"].upper() or "WITH" in artifact["sql"].upper()
 
 
+def test_analysis_modules_catalog(client):
+    data = client.get("/api/analysis/modules").json()
+    modules = {m["id"]: m for m in data["modules"]}
+    assert {"trend", "structure", "driver", "fulfillment", "payment",
+            "reputation", "customer", "seller", "product"} <= set(modules)
+    assert modules["seller"]["default"] is False
+    assert modules["trend"]["default"] is True
+
+
+def test_analysis_hints_catalog(client):
+    data = client.get("/api/analysis/hints").json()
+    assert "数码家电" in data["categories"]
+    assert data["products"]
+    assert data["time_range"]
+
+
+def test_analysis_endpoint_with_selected_modules(client):
+    sid = new_session(client)
+    resp = client.post(f"/api/sessions/{sid}/analysis",
+                       json={"sections": ["fulfillment"]})
+    assert resp.status_code == 200
+    events = sse_events(resp.text)
+    requested = next(e for e in events if e["type"] == "analysis.requested")
+    assert requested["payload"]["modules"] == ["fulfillment"]
+    executed = [e for e in events if e["type"] == "sql.executed"]
+    assert len(executed) == 1
+    report = client.get(f"/api/sessions/{sid}").json()["analysis"]["report"]
+    assert "**本次关注**：履约" in report
+    assert "规模与趋势" not in report
+
+
+def test_analysis_endpoint(client):
+    sid = new_session(client)
+    resp = client.post(f"/api/sessions/{sid}/analysis")
+    assert resp.status_code == 200
+    events = sse_events(resp.text)
+    types = [e["type"] for e in events]
+    assert "analysis.requested" in types
+    assert "analysis.completed" in types
+    assert "sql.executed" in types
+    assert "answer.composed" in types
+
+    state = client.get(f"/api/sessions/{sid}").json()
+    assert state["status"] == "DONE"
+    assert state["analysis"]["status"] == "done"
+    assert "经营分析报告" in state["analysis"]["report"]
+
+
+def test_history_record_projection_and_verify(client):
+    sid = new_session(client)
+    client.post(f"/api/sessions/{sid}/turns", json={"message": "5月的订单数是多少？"})
+
+    body = client.get(f"/api/sessions/{sid}/history").json()
+    assert body["semantic_version"]
+    assert body["warehouse_version"]
+    record = body["history"][0]
+    for key in ("sql", "params", "fingerprint", "plan", "preview", "checks",
+                "status", "warehouse_version", "kind", "turn"):
+        assert key in record
+    assert record["plan"]["metric"] == "order_count"
+    assert record["status"] == "ok"
+    assert record["preview"]
+
+    resp = client.post(f"/api/sessions/{sid}/records/{record['result_id']}/verify")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["verdict"] == "reproduced"
+    assert data["checks"] == {
+        "sql_match": True,
+        "fingerprint_match": True,
+        "columns_match": True,
+        "rows_match": True,
+    }
+
+
+def test_verify_unknown_record_returns_404(client):
+    sid = new_session(client)
+    resp = client.post(f"/api/sessions/{sid}/records/r999-missing/verify")
+    assert resp.status_code == 404
+
+
 def test_history_and_export(client):
     sid = new_session(client)
     client.post(f"/api/sessions/{sid}/turns", json={"message": "5月的订单数是多少？"})

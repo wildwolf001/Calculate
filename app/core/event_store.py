@@ -127,16 +127,78 @@ class EventStore:
         return sorted(p.stem for p in self.root.glob("*.jsonl"))
 
     def history(self, session_id: str) -> list[dict]:
-        """Compact projection for the UI history panel."""
+        """Query records: provenance + a reference to the result snapshot.
+
+        Full rows stay in the `sql.executed` event and are fetched by
+        result_id; this projection carries a small preview plus everything
+        needed to review and re-run the query.
+        """
+        events = self.load(session_id)
+        checks: dict[str, dict] = {}
+        answers: dict[str, str] = {}
+        for ev in events:
+            rid = (ev.payload or {}).get("result_id")
+            if not rid:
+                continue
+            if ev.type == "checks.completed":
+                checks[rid] = ev.payload
+            elif ev.type == "answer.composed":
+                answers.setdefault(rid, ev.payload.get("text") or "")
+
         out = []
-        for ev in self.load(session_id):
-            if ev.type == "sql.executed":
-                out.append({
-                    "result_id": ev.payload.get("result_id"),
-                    "seq": ev.seq,
-                    "ts": ev.ts.isoformat(timespec="seconds"),
-                    "question": ev.payload.get("question"),
-                    "columns": ev.payload.get("columns"),
-                    "row_count": ev.payload.get("row_count"),
-                })
+        for ev in events:
+            if ev.type != "sql.executed":
+                continue
+            p = ev.payload or {}
+            rid = p.get("result_id") or ""
+            plan = p.get("plan") or {}
+            check = checks.get(rid) or {}
+            turn = None
+            if rid.startswith("r") and "-" in rid:
+                head = rid[1:].split("-", 1)[0]
+                turn = int(head) if head.isdigit() else None
+            if p.get("analysis_item"):
+                kind = "analysis"
+            elif p.get("subquestion_id"):
+                kind = "subquestion"
+            elif p.get("interpretation_id"):
+                kind = "interpretation"
+            else:
+                kind = "query"
+            out.append({
+                "result_id": rid,
+                "seq": ev.seq,
+                "ts": ev.ts.isoformat(timespec="seconds"),
+                "turn": turn,
+                "question": p.get("question"),
+                "kind": kind,
+                "label": p.get("interpretation_label"),
+                "analysis_section": p.get("analysis_section"),
+                # plan / scope
+                "metric": plan.get("metric"),
+                "dimensions": plan.get("dimensions") or [],
+                "time": plan.get("time"),
+                "comparison": plan.get("comparison"),
+                "filters": plan.get("filters") or {},
+                "limit": plan.get("limit"),
+                "degraded_reason": plan.get("degraded_reason"),
+                "plan": plan,
+                # execution provenance
+                "sql": p.get("sql"),
+                "params": p.get("params") or [],
+                "fingerprint": p.get("fingerprint"),
+                "duration_ms": p.get("duration_ms"),
+                "truncated": bool(p.get("truncated")),
+                "warehouse_version": (p.get("meta") or {}).get("warehouse_version"),
+                # result reference + preview
+                "columns": p.get("columns") or [],
+                "row_count": p.get("row_count"),
+                "preview": (p.get("rows") or [])[:3],
+                # checks and answer
+                "checks": check.get("issues") or [],
+                "facts": check.get("facts") or {},
+                "blocked": bool(check.get("blocked")),
+                "status": "blocked" if check.get("blocked") else "ok",
+                "answer": answers.get(rid),
+            })
         return out

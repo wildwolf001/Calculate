@@ -1,4 +1,15 @@
-import type { ApiEvent, HistoryItem, Meta, ResultArtifact, SessionSummary } from './types'
+import type {
+  AnalysisHints,
+  AnalysisModule,
+  AnalysisOptions,
+  ApiEvent,
+  HistoryItem,
+  HistoryResponse,
+  Meta,
+  ResultArtifact,
+  SessionSummary,
+  VerifyResult,
+} from './types'
 
 const BASE = (import.meta as any).env?.VITE_API_BASE || ''
 
@@ -45,11 +56,19 @@ export async function getSessionEvents(sessionId: string): Promise<ApiEvent[]> {
   return data.events
 }
 
-export async function getHistory(sessionId: string): Promise<HistoryItem[]> {
-  const data = await json<{ history: HistoryItem[] }>(
-    await fetch(`${BASE}/api/sessions/${sessionId}/history`),
+export async function getHistory(sessionId: string): Promise<HistoryResponse> {
+  return json<HistoryResponse>(await fetch(`${BASE}/api/sessions/${sessionId}/history`))
+}
+
+export async function verifyRecord(
+  sessionId: string,
+  resultId: string,
+): Promise<VerifyResult> {
+  const resp = await fetch(
+    `${BASE}/api/sessions/${sessionId}/records/${resultId}/verify`,
+    { method: 'POST' },
   )
-  return data.history
+  return json<VerifyResult>(resp)
 }
 
 export async function getResult(sessionId: string, resultId: string): Promise<ResultArtifact> {
@@ -79,20 +98,8 @@ function parseFrame(frame: string): ApiEvent | null {
   }
 }
 
-export async function* streamTurn(
-  sessionId: string,
-  message: string,
-  signal?: AbortSignal,
-): AsyncGenerator<ApiEvent> {
-  const resp = await fetch(`${BASE}/api/sessions/${sessionId}/turns`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message }),
-    signal,
-  })
-  if (!resp.ok || !resp.body) {
-    throw new Error(`${resp.status}: ${await resp.text()}`)
-  }
+async function* readEvents(resp: Response): AsyncGenerator<ApiEvent> {
+  if (!resp.body) return
   const reader = resp.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
@@ -111,4 +118,53 @@ export async function* streamTurn(
   buffer += decoder.decode()
   const tail = parseFrame(buffer.trim())
   if (tail) yield tail
+}
+
+export async function* streamTurn(
+  sessionId: string,
+  message: string,
+  signal?: AbortSignal,
+): AsyncGenerator<ApiEvent> {
+  const resp = await fetch(`${BASE}/api/sessions/${sessionId}/turns`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message }),
+    signal,
+  })
+  if (!resp.ok || !resp.body) {
+    throw new Error(`${resp.status}: ${await resp.text()}`)
+  }
+  yield* readEvents(resp)
+}
+
+export async function* streamAnalysis(
+  sessionId: string,
+  options: AnalysisOptions,
+  signal?: AbortSignal,
+): AsyncGenerator<ApiEvent> {
+  const resp = await fetch(`${BASE}/api/sessions/${sessionId}/analysis`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      sections: options.sections || [],
+      custom_text: options.customText || null,
+      custom_title: options.customTitle || null,
+    }),
+    signal,
+  })
+  if (!resp.ok || !resp.body) {
+    throw new Error(`${resp.status}: ${await resp.text()}`)
+  }
+  yield* readEvents(resp)
+}
+
+export async function getAnalysisModules(): Promise<AnalysisModule[]> {
+  const data = await json<{ modules: AnalysisModule[] }>(
+    await fetch(`${BASE}/api/analysis/modules`),
+  )
+  return data.modules
+}
+
+export async function getAnalysisHints(): Promise<AnalysisHints> {
+  return json<AnalysisHints>(await fetch(`${BASE}/api/analysis/hints`))
 }

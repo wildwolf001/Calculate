@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response, StreamingResponse
 
 from app.api.schemas import (
+    AnalysisRequest,
     ClarificationRequest,
     CreateSessionRequest,
     CreateSessionResponse,
@@ -84,6 +85,19 @@ def schema_card():
     from app.domain.semantic.loader import load_semantic
     from app.llm.schema_card import build_schema_card
     return {"card": build_schema_card(load_semantic())}
+
+
+@router.get("/analysis/modules")
+def analysis_modules():
+    from app.domain.analysis import module_catalog
+    return {"modules": module_catalog()}
+
+
+@router.get("/analysis/hints")
+def analysis_hints():
+    from app.domain.analysis import analysis_hints as build_hints
+    from app.domain.semantic.loader import load_semantic
+    return build_hints(load_semantic())
 
 
 @router.post("/sessions", response_model=CreateSessionResponse)
@@ -167,6 +181,26 @@ async def run_turn(session_id: str, body: TurnRequest, request: Request):
     })
 
 
+@router.post("/sessions/{session_id}/analysis")
+async def run_analysis(session_id: str, request: Request,
+                       body: AnalysisRequest | None = None):
+    """Generate a business analysis report for the selected modules.
+
+    An empty body keeps the default full report. `sections` selects preset
+    modules; `custom_text` adds one user-defined analysis block.
+    """
+    service = get_service(request)
+    if not service.store.exists(session_id):
+        raise HTTPException(status_code=404, detail="会话不存在")
+    options = body.model_dump() if body else None
+    stream = event_stream(service.analysis(session_id, options))
+    return StreamingResponse(stream, media_type="text/event-stream", headers={
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",
+    })
+
+
 @router.post("/sessions/{session_id}/clarifications")
 async def clarify(session_id: str, body: ClarificationRequest, request: Request):
     """A clarification answer is just the next user message; the reducer binds it."""
@@ -185,7 +219,28 @@ def history(session_id: str, request: Request):
     service = get_service(request)
     if not service.store.exists(session_id):
         raise HTTPException(status_code=404, detail="会话不存在")
-    return {"history": service.history(session_id)}
+    sem = service.controller.sem
+    from app.domain.executor import warehouse_version
+
+    return {
+        "history": service.history(session_id),
+        "dataset": sem.dataset,
+        "semantic_version": sem.version,
+        "compiler_version": sem.raw.get("compiler_version", 1),
+        "warehouse_version": warehouse_version(),
+    }
+
+
+@router.post("/sessions/{session_id}/records/{result_id}/verify")
+def verify_record(session_id: str, result_id: str, request: Request):
+    """Re-run a stored query plan and compare it with the saved result."""
+    service = get_service(request)
+    if not service.store.exists(session_id):
+        raise HTTPException(status_code=404, detail="会话不存在")
+    try:
+        return service.verify(session_id, result_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="查询记录不存在")
 
 
 @router.get("/sessions/{session_id}/results/{result_id}")

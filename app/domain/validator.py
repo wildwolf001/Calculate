@@ -75,15 +75,18 @@ def validate_plan(plan: QueryPlan, sem: SemanticLayer) -> list[Issue]:
         if str(plan.time.start) < lo or str(plan.time.end) > hi:
             issues.append(Issue(
                 "TIME_OUT_OF_DATA",
-                f"时间范围 {plan.time.start}~{plan.time.end} 超出数据覆盖 {lo}~{hi}，结果可能为空",
+                f"时间范围 {plan.time.start} 至 {plan.time.end} 超出数据覆盖 {lo} 至 {hi}，结果可能为空",
                 "warn",
             ))
 
     if plan.limit < 1 or plan.limit > MAX_ROW_LIMIT:
         issues.append(Issue("BAD_LIMIT", f"limit 必须在 1..{MAX_ROW_LIMIT}"))
 
-    if (plan.compare or plan.comparison) and metric.type != "aggregate":
-        issues.append(Issue("COMPARE_UNSUPPORTED", "环比/同比仅支持可加聚合指标"))
+    if plan.compare and metric.type not in {"aggregate", "ratio"}:
+        issues.append(Issue("COMPARE_UNSUPPORTED", "环比/同比仅支持可加聚合指标和比率指标"))
+    if plan.comparison and metric.type not in {"aggregate", "ratio"}:
+        issues.append(Issue("COMPARE_UNSUPPORTED",
+                            "显式期间比较仅支持可加聚合指标和比率指标"))
 
     if plan.comparison:
         cur, base = plan.comparison.current, plan.comparison.baseline
@@ -94,7 +97,7 @@ def validate_plan(plan: QueryPlan, sem: SemanticLayer) -> list[Issue]:
             if str(rng.start) < lo or str(rng.end) > hi:
                 issues.append(Issue(
                     "TIME_OUT_OF_DATA",
-                    f"{name} 期间 {rng.start}~{rng.end} 超出数据覆盖 {lo}~{hi}",
+                    f"{name} 期间 {rng.start} 至 {rng.end} 超出数据覆盖 {lo} 至 {hi}",
                     "warn",
                 ))
         if cur.start == base.start and cur.end == base.end:
@@ -146,7 +149,7 @@ def _validate_member_list(plan: QueryPlan, sem: SemanticLayer) -> list[Issue]:
         if str(plan.time.start) < lo or str(plan.time.end) > hi:
             issues.append(Issue(
                 "TIME_OUT_OF_DATA",
-                f"时间范围 {plan.time.start}~{plan.time.end} 超出数据覆盖 {lo}~{hi}，结果可能为空",
+                f"时间范围 {plan.time.start} 至 {plan.time.end} 超出数据覆盖 {lo} 至 {hi}，结果可能为空",
                 "warn",
             ))
 

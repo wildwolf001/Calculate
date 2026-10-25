@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import AnalysisDialog from './components/AnalysisDialog.vue'
 import ChatPanel from './components/ChatPanel.vue'
+import RecordDrawer from './components/RecordDrawer.vue'
 import ResultCanvas from './components/ResultCanvas.vue'
 import { useSessionStore } from './stores/session'
 
@@ -72,6 +74,8 @@ function startDrag(e: MouseEvent) {
       </div>
     </aside>
 
+    <RecordDrawer />
+    <AnalysisDialog />
     <div class="toast" :class="{ show: !!store.toast }">{{ store.toast }}</div>
   </div>
 </template>

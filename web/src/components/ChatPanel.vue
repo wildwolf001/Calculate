@@ -130,6 +130,16 @@ const slow = computed(() => elapsed.value >= 30)
     </div>
 
     <div class="composer">
+      <div class="analysis-bar">
+        <button
+          class="analysis-btn"
+          :disabled="store.busy || !store.sessionId"
+          @click="store.openAnalysisDialog()"
+        >
+          📊 生成经营分析
+        </button>
+        <span class="analysis-hint">结合当前会话与数据库，生成趋势 / 结构 / 驱动 / 履约 / 口碑报告</span>
+      </div>
       <div class="chips">
         <button
           v-for="s in store.suggestions"

@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import AnalysisView from './AnalysisView.vue'
 import ChartView from './ChartView.vue'
 import DataTable from './DataTable.vue'
 import SqlPanel from './SqlPanel.vue'
 import { useSessionStore } from '../stores/session'
+import type { HistoryItem } from '../types'
 
 const store = useSessionStore()
 
@@ -218,8 +220,19 @@ const navCrumbs = computed(() =>
     .map((snap, index) => ({ ...snap, index }))
     .slice(-4),
 )
+const isAnalysisView = computed(() => store.tab === 'analysis' && !!store.analysis)
+const metricName = (id?: string) =>
+  store.meta?.metrics.find((m) => m.id === id)?.name || id || ''
+const kindLabel = (h: HistoryItem) => {
+  if (h.kind === 'analysis') return h.analysis_section || '分析板块'
+  if (h.kind === 'subquestion') return '子问题'
+  if (h.kind === 'interpretation') return '口径解释'
+  return '查询'
+}
 const metricCrumb = computed(() =>
-  isLookup.value ? (display.value?.metric_name || '维度清单') : (metric.value?.name || '查询'),
+  isAnalysisView.value
+    ? '经营分析'
+    : isLookup.value ? (display.value?.metric_name || '维度清单') : (metric.value?.name || '查询'),
 )
 </script>
 
@@ -247,7 +260,7 @@ const metricCrumb = computed(() =>
       </nav>
       <div class="top-actions">
         <button class="ghost" @click="store.toggleHistory()">历史结果 ▾</button>
-        <button class="ghost" @click="store.exportCurrent()">导出 CSV</button>
+        <button v-if="!isAnalysisView" class="ghost" @click="store.exportCurrent()">导出 CSV</button>
       </div>
 
       <div v-if="store.historyOpen" class="history-pop">
@@ -257,28 +270,41 @@ const metricCrumb = computed(() =>
           v-for="h in store.history"
           :key="h.result_id"
           class="hitem"
-          @click="store.loadHistoryItem(h)"
+          @click="store.openRecord(h)"
         >
           <div class="htitle">{{ h.question || h.result_id }}</div>
-          <div class="hmeta">{{ h.ts }} · {{ h.row_count }} 行 · {{ h.result_id }}</div>
+          <div class="hmeta">
+            {{ h.ts }} · {{ h.row_count }} 行
+            <template v-if="h.metric"> · {{ metricName(h.metric) }}</template>
+            · {{ kindLabel(h) }}
+            <span v-if="h.status === 'blocked'" class="hbad">已拦截</span>
+          </div>
+          <div class="hmeta">{{ h.result_id }}</div>
         </div>
       </div>
     </div>
 
     <div class="canvas-title">
       <div style="min-width: 0">
-        <div class="eyebrow">02 · QUERY RESULT</div>
-        <h1>{{ title }}</h1>
+        <div class="eyebrow">{{ isAnalysisView ? '02 · BUSINESS REVIEW' : '02 · QUERY RESULT' }}</div>
+        <h1>{{ isAnalysisView ? '经营分析' : title }}</h1>
       </div>
       <div class="tabs">
         <button :class="{ active: store.tab === 'table' }" @click="store.setTab('table')">表格</button>
         <button :class="{ active: store.tab === 'chart' }" @click="store.setTab('chart')">图表</button>
         <button :class="{ active: store.tab === 'sql' }" @click="store.setTab('sql')">SQL</button>
+        <button
+          v-if="store.analysis"
+          :class="{ active: store.tab === 'analysis' }"
+          @click="store.setTab('analysis')"
+        >
+          经营分析
+        </button>
       </div>
     </div>
 
-    <div v-if="store.results.length > 1" class="interp-tabs">
-      <span class="itab-lab">口径</span>
+    <div v-if="store.results.length > 1 && !isAnalysisView" class="interp-tabs">
+      <span class="itab-lab">{{ store.analysisMode ? '分析板块' : store.hasSubquestions ? '子问题' : '口径' }}</span>
       <button
         v-for="r in store.results"
         :key="r.id"
@@ -286,11 +312,13 @@ const metricCrumb = computed(() =>
         @click="store.selectResult(r.id)"
       >
         {{ r.label || r.id }}
-        <em v-if="r.preferred">首选</em>
+        <em v-if="r.preferred">{{ store.analysisMode ? '主板块' : store.hasSubquestions ? '主结果' : '首选' }}</em>
       </button>
     </div>
 
-    <template v-if="store.result">
+    <AnalysisView v-if="isAnalysisView" />
+
+    <template v-else-if="store.result">
       <div class="meta">
         <div v-for="m in metaItems" :key="m.k" class="mitem">
           <div class="mlabel">{{ m.k }}</div>

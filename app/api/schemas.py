@@ -19,6 +19,12 @@ class ClarificationRequest(BaseModel):
     value: str = Field(min_length=1, max_length=500)
 
 
+class AnalysisRequest(BaseModel):
+    sections: list[str] = Field(default_factory=list, max_length=12)
+    custom_text: str | None = Field(default=None, max_length=500)
+    custom_title: str | None = Field(default=None, max_length=60)
+
+
 class ApiError(BaseModel):
     code: str
     message: str

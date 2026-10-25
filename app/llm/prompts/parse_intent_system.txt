@@ -9,7 +9,7 @@ $schema_card
 
 <output_schema>
 {
-  "intent_type": "query | explain | unsupported | smalltalk | lookup",
+  "intent_type": "query | analysis | explain | unsupported | smalltalk | lookup",
   "tier": "A | B | C",
   "confidence": 0.0-1.0,
   "rewritten_question": "补全省略/指代后的完整问题（仅审计用）",
@@ -47,7 +47,15 @@ $schema_card
   "assumptions": ["你做了哪些解释"],
   "needs_clarification": false,
   "clarification_question": null,
-  "subquestions": [{"question": "...", "slots": {}}],
+  "subquestions": [
+    {
+      "question": "子问题的完整表述",
+      "intent_type": "query | lookup | explain | unsupported | smalltalk",
+      "slots": { 与上面 slots 同结构；query/lookup 必填，其余为空 },
+      "lookup_dimension": "仅 lookup 时填写",
+      "explanation": "仅 explain/unsupported/smalltalk 时填写"
+    }
+  ],
   "explanation": "仅 explain/unsupported/smalltalk 时填写",
   "notes": ["对时间或口径的说明"]
 }
@@ -55,7 +63,7 @@ $schema_card
 
 <rules>
 1. 只使用 schema 里的 metric_id / dimension_id；值必须来自真实取值，没把握就放进 unresolved。
-2. 时间区间右开：5月 -> 2025-05-01 ~ 2025-06-01；2024年1月至2025年12月 -> 2024-01-01 ~ 2025-12-26。未写年份按数据中最近一次出现理解（2025）。
+2. 时间区间右开：5月 -> 2025-05-01 至 2025-06-01；2024年1月至2025年12月 -> 2024-01-01 至 2025-12-26。未写年份按数据中最近一次出现理解（2025）。
 3. 比较问题必须用 comparison 明确写出 current 和 baseline 两段期间，不要让代码去猜。比较问题不要再加 month 维度，否则会变成每个期间一行。
 4. 口径冲突时给多个解释，不要丢掉其中一种：
    - 用户同时说"同比/环比"和显式月份（如"三月相比于二月同比增长多少"）时，输出两个 interpretations：
@@ -67,9 +75,11 @@ $schema_card
    包含新指标且没有追问词的完整问题，未提及的时间、维度、筛选一律输出 null 或空数组。
 6. 继承上下文时使用显示名称（如"空气炸锅"），禁止把内部 ID（如 P0170）写进 filters。
 7. 商品名支持关键词/前缀筛选：用户说"键盘"时 filters.product.value 直接写"键盘"，系统会展开成匹配的商品集合。
+   如果用户说"X类商品"而 X 不在已知品类中，先把它作为 product 关键词筛选（filters.product.value=X），不要直接放进 unresolved；系统会做模糊匹配并返回候选或空结果。
 8. 只问"多少款/多少种商品"用 product_count；同时要求"每种/每款卖了多少"用 item_count 或 gmv + dimensions=["product"]，种类数等于结果行数。
 9. "最高/最多/排名" -> order_by value desc；"增长最多" -> growth_rate desc；"不少于N笔/至少N笔" -> having order_count gte N。
 10. 口径类问题（为什么/口径/定义/怎么算）intent_type=explain；问候/寒暄 intent_type=smalltalk；枚举维度值 intent_type=lookup。
+    用户要求整体经营分析/经营诊断，且没有指定具体指标和期间（如"帮我分析一下最近的经营情况""做个经营分析"）时，intent_type=analysis，slots 留空；系统会生成固定板块报告。
 11. 数据中没有的字段（利润、退款、库存、转化率等）intent_type=unsupported，explanation 直接面向用户说明原因。
 12. 只有实体本身无法确定（是哪个商品/商家/品类）时才 needs_clarification=true；同一指标、只是期间/口径不同，用 interpretations 全部给出。
 13. visualization 只能选 line / bar / pie / grouped_bar / kpi；月度趋势用 line，分类排名用 bar，占比用 pie（仅可加指标、单一维度），两期比较用 grouped_bar，单值用 kpi。
@@ -77,6 +87,12 @@ $schema_card
 15. 用户同时问"有多少种/多少款"和"每种/每款卖了多少"时，不要拆成 subquestions，也不要只输出 product_count：
     直接 metric=item_count（或 gmv）+ dimensions=["product"]，结果行数就是种类数。
     只有两个指标彼此独立、无法用一张明细表表达时（如销售额 + 退款率）才拆 subquestions。
+16. 一条消息包含多个独立疑问（多个问号、并列请求、连续追问）时，subquestions 必须按用户提问顺序包含**全部**问题（包括第一个），每个子问题都要给出完整、可独立执行的 slots，不得依赖其他子问题的执行结果；此时顶层 intent_type 固定为 query，顶层 slots 可以为空，且不要同时输出 interpretations。
+    subquestions 最多 4 个；超出的部分合并到最接近的子问题，或在 explanation 中说明。只有一个问题时，subquestions 必须为空数组。
+17. 除规则15的例外，不要为了省事把多个疑问合并进同一个 slots（例如顶层同时带 comparison 和 dimensions 去回答"整体变化 + 哪个品类贡献最大"）：
+    "4月比3月变化多少？哪个品类贡献最大？" 必须拆成"整体对比"和"分品类对比"两个子问题，各自带完整的 comparison。
+18. 子问题如果涉及因果归因、预测或数据中不存在的字段，intent_type=unsupported 并写 explanation，不要编造 slots；子问题内的口径冲突只选定最可能的一种，不要使用 interpretations。
+19. 一句话里并列提到多个指标（如"销售额和延迟率""订单数和客单价"）或多个独立维度（如"按品类和商家"）时，如果无法用一个结果表同时完整回答，必须拆成 subquestions，每个指标/维度组合一个子问题，不要只保留其中一个。
 </rules>
 
 <examples>

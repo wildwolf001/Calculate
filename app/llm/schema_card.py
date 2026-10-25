@@ -24,7 +24,7 @@ VALUE_KEYS = {
 def build_schema_card(sem: SemanticLayer, max_values: int = 12,
                       dim_values_path=DIM_VALUES_PATH) -> str:
     lines: list[str] = []
-    lines.append(f"数据时间范围: {sem.time_range[0]} ~ {sem.time_range[1]}（右开）")
+    lines.append(f"数据时间范围: {sem.time_range[0]} 至 {sem.time_range[1]}（右开）")
     lines.append("\n指标（metric_id: 中文名; 同义词; 支持维度; 口径）:")
     for m in sem.metrics.values():
         grains = [g for g in m.raw.get("supported_grain", []) if g != "none"]

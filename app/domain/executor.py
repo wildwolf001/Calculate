@@ -19,6 +19,15 @@ class QueryTimeout(RuntimeError):
     pass
 
 
+def warehouse_version(db_path: Path = WAREHOUSE_PATH) -> str:
+    """Cheap data-version fingerprint for reproducible records."""
+    try:
+        stat = db_path.stat()
+        return f"{stat.st_size}-{int(stat.st_mtime)}"
+    except OSError:
+        return "unknown"
+
+
 @dataclass
 class ResultSet:
     result_id: str
@@ -93,5 +102,5 @@ def execute(compiled: Compiled, db_path: Path = WAREHOUSE_PATH,
         params=compiled.params,
         fingerprint=compiled.fingerprint(),
         duration_ms=duration,
-        meta=compiled.meta,
+        meta={**(compiled.meta or {}), "warehouse_version": warehouse_version(db_path)},
     )
