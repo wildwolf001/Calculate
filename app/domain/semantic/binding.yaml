@@ -1,0 +1,63 @@
+# 逻辑字段 -> 物理列。
+# 结构改名（例如 purchase_at -> created_at）时只改这里，semantic.yaml 不动。
+# 启动时 loader 会把本文件与 catalog 比对；缺列直接失败退出（不降级）。
+version: 1
+
+tables:
+  orders:
+    order_id: order_id
+    customer_id: customer_id
+    order_status: order_status
+    purchase_at: purchase_at
+    approved_at: approved_at
+    shipped_at: shipped_at
+    delivered_at: delivered_at
+    estimated_delivery_at: estimated_delivery_at
+  order_items:
+    order_id: order_id
+    order_item_id: order_item_id
+    product_id: product_id
+    seller_id: seller_id
+    shipping_limit_at: shipping_limit_at
+    price: price
+    freight_value: freight_value
+  order_payments:
+    order_id: order_id
+    payment_sequence: payment_sequence
+    payment_type: payment_type
+    payment_installments: payment_installments
+    payment_value: payment_value
+  order_reviews:
+    review_id: review_id
+    order_id: order_id
+    review_score: review_score
+    review_title: review_title
+    review_message: review_message
+    review_created_at: review_created_at
+    seller_answered_at: seller_answered_at
+  products:
+    product_id: product_id
+    category_id: category_id
+    product_name: product_name
+    base_price: base_price
+  categories:
+    category_id: category_id
+    category_name_en: category_name_en
+    category_name_zh: category_name_zh
+  sellers:
+    seller_id: seller_id
+    seller_name: seller_name
+    seller_city: seller_city
+    seller_state: seller_state
+  customers:
+    customer_id: customer_id
+    customer_unique_id: customer_unique_id
+    customer_zip_code: customer_zip_code
+    customer_city: customer_city
+    customer_state: customer_state
+  geolocation:
+    zip_code: zip_code
+    latitude: latitude
+    longitude: longitude
+    city: city
+    state: state

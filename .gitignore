@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+data/datasets/*/warehouse.duckdb
+data/datasets/*/warehouse.duckdb.tmp
+data/datasets/*/catalog.json
+data/datasets/*/dim_values.json
+data/datasets/*/quality_report.json
+data/runtime/
+data/dev/
+web/node_modules/
+web/dist/
+.pytest_cache/
+backup_*.zip
+*.duckdb.tmp

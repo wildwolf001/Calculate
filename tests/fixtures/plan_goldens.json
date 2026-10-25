@@ -1,0 +1,132 @@
+{
+  "Q01": {
+    "ok": true,
+    "rows": [
+      [
+        10714
+      ]
+    ],
+    "checks": [],
+    "error": null,
+    "sql": "SELECT COUNT(DISTINCT orders.order_id) AS \"value\"\nFROM \"orders\"\nWHERE (\"orders\".\"order_status\" = ?) AND (\"orders\".\"purchase_at\" >= ?) AND (\"orders\".\"purchase_at\" < ?)\nLIMIT 1"
+  },
+  "Q02": {
+    "ok": true,
+    "rows": [
+      [
+        4858920.84
+      ]
+    ],
+    "checks": [],
+    "error": null,
+    "sql": "SELECT SUM(order_items.price) AS \"value\"\nFROM \"order_items\"\n  JOIN \"orders\" ON \"order_items\".\"order_id\" = \"orders\".\"order_id\"\nWHERE (\"orders\".\"order_status\" = ?) AND (\"orders\".\"purchase_at\" >= ?) AND (\"orders\".\"purchase_at\" < ?)\nLIMIT 1"
+  },
+  "Q03": {
+    "ok": true,
+    "rows": [
+      [
+        193119.68,
+        167927.39,
+        25192.29,
+        0.150019
+      ]
+    ],
+    "checks": [],
+    "error": null,
+    "sql": "WITH base AS (\n  SELECT CASE WHEN \"orders\".\"purchase_at\" >= ? THEN 'current' WHEN \"orders\".\"purchase_at\" >= ? THEN 'baseline' END AS \"_period\", SUM(order_items.price) AS \"_v\"\n  FROM \"order_items\"\n    JOIN \"orders\" ON \"order_items\".\"order_id\" = \"orders\".\"order_id\"\n  WHERE (\"orders\".\"order_status\" = ?) AND (\"orders\".\"purchase_at\" >= ?) AND (\"orders\".\"purchase_at\" < ?)\n  GROUP BY 1\n), pivoted AS (\n  SELECT MAX(CASE WHEN \"_period\" = 'current' THEN \"_v\" END) AS \"current\", MAX(CASE WHEN \"_period\" = 'baseline' THEN \"_v\" END) AS \"baseline\"\n  FROM base\n)\nSELECT \n  \"current\", \"baseline\", \"current\" - \"baseline\" AS \"delta\", CASE WHEN \"baseline\" IS NULL OR \"baseline\" = 0 THEN NULL ELSE (\"current\" - \"baseline\") / \"baseline\" END AS \"growth_rate\"\nFROM pivoted\nLIMIT 1"
+  },
+  "Q04": {
+    "ok": true,
+    "rows": [
+      [
+        "数码家电",
+        105245.5
+      ],
+      [
+        "家居生活",
+        30053.57
+      ],
+      [
+        "运动户外",
+        27123.66
+      ],
+      [
+        "美妆个护",
+        12757.13
+      ],
+      [
+        "食品饮料",
+        10621.59
+      ],
+      [
+        "图书文教",
+        7318.23
+      ]
+    ],
+    "checks": [],
+    "error": null,
+    "sql": "SELECT \"categories\".\"category_name_zh\" AS \"category\", SUM(order_items.price) AS \"value\"\nFROM \"order_items\"\n  JOIN \"orders\" ON \"order_items\".\"order_id\" = \"orders\".\"order_id\"\n  JOIN \"products\" ON \"order_items\".\"product_id\" = \"products\".\"product_id\"\n  JOIN \"categories\" ON \"products\".\"category_id\" = \"categories\".\"category_id\"\nWHERE (\"orders\".\"order_status\" = ?) AND (\"orders\".\"purchase_at\" >= ?) AND (\"orders\".\"purchase_at\" < ?)\nGROUP BY 1\nORDER BY \"value\" DESC, \"category\" ASC\nLIMIT 10"
+  },
+  "Q05": {
+    "ok": true,
+    "rows": [
+      [
+        "广州美妆个护商家004",
+        54,
+        59,
+        0.915254,
+        59
+      ]
+    ],
+    "checks": [
+      {
+        "id": "RATIO_GRAIN",
+        "severity": "info",
+        "title": "比率粒度",
+        "detail": "比率已先聚合到 order 粒度再相除，不是对明细行求平均。"
+      },
+      {
+        "id": "RATIO_CROSS_SELLER",
+        "severity": "warn",
+        "title": "跨商家订单在分组内重复计入分母",
+        "detail": "有 1841 笔订单跨多个商家；各商家比率不能简单加总。"
+      }
+    ],
+    "error": null,
+    "sql": "WITH grain AS (\n  SELECT \"sellers\".\"seller_name\" AS \"seller\", \"orders\".\"order_id\" AS \"_key\", MAX(CASE WHEN orders.delivered_at > orders.estimated_delivery_at THEN 1 ELSE 0 END) AS \"_num\", 1 AS \"_den\"\n  FROM \"orders\"\n    JOIN \"order_items\" ON \"order_items\".\"order_id\" = \"orders\".\"order_id\"\n    JOIN \"sellers\" ON \"order_items\".\"seller_id\" = \"sellers\".\"seller_id\"\n  WHERE (\"orders\".\"order_status\" = ?) AND (\"orders\".\"purchase_at\" >= ?) AND (\"orders\".\"purchase_at\" < ?)\n  GROUP BY 1, 2\n)\nSELECT \"seller\", SUM(\"_num\") AS \"numerator\", SUM(\"_den\") AS \"denominator\", SUM(\"_num\") / NULLIF(SUM(\"_den\"), 0) AS \"value\", SUM(\"_den\") AS \"order_count\"\nFROM grain\nGROUP BY 1\nHAVING \"order_count\" >= ?\nORDER BY \"value\" DESC, \"seller\" ASC\nLIMIT 10"
+  },
+  "Q06": {
+    "ok": true,
+    "rows": [
+      [
+        "准时",
+        4.018816
+      ],
+      [
+        "延迟",
+        1.998709
+      ]
+    ],
+    "checks": [
+      {
+        "id": "COVERAGE",
+        "severity": "info",
+        "title": "覆盖范围",
+        "detail": "仅覆盖有评价的已送达订单（约 86.17%）。"
+      }
+    ],
+    "error": null,
+    "sql": "SELECT CASE WHEN orders.delivered_at > orders.estimated_delivery_at THEN '延迟' ELSE '准时' END AS \"late\", AVG(order_reviews.review_score) AS \"value\"\nFROM \"order_reviews\"\n  JOIN \"orders\" ON \"order_reviews\".\"order_id\" = \"orders\".\"order_id\"\nWHERE (\"orders\".\"order_status\" = ?) AND (\"orders\".\"purchase_at\" >= ?) AND (\"orders\".\"purchase_at\" < ?)\nGROUP BY 1\nORDER BY \"late\" ASC\nLIMIT 10"
+  },
+  "Q07": {
+    "ok": true,
+    "rows": [
+      [
+        2378
+      ]
+    ],
+    "checks": [],
+    "error": null,
+    "sql": "WITH entity AS (\n  SELECT \"customers\".\"customer_unique_id\" AS \"_entity\", COUNT(DISTINCT orders.order_id) AS \"_n\"\n  FROM \"orders\"\n    JOIN \"customers\" ON \"orders\".\"customer_id\" = \"customers\".\"customer_id\"\n  WHERE (\"orders\".\"order_status\" = ?) AND (\"orders\".\"purchase_at\" >= ?) AND (\"orders\".\"purchase_at\" < ?)\n  GROUP BY 1\n), filtered AS (\n  SELECT \"_entity\", \"_n\" FROM entity WHERE \"_n\" >= ?\n)\nSELECT COUNT(*) AS \"value\" FROM filtered\nLIMIT 1"
+  }
+}

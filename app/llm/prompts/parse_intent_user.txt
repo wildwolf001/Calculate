@@ -1,0 +1,8 @@
+上一轮槽位（仅用于连续追问继承）:
+$prev_slots
+
+最近对话:
+$recent_messages
+
+用户问题:
+$question
