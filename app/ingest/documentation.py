@@ -44,6 +44,7 @@ RATIO_HINTS = re.compile(r"率|比例|占比", re.I)
 FORMULA_RE = re.compile(
     r"([A-Za-z_][A-Za-z0-9_]*)\s*(>=|<=|>|<|=)\s*([A-Za-z_][A-Za-z0-9_]*|-?\d+(?:\.\d+)?)"
 )
+COMPARISON_VALUE_RE = re.compile(r"^\s*(?:>=|<=|!=|<>|==|=|>|<)\s*")
 TABLE_HINTS = [
     (re.compile(r"订单数|订单量|订单", re.I),
      ["orders", "order_items"]),
@@ -638,6 +639,12 @@ def _map_scope(rule: dict[str, Any], semantic: dict[str, Any],
                warnings: list[str]) -> dict[str, str]:
     scope: dict[str, str] = {}
     for key, value in (rule.get("filters") or {}).items():
+        if COMPARISON_VALUE_RE.match(str(value)):
+            warnings.append(
+                f"{rule['name']}: 筛选 {key}={value} 是比较表达式；"
+                "scope 只支持等值条件，已跳过"
+            )
+            continue
         hit = _find_column_anywhere(index, key)
         if not hit:
             warnings.append(f"{rule['name']}: 找不到筛选列 {key}")
@@ -677,6 +684,17 @@ def _apply_aggregate_rule(rule: dict[str, Any], semantic: dict[str, Any],
     columns = rule.get("resolved_columns") or []
     if not columns or not rule.get("aggregation"):
         return None, "缺少列或聚合"
+    comparison_filters = [
+        f"{key}={value}"
+        for key, value in (rule.get("filters") or {}).items()
+        if COMPARISON_VALUE_RE.match(str(value))
+    ]
+    if comparison_filters and not rule.get("formula"):
+        warnings.append(
+            f"{rule['name']}: 比较筛选需要 formula，未按等值条件应用: "
+            + ", ".join(comparison_filters)
+        )
+        return None, "筛选条件是比较表达式，但规则缺少 formula"
     agg = rule["aggregation"]
     if agg in {"sum", "avg"}:
         numeric = [
@@ -773,7 +791,23 @@ def _apply_formula_rule(rule: dict[str, Any], semantic: dict[str, Any],
         else f"{fact}.{cols[1][1]}"
     )
     condition = f"{left_ref} {op} {right_ref}"
-    scope = _map_scope(rule, semantic, index, fact, ctx, warnings)
+    formula_columns = {
+        left.lower(),
+        right.lower() if not numeric_right else "",
+    }
+    scope_rule = dict(rule)
+    scope_filters: dict[str, Any] = {}
+    for key, value in (rule.get("filters") or {}).items():
+        leaf = str(key).split(".")[-1].strip().lower()
+        if leaf in formula_columns or COMPARISON_VALUE_RE.match(str(value)):
+            warnings.append(
+                f"{rule['name']}: 比较条件 {key}={value} 已包含在 formula 中，"
+                "未重复写入 scope"
+            )
+            continue
+        scope_filters[key] = value
+    scope_rule["filters"] = scope_filters
+    scope = _map_scope(scope_rule, semantic, index, fact, ctx, warnings)
     time_via = _time_via(semantic, fact)
     supported = _supported_grain(
         semantic, fact, include_reachable=rule.get("aggregation") == "ratio"

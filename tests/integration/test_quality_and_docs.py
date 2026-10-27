@@ -206,6 +206,10 @@ def test_readme_documentation_becomes_authoritative(tmp_path):
     doc = parse_document(readme, "README.md", ctx)
     names = {rule["name"] for rule in doc["rules"]}
     assert {"销售额", "订单数", "延迟订单", "低分评价"} <= names
+    # LLM-assisted extraction sometimes duplicates the formula as a raw filter
+    # value. It must not become an equality scope such as review_score='<= 2'.
+    low_rule = next(rule for rule in doc["rules"] if rule["name"] == "低分评价")
+    low_rule["filters"]["review_score"] = "<= 2"
 
     result = apply_documentation(ctx, doc)
     assert result["applied"]
@@ -214,6 +218,10 @@ def test_readme_documentation_becomes_authoritative(tmp_path):
     sales = _metric_by_name(sem, "销售额")
     late = _metric_by_name(sem, "延迟订单")
     low = _metric_by_name(sem, "低分评价")
+    assert not any(
+        value == "<= 2"
+        for value in sem.metric(low).raw.get("scope", {}).values()
+    )
     sales_out = run_query(QueryPlan(metric=sales, dimensions=[], limit=5), sem,
                           db_path=root / "warehouse.duckdb")
     late_out = run_query(QueryPlan(metric=late, dimensions=[], limit=5), sem,
