@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 from string import Template
 
-from app.config.settings import DIM_VALUES_PATH
+from app.config.settings import DIM_VALUES_PATH, MAX_SUBQUESTIONS
 from app.core.interfaces import ParseResult
 from app.core.logging import log_event, logger
 from app.domain.plan import ComparisonSpec
@@ -132,36 +132,89 @@ class LLMIntentParser:
             "notes": [],
         }
 
+    def _validate_subquestions(self, raw: list) -> list[dict]:
+        if not isinstance(raw, list):
+            raise IntentParseError("subquestions 必须是数组")
+        out: list[dict] = []
+        for item in raw[:MAX_SUBQUESTIONS]:
+            if not isinstance(item, dict):
+                continue
+            question = str(item.get("question") or "").strip()
+            if not question:
+                continue
+            has_slots = bool(item.get("slots"))
+            intent = item.get("intent_type") or (
+                "query" if has_slots
+                else ("unsupported" if item.get("explanation") else "query")
+            )
+            if intent not in {"query", "lookup", "explain", "unsupported", "smalltalk"}:
+                intent = "query" if has_slots else "unsupported"
+            entry = {
+                "question": question[:300],
+                "intent_type": intent,
+                "slots": {},
+                "explanation": item.get("explanation"),
+            }
+            if intent in {"query", "lookup"}:
+                try:
+                    entry["slots"] = self._validate_slots(item.get("slots") or {})
+                except IntentParseError as exc:
+                    entry["intent_type"] = "explain"
+                    entry["error"] = str(exc)
+            if intent == "lookup" and entry["intent_type"] == "lookup":
+                try:
+                    entry["lookup_dimension"] = self._map_dimension(
+                        str(item.get("lookup_dimension") or "")
+                    )
+                except IntentParseError as exc:
+                    entry["intent_type"] = "explain"
+                    entry["error"] = str(exc)
+            out.append(entry)
+        return out
+
     def _validate(self, data: dict) -> ParseResult:
         if not isinstance(data, dict):
             raise IntentParseError("输出不是 JSON 对象")
+        subquestions = self._validate_subquestions(data.get("subquestions") or [])
         intent_type = data.get("intent_type", "query")
-        if intent_type not in {"query", "explain", "unsupported", "smalltalk", "lookup"}:
-            raise IntentParseError(f"未知 intent_type: {intent_type}")
+        if intent_type not in {
+            "query", "analysis", "explain", "unsupported", "smalltalk", "lookup",
+        }:
+            if len(subquestions) < 2:
+                raise IntentParseError(f"未知 intent_type: {intent_type}")
+            intent_type = "query"
         tier = data.get("tier", "A")
         if tier not in {"A", "B", "C"}:
             tier = "A"
 
         viz = data.get("visualization") if isinstance(data.get("visualization"), dict) else None
-        slots = self._validate_slots(data.get("slots") or {})
+        try:
+            slots = self._validate_slots(data.get("slots") or {})
+        except IntentParseError:
+            if len(subquestions) < 2:
+                raise
+            slots = self._validate_slots({})
         slots["notes"] = list(data.get("notes") or [])
         slots["visualization"] = viz
+        if len(subquestions) >= 2:
+            intent_type = "query"
         if data.get("assumptions"):
             slots["notes"] += [f"模型假设：{a}" for a in data["assumptions"]]
 
         interpretations = []
-        for idx, item in enumerate(data.get("interpretations") or []):
-            if not isinstance(item, dict):
-                raise IntentParseError("interpretations 元素必须是对象")
-            interp_slots = self._validate_slots(item.get("slots") or {})
-            interp_slots["notes"] = item.get("notes") or slots["notes"]
-            interp_slots["visualization"] = item.get("visualization") or viz
-            interpretations.append({
-                "id": str(item.get("id") or f"i{idx}"),
-                "label": item.get("label") or item.get("name"),
-                "confidence": float(item.get("confidence", 0.5)),
-                "slots": interp_slots,
-            })
+        if len(subquestions) < 2:
+            for idx, item in enumerate(data.get("interpretations") or []):
+                if not isinstance(item, dict):
+                    raise IntentParseError("interpretations 元素必须是对象")
+                interp_slots = self._validate_slots(item.get("slots") or {})
+                interp_slots["notes"] = item.get("notes") or slots["notes"]
+                interp_slots["visualization"] = item.get("visualization") or viz
+                interpretations.append({
+                    "id": str(item.get("id") or f"i{idx}"),
+                    "label": item.get("label") or item.get("name"),
+                    "confidence": float(item.get("confidence", 0.5)),
+                    "slots": interp_slots,
+                })
         preferred = data.get("preferred") or data.get("preferred_interpretation")
         if interpretations:
             ids = [i["id"] for i in interpretations]
@@ -190,7 +243,7 @@ class LLMIntentParser:
             tier=tier,
             slots=slots,
             unresolved=slots["unresolved"],
-            subquestions=data.get("subquestions") or [],
+            subquestions=subquestions,
             explanation=data.get("explanation"),
             notes=slots["notes"],
             confidence=float(data.get("confidence", 0.7)),
@@ -339,7 +392,7 @@ class LLMIntentParser:
                         f"{last_error}\n请严格按 <output_schema> 重新输出一个合法 JSON。"
                     )
                 try:
-                    data = self.client.complete_json(system, user, max_tokens=2400,
+                    data = self.client.complete_json(system, user, max_tokens=3600,
                                                      stage="parse_intent")
                     result = self._validate(data)
                     result = self._postprocess_lookup(result, text)

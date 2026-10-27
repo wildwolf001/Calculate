@@ -127,16 +127,69 @@ class EventStore:
         return sorted(p.stem for p in self.root.glob("*.jsonl"))
 
     def history(self, session_id: str) -> list[dict]:
-        """Compact projection for the UI history panel."""
+        """Query records with enough provenance to inspect and re-run."""
+        events = self.load(session_id)
+        checks: dict[str, dict] = {}
+        answers: dict[str, str] = {}
+        for event in events:
+            result_id = (event.payload or {}).get("result_id")
+            if not result_id:
+                continue
+            if event.type == "checks.completed":
+                checks[result_id] = event.payload
+            elif event.type == "answer.composed":
+                answers.setdefault(result_id, event.payload.get("text") or "")
+
         out = []
-        for ev in self.load(session_id):
-            if ev.type == "sql.executed":
-                out.append({
-                    "result_id": ev.payload.get("result_id"),
-                    "seq": ev.seq,
-                    "ts": ev.ts.isoformat(timespec="seconds"),
-                    "question": ev.payload.get("question"),
-                    "columns": ev.payload.get("columns"),
-                    "row_count": ev.payload.get("row_count"),
-                })
+        for event in events:
+            if event.type != "sql.executed":
+                continue
+            payload = event.payload or {}
+            result_id = payload.get("result_id") or ""
+            plan = payload.get("plan") or {}
+            check = checks.get(result_id) or {}
+            if payload.get("analysis_item"):
+                kind = "analysis"
+            elif payload.get("subquestion_id"):
+                kind = "subquestion"
+            elif payload.get("interpretation_id"):
+                kind = "interpretation"
+            else:
+                kind = "query"
+            turn = None
+            if result_id.startswith("r") and "-" in result_id:
+                head = result_id[1:].split("-", 1)[0]
+                turn = int(head) if head.isdigit() else None
+            out.append({
+                "result_id": result_id,
+                "seq": event.seq,
+                "ts": event.ts.isoformat(timespec="seconds"),
+                "turn": turn,
+                "question": payload.get("question"),
+                "kind": kind,
+                "label": payload.get("interpretation_label"),
+                "analysis_section": payload.get("analysis_section"),
+                "metric": plan.get("metric"),
+                "dimensions": plan.get("dimensions") or [],
+                "time": plan.get("time"),
+                "comparison": plan.get("comparison"),
+                "filters": plan.get("filters") or {},
+                "limit": plan.get("limit"),
+                "degraded_reason": plan.get("degraded_reason"),
+                "plan": plan,
+                "sql": payload.get("sql"),
+                "params": payload.get("params") or [],
+                "fingerprint": payload.get("fingerprint"),
+                "duration_ms": payload.get("duration_ms"),
+                "truncated": bool(payload.get("truncated")),
+                "warehouse_version": (payload.get("meta") or {}).get("warehouse_version"),
+                "columns": payload.get("columns") or [],
+                "row_count": payload.get("row_count"),
+                "preview": (payload.get("rows") or [])[:3],
+                "checks": check.get("issues") or [],
+                "facts": check.get("facts") or {},
+                "blocked": bool(check.get("blocked")),
+                "status": "blocked" if check.get("blocked") else "ok",
+                "answer": answers.get(result_id),
+            })
         return out

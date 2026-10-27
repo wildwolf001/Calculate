@@ -87,8 +87,12 @@ def validate_plan(plan: QueryPlan, sem: SemanticLayer) -> list[Issue]:
     if plan.limit < 1 or plan.limit > MAX_ROW_LIMIT:
         issues.append(Issue("BAD_LIMIT", f"limit 必须在 1..{MAX_ROW_LIMIT}"))
 
-    if (plan.compare or plan.comparison) and metric.type != "aggregate":
-        issues.append(Issue("COMPARE_UNSUPPORTED", "环比/同比仅支持可加聚合指标"))
+    if plan.compare and metric.type not in {"aggregate", "ratio"}:
+        issues.append(Issue("COMPARE_UNSUPPORTED",
+                            "环比/同比仅支持可加聚合指标和比率指标"))
+    if plan.comparison and metric.type not in {"aggregate", "ratio"}:
+        issues.append(Issue("COMPARE_UNSUPPORTED",
+                            "显式期间比较仅支持可加聚合指标和比率指标"))
 
     if plan.comparison:
         cur, base = plan.comparison.current, plan.comparison.baseline

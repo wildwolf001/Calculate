@@ -15,7 +15,7 @@ import json
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 
-from app.domain.plan import QueryPlan
+from app.domain.plan import ComparisonSpec, QueryPlan, TimeRange
 from app.domain.semantic.loader import SemanticLayer, SemanticError
 
 
@@ -329,21 +329,7 @@ class _Builder:
     def _compile_ratio(self) -> Compiled:
         if not self.sem.capabilities.get("ratio", True):
             raise SemanticError("当前数据源未启用比率指标能力")
-        grain_key_name = self.plan.ratio_grain or self.metric.raw.get("ratio_grain") or "fact"
-        ratio_key = self.metric.raw.get("ratio_key")
-        if ratio_key:
-            key = self.phys(str(ratio_key))
-        else:
-            grain = (self.sem.tables.get(self.metric.fact) or {}).get("grain") or []
-            if not grain:
-                raise SemanticError(
-                    f"比率指标 {self.metric.id} 没有可用的分母粒度"
-                )
-            key = self.phys(f"{self.metric.fact}.{grain[0]}")
-        num = self.metric.raw.get("grain_numerator")
-        den = self.metric.raw.get("grain_denominator")
-        if not num or not den:
-            raise SemanticError(f"比率指标 {self.metric.id} 缺少 grain_numerator/denominator")
+        grain_key_name, key, num, den = self._ratio_parts()
 
         dims = self._dims_select()
         inner_select = dims + [f"{key} AS {_q('_key')}", f"{num} AS {_q('_num')}", f"{den} AS {_q('_den')}"]
@@ -374,6 +360,28 @@ class _Builder:
         columns = list(self.plan.dimensions) + ["numerator", "denominator", "value", "order_count"]
         return self._finalize("\n".join(x for x in sql if x), columns,
                               {"ratio_grain": grain_key_name})
+
+    def _ratio_parts(self) -> tuple[str, str, str, str]:
+        grain_key_name = (
+            self.plan.ratio_grain
+            or self.metric.raw.get("ratio_grain")
+            or "fact"
+        )
+        ratio_key = self.metric.raw.get("ratio_key")
+        if ratio_key:
+            key = self.phys(str(ratio_key))
+        else:
+            grain = (self.sem.tables.get(self.metric.fact) or {}).get("grain") or []
+            if not grain:
+                raise SemanticError(f"比率指标 {self.metric.id} 没有可用的分母粒度")
+            key = self.phys(f"{self.metric.fact}.{grain[0]}")
+        numerator = self.metric.raw.get("grain_numerator")
+        denominator = self.metric.raw.get("grain_denominator")
+        if not numerator or not denominator:
+            raise SemanticError(
+                f"比率指标 {self.metric.id} 缺少 grain_numerator/denominator"
+            )
+        return grain_key_name, key, str(numerator), str(denominator)
 
     def _compile_entity(self) -> Compiled:
         if not self.sem.capabilities.get("entity_count", True):
@@ -423,8 +431,10 @@ class _Builder:
 
     def _compile_explicit_comparison(self) -> Compiled:
         """Two explicit periods chosen by the model, no prev-period inference."""
+        if self.metric.type == "ratio":
+            return self._compile_ratio_comparison(explicit=True)
         if self.metric.type != "aggregate":
-            raise SemanticError("显式期间比较只支持可加聚合指标")
+            raise SemanticError("显式期间比较只支持可加聚合指标和比率指标")
         comp = self.plan.comparison
         cur, base = comp.current, comp.baseline
         expr = self.metric.raw.get("expr")
@@ -498,9 +508,132 @@ class _Builder:
             },
         )
 
+    def _compile_ratio_comparison(self, explicit: bool) -> Compiled:
+        """Compare a ratio at its declared grain without averaging row ratios."""
+        comp = self.plan.comparison
+        cur, base = comp.current, comp.baseline
+        grain_key_name, key, numerator, denominator = self._ratio_parts()
+        time_via = self.metric.raw.get("time_via")
+        if not time_via:
+            raise SemanticError(f"比率指标 {self.metric.id} 缺少 time_via")
+
+        dims = self._dims_select()
+        dim_names = [f"{_q(dim)}" for dim in self.plan.dimensions]
+        period_tag = (
+            f"CASE WHEN {self.phys(time_via)} >= {self.p(cur.start)} "
+            f"AND {self.phys(time_via)} < {self.p(cur.end)} THEN 'current' "
+            f"WHEN {self.phys(time_via)} >= {self.p(base.start)} "
+            f"AND {self.phys(time_via)} < {self.p(base.end)} THEN 'baseline' END"
+        )
+        inner = dims + [
+            f"{period_tag} AS {_q('_period')}",
+            f"{key} AS {_q('_key')}",
+            f"{numerator} AS {_q('_num')}",
+            f"{denominator} AS {_q('_den')}",
+        ]
+        group_inner = [str(i + 1) for i in range(len(dims))]
+        group_inner += [str(len(dims) + 1), str(len(dims) + 2)]
+        group_agg = [str(i + 1) for i in range(len(dims))]
+        group_agg += [str(len(dims) + 1)]
+        lower = min(cur.start, base.start)
+        upper = max(cur.end, base.end)
+        sql = [
+            "WITH grain AS (",
+            "  SELECT " + ", ".join(inner),
+            "  " + self._from_clause().replace("\n", "\n  "),
+            "  " + self._where_clause(
+                time_start=lower, time_end=upper
+            ).replace("\n", "\n  "),
+            "  GROUP BY " + ", ".join(group_inner),
+            "), agg AS (",
+            "  SELECT " + ", ".join(
+                dim_names + [
+                    f"{_q('_period')}",
+                    f"SUM({_q('_num')}) AS {_q('_num')}",
+                    f"SUM({_q('_den')}) AS {_q('_den')}",
+                ]
+            ),
+            "  FROM grain",
+            "  GROUP BY " + ", ".join(group_agg),
+            "), pivoted AS (",
+            "  SELECT " + ", ".join(
+                dim_names + [
+                    f"MAX(CASE WHEN {_q('_period')} = 'current' "
+                    f"THEN {_q('_num')} END) AS {_q('current_num')}",
+                    f"MAX(CASE WHEN {_q('_period')} = 'current' "
+                    f"THEN {_q('_den')} END) AS {_q('current_den')}",
+                    f"MAX(CASE WHEN {_q('_period')} = 'baseline' "
+                    f"THEN {_q('_num')} END) AS {_q('baseline_num')}",
+                    f"MAX(CASE WHEN {_q('_period')} = 'baseline' "
+                    f"THEN {_q('_den')} END) AS {_q('baseline_den')}",
+                ]
+            ),
+            "  FROM agg",
+            ("  GROUP BY " + ", ".join(str(i + 1) for i in range(len(dims))))
+            if dims else "",
+            ")",
+            "SELECT " + ", ".join(
+                dim_names + [
+                    f"{_q('current_num')} / NULLIF({_q('current_den')}, 0) AS {_q('current')}",
+                    f"{_q('baseline_num')} / NULLIF({_q('baseline_den')}, 0) AS {_q('baseline')}",
+                    f"{_q('current')} - {_q('baseline')} AS {_q('delta')}",
+                    f"CASE WHEN {_q('baseline')} IS NULL OR {_q('baseline')} = 0 "
+                    f"THEN NULL ELSE ({_q('current')} - {_q('baseline')}) "
+                    f"/ {_q('baseline')} END AS {_q('growth_rate')}",
+                ]
+            ),
+            "FROM pivoted",
+        ]
+        allowed = set(self.plan.dimensions) | {
+            "value", "current", "baseline", "delta", "growth_rate",
+        }
+        order_parts = []
+        for spec in self.plan.order_by:
+            field = "current" if spec.field in {self.plan.metric, "value"} else spec.field
+            if field not in allowed:
+                raise SemanticError(f"无法按 {field} 排序")
+            order_parts.append(f"{_q(field)} {spec.direction.upper()}")
+        for dim in self.plan.dimensions:
+            if not any(spec.field == dim for spec in self.plan.order_by):
+                order_parts.append(f"{_q(dim)} ASC")
+        if order_parts:
+            sql.append("ORDER BY " + ", ".join(order_parts))
+        sql.append(f"LIMIT {int(self.plan.limit)}")
+        columns = list(self.plan.dimensions) + [
+            "current", "baseline", "delta", "growth_rate",
+        ]
+        return self._finalize(
+            "\n".join(line for line in sql if line),
+            columns,
+            {
+                "comparison": "explicit" if explicit else "implicit",
+                "comparison_label": comp.label,
+                "current_range": [str(cur.start), str(cur.end)],
+                "baseline_range": [str(base.start), str(base.end)],
+                "ratio_grain": grain_key_name,
+            },
+        )
+
     def _compile_compare(self) -> Compiled:
+        if self.metric.type == "ratio":
+            if not self.plan.time:
+                raise SemanticError("环比/同比需要明确时间范围")
+            prev_start, prev_end, cur_start, cur_end = self._period_bounds()
+            label = (
+                "同比"
+                if self.plan.compare and self.plan.compare.type == "prev_year"
+                else "环比"
+            )
+            self.plan = self.plan.model_copy(deep=True)
+            self.plan.comparison = ComparisonSpec(
+                label=f"{label}（{cur_start} 至 {cur_end} vs "
+                      f"{prev_start} 至 {prev_end}）",
+                current=TimeRange(start=cur_start, end=cur_end),
+                baseline=TimeRange(start=prev_start, end=prev_end),
+            )
+            return self._compile_ratio_comparison(explicit=False)
         if self.metric.type != "aggregate":
-            raise SemanticError("环比/同比目前只支持可加聚合指标；比率指标请先查两期再比较")
+            raise SemanticError("环比/同比只支持可加聚合指标和比率指标")
         if not self.plan.time:
             raise SemanticError("环比/同比需要明确时间范围")
         expr = self.metric.raw.get("expr")

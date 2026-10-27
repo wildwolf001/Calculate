@@ -64,6 +64,7 @@ LLM_SEMANTIC_TIMEOUT_SECONDS = float(os.getenv("LLM_SEMANTIC_TIMEOUT_SECONDS", "
 
 # ---- Controller ----
 MAX_STEPS = int(os.getenv("MAX_STEPS", "24"))
+MAX_SUBQUESTIONS = int(os.getenv("MAX_SUBQUESTIONS", "4"))
 MAX_ROW_LIMIT = int(os.getenv("MAX_ROW_LIMIT", "2000"))
 SQL_TIMEOUT_MS = int(os.getenv("SQL_TIMEOUT_MS", "8000"))
 DEFAULT_MONTH_WINDOW = int(os.getenv("DEFAULT_MONTH_WINDOW", "12"))

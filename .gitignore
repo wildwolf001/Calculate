@@ -13,6 +13,7 @@ data/dev/
 data/uploads/
 data/trash/
 data/datasets/ds_*/
+project_2/
 web/node_modules/
 web/dist/
 .pytest_cache/

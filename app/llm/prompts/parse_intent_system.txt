@@ -9,7 +9,7 @@ $schema_card
 
 <output_schema>
 {
-  "intent_type": "query | explain | unsupported | smalltalk | lookup",
+  "intent_type": "query | analysis | explain | unsupported | smalltalk | lookup",
   "tier": "A | B | C",
   "confidence": 0.0-1.0,
   "rewritten_question": "补全省略/指代后的完整问题（仅审计用）",
@@ -47,7 +47,15 @@ $schema_card
   "assumptions": ["你做了哪些解释"],
   "needs_clarification": false,
   "clarification_question": null,
-  "subquestions": [{"question": "...", "slots": {}}],
+  "subquestions": [
+    {
+      "question": "子问题的完整表述",
+      "intent_type": "query | lookup | explain | unsupported | smalltalk",
+      "slots": { 与上面 slots 同结构；query/lookup 必填，其余为空 },
+      "lookup_dimension": "仅 lookup 时填写",
+      "explanation": "仅 explain/unsupported/smalltalk 时填写"
+    }
+  ],
   "explanation": "仅 explain/unsupported/smalltalk 时填写",
   "notes": ["对时间或口径的说明"]
 }
@@ -66,11 +74,16 @@ $schema_card
    “有哪些 / 列出 / 清单 / 列表”才是 lookup；lookup_dimension 必须是 schema 中的 dimension_id。若数据源不支持成员清单，请改为计数或分组查询。
 8. “最高/最多/排名” -> order_by value desc；“增长最多” -> growth_rate desc；“不少于N笔/至少N笔” -> having 中对应的计数指标 gte N。
 9. 口径类问题（为什么/口径/定义/怎么算）intent_type=explain；问候/寒暄 intent_type=smalltalk；枚举维度值 intent_type=lookup。
+   用户要求整体经营分析/经营诊断，且没有指定具体指标和期间时，intent_type=analysis，slots 留空。
 10. 数据中没有的字段或指标 intent_type=unsupported，explanation 直接面向用户说明原因，并给出当前数据源可问的替代方向。
 11. 只有实体本身无法确定（是哪个取值）时才 needs_clarification=true；同一指标、只是期间/口径不同，用 interpretations 全部给出。
 12. visualization 只能选 line / bar / pie / grouped_bar / kpi；月度趋势用 line，分类排名用 bar，占比用 pie（仅可加指标、单一维度），两期比较用 grouped_bar，单值用 kpi。
 13. slots 中禁止出现未定义的 key；未知 key 视为非法输出。
 14. 只有两个指标彼此独立、无法用一张明细表表达时才拆 subquestions。
+15. 一条消息包含多个独立疑问（多个问号、并列请求、连续追问）时，subquestions 必须按提问顺序包含全部问题（包括第一个），每个子问题给出完整、可独立执行的 slots，不依赖其他子问题的执行结果；顶层 intent_type 固定为 query，顶层 slots 可以为空，且不要同时输出 interpretations。
+16. subquestions 最多 4 个。只有一个问题时 subquestions 必须为空数组。
+17. 子问题若涉及因果归因、预测或数据中不存在的字段，intent_type=unsupported 并写 explanation，不要编造 slots。
+18. 一句话并列提到多个指标或多个独立维度、且无法用一个结果表同时完整回答时，必须拆成 subquestions，不要只保留其中一个。
 </rules>
 
 <examples>

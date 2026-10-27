@@ -175,6 +175,7 @@ def allowed_numbers(ctx: dict) -> set[str]:
     raw: list[float] = []
     _collect_numbers(ctx.get("rows"), raw)
     _collect_numbers(ctx.get("interpretations"), raw)
+    _collect_numbers(ctx.get("sections"), raw)
     _collect_numbers(ctx.get("checks"), raw)
     _collect_numbers(ctx.get("facts"), raw)
     _collect_numbers(ctx.get("row_count"), raw)

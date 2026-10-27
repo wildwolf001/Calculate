@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response, StreamingResponse
 
 from app.api.schemas import (
+    AnalysisRequest,
     ClarificationRequest,
     CreateSessionRequest,
     CreateSessionResponse,
@@ -28,6 +29,8 @@ from app.config.settings import (
 from app.core.session import SessionService
 from app.datasets.publish import PublishError, publish_dataset
 from app.datasets.registry import DatasetError
+from app.domain.analysis import analysis_hints, module_catalog
+from app.domain.executor import warehouse_version
 from app.llm.schema_card import build_schema_card
 
 router = APIRouter(prefix="/api")
@@ -385,6 +388,26 @@ def schema_card(request: Request, dataset_id: str | None = None):
     return {"card": build_schema_card(ctx.sem, dim_values_path=ctx.dim_values_path)}
 
 
+@router.get("/analysis/modules")
+def analysis_modules(request: Request, dataset_id: str | None = None):
+    service = get_service(request)
+    try:
+        ctx = service.context(dataset_id)
+    except DatasetError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    return {"modules": module_catalog(ctx.sem)}
+
+
+@router.get("/analysis/hints")
+def analysis_hints_endpoint(request: Request, dataset_id: str | None = None):
+    service = get_service(request)
+    try:
+        ctx = service.context(dataset_id)
+    except DatasetError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    return analysis_hints(ctx.sem, ctx.dim_values_path)
+
+
 @router.post("/sessions", response_model=CreateSessionResponse)
 async def create_session(request: Request, body: CreateSessionRequest | None = None):
     service = get_service(request)
@@ -477,6 +500,22 @@ async def run_turn(session_id: str, body: TurnRequest, request: Request):
     })
 
 
+@router.post("/sessions/{session_id}/analysis")
+async def run_analysis(session_id: str, request: Request,
+                       body: AnalysisRequest | None = None):
+    service = get_service(request)
+    if not service.store.exists(session_id):
+        raise HTTPException(status_code=404, detail="会话不存在")
+    stream = event_stream(service.analysis(
+        session_id, body.model_dump() if body else None
+    ))
+    return StreamingResponse(stream, media_type="text/event-stream", headers={
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",
+    })
+
+
 @router.post("/sessions/{session_id}/clarifications")
 async def clarify(session_id: str, body: ClarificationRequest, request: Request):
     """A clarification answer is just the next user message; the reducer binds it."""
@@ -495,7 +534,34 @@ def history(session_id: str, request: Request):
     service = get_service(request)
     if not service.store.exists(session_id):
         raise HTTPException(status_code=404, detail="会话不存在")
-    return {"history": service.history(session_id)}
+    state = service.state(session_id)
+    response = {
+        "history": service.history(session_id),
+    }
+    try:
+        controller = service.controller_for(state.dataset_id)
+    except DatasetError:
+        return response
+    response.update({
+        "dataset": controller.sem.dataset,
+        "semantic_version": controller.sem.version,
+        "compiler_version": controller.sem.raw.get("compiler_version", 1),
+        "warehouse_version": warehouse_version(controller.warehouse),
+    })
+    return response
+
+
+@router.post("/sessions/{session_id}/records/{result_id}/verify")
+def verify_record(session_id: str, result_id: str, request: Request):
+    service = get_service(request)
+    if not service.store.exists(session_id):
+        raise HTTPException(status_code=404, detail="会话不存在")
+    try:
+        return service.verify(session_id, result_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="查询记录不存在")
+    except DatasetError as exc:
+        raise HTTPException(status_code=409, detail=f"数据源不可用：{exc}")
 
 
 @router.get("/sessions/{session_id}/results/{result_id}")

@@ -13,6 +13,7 @@ from app.core.event_store import EventStore
 from app.core.events import Event
 from app.core.state import SessionState
 from app.datasets.registry import DatasetError
+from app.domain.records import verify_record
 
 
 class SessionService:
@@ -89,6 +90,13 @@ class SessionService:
             async for ev in controller.run_turn(session_id, text):
                 yield ev
 
+    async def analysis(self, session_id: str, options: dict | None = None):
+        async with self._lock(session_id):
+            state = self.store.replay(session_id)
+            controller = self._resolve(state.dataset_id)
+            async for event in controller.run_analysis(session_id, options):
+                yield event
+
     def state(self, session_id: str) -> SessionState:
         return self.store.replay(session_id)
 
@@ -101,6 +109,15 @@ class SessionService:
 
     def history(self, session_id: str) -> list[dict]:
         return self.store.history(session_id)
+
+    def verify(self, session_id: str, result_id: str) -> dict:
+        state = self.store.replay(session_id)
+        artifact = state.artifacts.get(result_id)
+        if not artifact:
+            raise KeyError("result_id 不存在")
+        controller = self._resolve(state.dataset_id)
+        return verify_record(artifact, controller.sem,
+                             db_path=controller.warehouse)
 
     def export_csv(self, session_id: str, result_id: str) -> tuple[str, str]:
         artifact = self.result(session_id, result_id)

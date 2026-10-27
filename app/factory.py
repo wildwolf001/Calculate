@@ -9,6 +9,7 @@ from app.datasets.context import DatasetContext
 from app.datasets.registry import DatasetRegistry
 from app.domain.resolver import RuleGrounder
 from app.llm.client import LLMClient
+from app.llm.analyze import LLMAnalysisWriter
 from app.llm.compose_answer import LLMComposer
 from app.llm.parse_intent import LLMIntentParser
 
@@ -28,6 +29,7 @@ def build_controller(ctx: DatasetContext, store: EventStore,
         composer,
         tracer=Tracer(enabled=with_trace),
         ctx=ctx,
+        analysis_writer=LLMAnalysisWriter(client=client),
     )
 
 

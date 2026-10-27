@@ -3,26 +3,36 @@ import {
   createSession,
   deleteSession,
   exportUrl,
+  getAnalysisHints,
+  getAnalysisModules,
   getHistory,
   getMeta,
   getResult,
   getSessionEvents,
   listDatasets,
   listSessions,
+  streamAnalysis,
   streamTurn,
+  verifyRecord,
 } from '../api'
 import type {
+  AnalysisHints,
+  AnalysisModule,
+  AnalysisOptions,
+  AnalysisReport,
   ApiEvent,
   ChatMessage,
   CheckIssue,
   DatasetSummary,
   HistoryItem,
+  HistoryResponse,
   InterpretationEntry,
   Meta,
   NavSnapshot,
   PlanSummary,
   ResultArtifact,
   SessionSummary,
+  VerifyResult,
 } from '../types'
 
 const GREETING =
@@ -50,6 +60,9 @@ const STAGE_LABELS: Record<string, string> = {
   'sql.compiled': '编译 SQL',
   'sql.executed': '执行完成',
   'checks.completed': '业务校验',
+  'analysis.requested': '生成经营分析',
+  'analysis.section': '分析板块',
+  'analysis.completed': '分析完成',
   'answer.composed': '生成回答',
   'llm.retry': '模型重试',
 }
@@ -68,6 +81,12 @@ interface State {
   lastTrace: string[]
   result: ResultArtifact | null
   results: InterpretationEntry[]
+  hasSubquestions: boolean
+  analysisMode: boolean
+  analysis: AnalysisReport | null
+  analysisModules: AnalysisModule[]
+  analysisHints: AnalysisHints | null
+  analysisDialogOpen: boolean
   activeResultId: string
   navStack: NavSnapshot[]
   chartType: 'auto' | 'line' | 'bar' | 'pie'
@@ -77,9 +96,14 @@ interface State {
   sql: string
   pending: any | null
   history: HistoryItem[]
+  historyMeta: HistoryResponse | null
   historyOpen: boolean
+  recordOpen: boolean
+  activeRecord: HistoryItem | null
+  verify: VerifyResult | null
+  verifying: boolean
   meta: Meta | null
-  tab: 'table' | 'chart' | 'sql'
+  tab: 'table' | 'chart' | 'sql' | 'analysis'
   toast: string
   messageSeq: number
   sessions: SessionSummary[]
@@ -101,6 +125,12 @@ export const useSessionStore = defineStore('session', {
     lastTrace: [],
     result: null,
     results: [],
+    hasSubquestions: false,
+    analysisMode: false,
+    analysis: null,
+    analysisModules: [],
+    analysisHints: null,
+    analysisDialogOpen: false,
     activeResultId: '',
     navStack: [],
     chartType: 'auto',
@@ -110,7 +140,12 @@ export const useSessionStore = defineStore('session', {
     sql: '',
     pending: null,
     history: [],
+    historyMeta: null,
     historyOpen: false,
+    recordOpen: false,
+    activeRecord: null,
+    verify: null,
+    verifying: false,
     meta: null,
     tab: 'table',
     toast: '',
@@ -196,6 +231,12 @@ export const useSessionStore = defineStore('session', {
       this.lastTrace = []
       this.result = null
       this.results = []
+      this.hasSubquestions = false
+      this.analysisMode = false
+      this.analysis = null
+      this.analysisDialogOpen = false
+      this.analysisModules = []
+      this.analysisHints = null
       this.activeResultId = ''
       this.navStack = []
       this.chartType = 'auto'
@@ -205,7 +246,12 @@ export const useSessionStore = defineStore('session', {
       this.sql = ''
       this.pending = null
       this.history = []
+      this.historyMeta = null
       this.historyOpen = false
+      this.recordOpen = false
+      this.activeRecord = null
+      this.verify = null
+      this.verifying = false
       this.tab = 'table'
       this.messageSeq = 0
     },
@@ -328,6 +374,61 @@ export const useSessionStore = defineStore('session', {
         this.loadSessions()
       }
     },
+    async openAnalysisDialog() {
+      if (this.busy || !this.sessionId) return
+      if (!this.analysisModules.length) {
+        try {
+          this.analysisModules = await getAnalysisModules(this.datasetId)
+        } catch (err: any) {
+          this.setToast(`加载分析模块失败：${err.message || err}`)
+          return
+        }
+      }
+      if (!this.analysisHints) {
+        try {
+          this.analysisHints = await getAnalysisHints(this.datasetId)
+        } catch {
+          /* hints are optional */
+        }
+      }
+      this.analysisDialogOpen = true
+    },
+    closeAnalysisDialog() {
+      this.analysisDialogOpen = false
+    },
+    async runAnalysis(options: AnalysisOptions) {
+      if (this.busy || !this.sessionId) return
+      const labels = (options.sections || []).map(
+        (id) => this.analysisModules.find((item) => item.id === id)?.label || id,
+      )
+      let content = '生成经营分析'
+      if (labels.length) content += `：${labels.join('、')}`
+      const custom = (options.customText || '').trim()
+      if (custom) content += `\n自定义分析：${custom}`
+
+      this.addUser(content)
+      this.busy = true
+      this.busySince = Date.now()
+      this.stage = '生成经营分析'
+      this.assistantBaseline = this.messages.filter(
+        (message) => message.role === 'assistant',
+      ).length
+      this.trace = []
+      this.pending = null
+      this.analysisDialogOpen = false
+      try {
+        for await (const event of streamAnalysis(this.sessionId, options)) {
+          this.applyEvent(event)
+        }
+      } catch (err: any) {
+        this.addAssistant(`请求失败：${err.message || err}`, 'error')
+      } finally {
+        this.busy = false
+        this.stage = ''
+        this.attachTrace()
+        this.loadSessions()
+      }
+    },
     applyEvent(ev: ApiEvent) {
       const p = ev.payload || {}
       if (ev.type !== 'open' && ev.type !== 'done') {
@@ -339,10 +440,22 @@ export const useSessionStore = defineStore('session', {
           this.plan = null
           this.result = null
           this.results = []
+          this.hasSubquestions = false
+          this.analysisMode = false
           this.activeResultId = ''
           this.sql = ''
           this.checks = []
           this.facts = {}
+          break
+        case 'subquestions.planned':
+          this.hasSubquestions = (p.items || p.questions || []).length > 1
+          break
+        case 'analysis.requested':
+          this.analysisMode = true
+          break
+        case 'analysis.completed':
+          this.analysis = { ...(p as AnalysisReport), status: 'done' }
+          this.tab = 'analysis'
           break
         case 'plan.compiled':
           this.plan = p.plan as PlanSummary
@@ -368,6 +481,7 @@ export const useSessionStore = defineStore('session', {
           if (!this.activeResultId || entry.preferred || this.results.length === 1) {
             this.selectResult(entry.id)
           }
+          if (!p.analysis_section) this.tab = 'table'
           break
         }
         case 'checks.completed': {
@@ -472,7 +586,9 @@ export const useSessionStore = defineStore('session', {
     async refreshHistory() {
       if (!this.sessionId) return
       try {
-        this.history = await getHistory(this.sessionId)
+        const data = await getHistory(this.sessionId)
+        this.history = data.history
+        this.historyMeta = data
       } catch {
         /* history is non-critical */
       }
@@ -481,6 +597,30 @@ export const useSessionStore = defineStore('session', {
       this.historyOpen = !this.historyOpen
       if (this.historyOpen) await this.refreshHistory()
     },
+    openRecord(item: HistoryItem) {
+      this.activeRecord = item
+      this.recordOpen = true
+      this.verify = null
+      this.historyOpen = false
+    },
+    closeRecord() {
+      this.recordOpen = false
+      this.verify = null
+      this.verifying = false
+    },
+    async runVerify() {
+      const item = this.activeRecord
+      if (!item || this.verifying) return
+      this.verifying = true
+      this.verify = null
+      try {
+        this.verify = await verifyRecord(this.sessionId, item.result_id)
+      } catch (err: any) {
+        this.setToast(`重跑验证失败：${err.message || err}`)
+      } finally {
+        this.verifying = false
+      }
+    },
     async loadHistoryItem(item: HistoryItem) {
       try {
         const artifact = await getResult(this.sessionId, item.result_id)
@@ -488,7 +628,11 @@ export const useSessionStore = defineStore('session', {
         this.results = []
         this.activeResultId = ''
         this.sql = artifact.sql || ''
+        this.plan = item.plan || null
+        this.checks = (item.checks || []) as CheckIssue[]
+        this.facts = item.facts || {}
         this.historyOpen = false
+        this.recordOpen = false
         this.tab = 'table'
         this.setToast('已载入历史结果')
       } catch (err: any) {
@@ -509,7 +653,7 @@ export const useSessionStore = defineStore('session', {
       const name = String(row[0])
       this.ask(`只看${name}，按${target}拆`)
     },
-    setTab(tab: 'table' | 'chart' | 'sql') {
+    setTab(tab: 'table' | 'chart' | 'sql' | 'analysis') {
       this.tab = tab
     },
     exportCurrent() {

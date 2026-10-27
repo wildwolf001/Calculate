@@ -84,6 +84,7 @@ class SessionState:
     summary: str | None = None
     clarifications: list[dict] = field(default_factory=list)
     subquestions: list[str] = field(default_factory=list)
+    analysis: dict | None = None
     last_result_id: str | None = None
     preferred_result_id: str | None = None
     checks: list[dict] = field(default_factory=list)
@@ -112,6 +113,7 @@ class SessionState:
             "interpretations": self.interpretations,
             "preferred_interpretation": self.preferred_interpretation,
             "interpretation_results": self.interpretation_results,
+            "analysis": self.analysis,
             "summary": self.summary,
             "last_seq": self.last_seq,
         }
@@ -165,6 +167,7 @@ def reduce(events: list, session_id: str | None = None) -> SessionState:
             state.error = None
             state.checks = []
             state.facts = {}
+            state.analysis = None
         elif t == "user.message":
             text = p.get("text", "")
             state.turn = max(state.turn, int(p.get("turn", state.turn + 1)))
@@ -218,6 +221,15 @@ def reduce(events: list, session_id: str | None = None) -> SessionState:
             state.error = {"code": "INTENT_INVALID", "message": "无法解析问题", "detail": p}
         elif t == "subquestions.planned":
             state.subquestions = list(p.get("questions", []))
+        elif t == "analysis.requested":
+            state.analysis = {"status": "running", **p}
+        elif t == "analysis.completed":
+            state.analysis = {"status": "done", **p}
+            state.status = Status.DONE
+        elif t == "subquestions.completed":
+            if p.get("primary_slots"):
+                state.slots = Slots.model_validate(p["primary_slots"])
+            state.status = Status.DONE
         elif t == "ambiguity.detected":
             state.status = Status.AWAITING_CLARIFICATION
             state.pending = p

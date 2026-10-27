@@ -6,9 +6,15 @@ iteration (`reduce`), so an in-memory object can never drift from history.
 from __future__ import annotations
 
 import traceback
+import re
 from typing import AsyncIterator
 
-from app.config.settings import DIM_VALUES_PATH, MAX_STEPS, WAREHOUSE_PATH
+from app.config.settings import (
+    DIM_VALUES_PATH,
+    MAX_STEPS,
+    MAX_SUBQUESTIONS,
+    WAREHOUSE_PATH,
+)
 from app.core.context import project_for_composer, project_for_parser
 from app.core.event_store import EventStore
 from app.core.events import Event
@@ -22,6 +28,12 @@ from app.domain.pipeline import (
     execute_prepared,
     prepare,
 )
+from app.domain.analysis import (
+    build_analysis_items,
+    custom_analysis_item,
+    module_catalog,
+)
+from app.domain.insights import build_insights
 from app.domain.planner import (
     degrade_unsupported_dimensions,
     member_list_plan,
@@ -34,6 +46,7 @@ from app.domain.repair import build_repair, repair_text
 from app.domain.rewrite import rewrite
 from app.domain.semantic.loader import SemanticLayer, SemanticError
 from app.llm.rule_parser import RuleParser
+from app.llm.analyze import LLMAnalysisWriter
 
 SMALLTALK_TEXT = (
     "你好，我是明账。直接问经营问题就行，比如「4月销售额最高的品类」、"
@@ -43,6 +56,7 @@ UNSUPPORTED_SUGGESTIONS = (
     "可以问：商品销售额 / 订单数 / 支付金额 / 延迟率 / 平均评分 / 低分率 / "
     "复购客户数 / 客单价，并指定时间（如「2025年5月」）和维度（如「按品类」）。"
 )
+ANALYSIS_CUE = re.compile(r"(经营分析|经营情况|整体分析|生意分析|经营诊断)")
 
 HANDLERS = {
     Status.PARSING: "PARSING",
@@ -59,7 +73,7 @@ class Controller:
     def __init__(self, store: EventStore, sem: SemanticLayer,
                  parser: IntentParser, grounder: ValueGrounder,
                  composer: AnswerComposer, tracer: Tracer | None = None,
-                 ctx=None):
+                 ctx=None, analysis_writer: LLMAnalysisWriter | None = None):
         self.store = store
         self.sem = ctx.sem if ctx is not None else sem
         self.parser = parser
@@ -73,6 +87,7 @@ class Controller:
             ctx.dim_values_path if ctx is not None else DIM_VALUES_PATH
         )
         self.quality = ctx.quality if ctx is not None else None
+        self.analysis_writer = analysis_writer or LLMAnalysisWriter()
         self._results: dict[tuple[str, int], object] = {}
 
     # ---------- public ----------
@@ -122,6 +137,51 @@ class Controller:
         yield self.store.append(session_id, "turn.completed",
                                 {"status": final.status.value, "turn": turn},
                                 trace_id=trace_id)
+
+    async def run_analysis(self, session_id: str,
+                           options: dict | None = None) -> AsyncIterator[Event]:
+        """Generate an analysis report inside the current dataset context."""
+        state = self.store.replay(session_id)
+        turn = state.turn + 1
+        trace_id = new_trace_id()
+        yield self.store.append(
+            session_id, "turn.started",
+            {"turn": turn, "kind": "analysis"}, trace_id=trace_id,
+        )
+        yield self.store.append(
+            session_id, "user.message",
+            {
+                "text": self._analysis_request_text(options),
+                "turn": turn,
+                "kind": "analysis",
+            },
+            trace_id=trace_id,
+        )
+        state.turn = turn
+        try:
+            events = self._analysis_events(state, options)
+        except Exception as exc:
+            log_event(
+                logger, "analysis.failed",
+                error=f"{type(exc).__name__}: {exc}",
+                detail=traceback.format_exc()[:4000],
+            )
+            events = [("error.raised", {
+                "code": "ANALYSIS_FAILED",
+                "message": "经营分析生成失败。可以缩小范围或稍后重试。",
+                "recoverable": False,
+            })]
+        for event_type, payload in events:
+            yield self.store.append(
+                session_id, event_type, payload,
+                caused_by=f"seq:{state.last_seq}", trace_id=trace_id,
+            )
+        final = self.store.replay(session_id)
+        yield self.store.append(
+            session_id, "turn.completed",
+            {"status": final.status.value, "turn": turn, "kind": "analysis"},
+            trace_id=trace_id,
+        )
 
     # ---------- helpers ----------
     def _span(self, name: str, trace_id: str, state: SessionState):
@@ -198,6 +258,14 @@ class Controller:
             events.append(("answer.composed", {"text": SMALLTALK_TEXT, "result_id": None}))
             events.append(("result.presented", {"result_id": None}))
             return events
+        if self._wants_analysis(rw.normalized):
+            events.append(("intent.classified", {
+                "intent_type": "analysis",
+                "tier": "B",
+                "confidence": 1.0,
+                "rewritten_question": rw.normalized,
+            }))
+            return events + self._analysis_events(state, None)
         if rw.kind == "lookup" and self.sem.parser == "ecommerce":
             if not self.sem.capabilities.get("member_list", True):
                 events.append(("error.raised", {
@@ -246,6 +314,24 @@ class Controller:
             events.append(("answer.composed", {"text": SMALLTALK_TEXT, "result_id": None}))
             events.append(("result.presented", {"result_id": None}))
             return events
+
+        if result.intent_type == "analysis":
+            return events + self._analysis_events(state, None)
+
+        if len(result.subquestions) >= 2 and not result.interpretations:
+            events.append(("subquestions.planned", {
+                "questions": [q.get("question", "") for q in result.subquestions],
+                "items": [
+                    {
+                        "id": f"sq{idx}",
+                        "question": q.get("question", ""),
+                        "intent_type": q.get("intent_type", "query"),
+                    }
+                    for idx, q in enumerate(result.subquestions, 1)
+                ],
+                "depth": 1,
+            }))
+            return events + self._multi_question_events(state, result)
 
         if result.intent_type == "lookup":
             if not self.sem.capabilities.get("member_list", True):
@@ -316,12 +402,9 @@ class Controller:
         if result.visualization:
             slots["visualization"] = result.visualization
         if result.subquestions and not result.interpretations:
-            events.append(("subquestions.planned", {
-                "questions": [q.get("question", "") for q in result.subquestions],
-                "depth": 1,
-            }))
-            if result.subquestions[0].get("slots"):
-                slots = result.subquestions[0]["slots"]
+            first = result.subquestions[0]
+            if first.get("slots"):
+                slots = dict(first["slots"])
                 if result.visualization:
                     slots["visualization"] = result.visualization
 
@@ -346,6 +429,636 @@ class Controller:
 
         events.append(("intent.parsed", {"slots": slots, "notes": result.notes}))
         return events
+
+    @staticmethod
+    def _wants_analysis(text: str) -> bool:
+        value = (text or "").strip()
+        return (
+            bool(ANALYSIS_CUE.search(value))
+            and len(value) <= 36
+            and not re.search(r"\d", value)
+        )
+
+    def _analysis_request_text(self, options: dict | None) -> str:
+        options = options or {}
+        catalog = {item["id"]: item["label"] for item in module_catalog(self.sem)}
+        sections = options.get("sections") or []
+        labels = [catalog.get(section, section) for section in sections]
+        text = "生成经营分析"
+        if labels:
+            text += "：" + "、".join(labels)
+        custom = str(options.get("custom_text") or "").strip()
+        if custom:
+            text += "\n自定义分析：" + custom[:500]
+        return text
+
+    def _analysis_focus(self, state: SessionState) -> dict:
+        """Carry only explicit, bindable context from the latest query."""
+        for artifact in reversed(list(state.artifacts.values())):
+            plan_payload = (artifact or {}).get("plan")
+            if not plan_payload:
+                continue
+            try:
+                plan = QueryPlan.model_validate(plan_payload)
+            except Exception:
+                continue
+            filters = {
+                dim: spec.model_dump(mode="json")
+                for dim, spec in plan.filters.items()
+            }
+            anchor_end = None
+            if plan.comparison:
+                anchor_end = str(plan.comparison.current.end)
+            elif plan.time:
+                anchor_end = str(plan.time.end)
+            labels = []
+            for dim, spec in filters.items():
+                name = self.sem.dimension(dim).raw.get("name_zh", dim)
+                value = spec.get("value")
+                if isinstance(value, list):
+                    value = "/".join(map(str, value))
+                labels.append(f"{name}={value}")
+            return {
+                "filters": filters,
+                "anchor_end": anchor_end,
+                "focus_label": "、".join(labels),
+            }
+        return {}
+
+    def _multi_question_events(self, state: SessionState,
+                               result) -> list[tuple[str, dict]]:
+        """Execute independent sub-questions in order with failure isolation."""
+        events: list[tuple[str, dict]] = []
+        blocks: list[str] = []
+        executed: list[dict] = []
+        non_sql: list[dict] = []
+        failures: list[dict] = []
+        previous_slots: dict | None = None
+        questions = list(result.subquestions[:MAX_SUBQUESTIONS])
+
+        for index, sub in enumerate(questions, 1):
+            sid = f"sq{index}"
+            question = str(sub.get("question") or f"第 {index} 个问题").strip()
+            intent_type = str(sub.get("intent_type") or "query")
+            events.append(("subquestion.started", {
+                "subquestion_id": sid,
+                "index": index,
+                "question": question,
+                "intent_type": intent_type,
+            }))
+            if intent_type == "explain":
+                text = sub.get("explanation") or "这是一个口径解释问题。"
+                non_sql.append({"id": sid, "question": question, "text": text})
+                blocks.append(f"**{index}. {question}**\n\n{text}")
+                continue
+            if intent_type in {"unsupported", "smalltalk", "analysis"}:
+                text = sub.get("explanation") or "这个问题暂时无法生成可执行查询。"
+                non_sql.append({"id": sid, "question": question, "text": text})
+                blocks.append(f"**{index}. {question}**\n\n{text}")
+                continue
+
+            slots_payload = dict(sub.get("slots") or {})
+            if intent_type == "lookup":
+                dim = sub.get("lookup_dimension") or sub.get("list_dim")
+                slots_payload["intent"] = "lookup"
+                slots_payload["dimensions"] = [dim] if dim else []
+            if (
+                previous_slots
+                and not any(slots_payload.get(key) for key in (
+                    "metric", "dimensions", "filters", "time", "comparison"
+                ))
+                and re.search(r"^(那|呢|再|同样|其中)", question)
+            ):
+                slots_payload = {**previous_slots, **slots_payload}
+
+            try:
+                sub_events, entry = self._run_subquestion(
+                    state, sid, question, slots_payload,
+                    preferred=not executed,
+                )
+            except Exception as exc:
+                reason = str(exc)
+                failures.append({"id": sid, "question": question, "reason": reason})
+                events.append(("subquestion.rejected", {
+                    "subquestion_id": sid,
+                    "status": "failed",
+                    "reason": reason,
+                }))
+                blocks.append(f"**{index}. {question}**\n\n这个问题暂时无法回答：{reason}")
+                continue
+
+            events.extend(sub_events)
+            previous_slots = dict(slots_payload)
+            executed.append(entry)
+            context = self._entry_context(entry)
+            from app.llm.compose_answer import TemplateComposer
+            text = TemplateComposer().compose(context)
+            blocks.append(f"**{index}. {question}**\n\n{text}")
+
+        if not executed and not non_sql:
+            return events + [("error.raised", {
+                "code": "NO_SUBQUESTION",
+                "message": "没有可执行的子问题。请把问题拆成更明确的指标或时间。",
+                "recoverable": False,
+            })]
+
+        header = f"你这次一共问了 {len(questions)} 个问题，结果如下："
+        if len(result.subquestions) > MAX_SUBQUESTIONS:
+            header += f"（单次最多处理 {MAX_SUBQUESTIONS} 个）"
+        text = self._with_draft_notice(header + "\n\n" + "\n\n".join(blocks))
+        result_id = executed[0]["artifact"].result_id if executed else None
+        events.append(("answer.composed", {
+            "text": text,
+            "result_id": result_id,
+            "kind": "subquestions",
+            "semantic_status": self._semantic_status(),
+        }))
+        events.append(("subquestions.completed", {
+            "primary_slots": executed[0]["slots"].model_dump(mode="json")
+            if executed else None,
+            "results": [
+                {
+                    "id": entry["id"],
+                    "question": entry["question"],
+                    "result_id": entry["artifact"].result_id,
+                }
+                for entry in executed
+            ],
+            "failures": failures,
+        }))
+        events.append(("result.presented", {"result_id": result_id}))
+        return events
+
+    def _run_subquestion(self, state: SessionState, ident: str, question: str,
+                         slots_payload: dict, *, preferred: bool,
+                         analysis_section: str | None = None,
+                         analysis_item: str | None = None
+                         ) -> tuple[list[tuple[str, dict]], dict]:
+        events: list[tuple[str, dict]] = []
+        try:
+            slots = Slots.model_validate(slots_payload)
+        except Exception as exc:
+            raise SemanticError(f"槽位非法：{exc}") from exc
+        if slots.unresolved:
+            raise SemanticError("没有识别出「" + "、".join(slots.unresolved) + "」")
+
+        parser_context = project_for_parser(
+            state, dim_values_path=self.dim_values_path
+        )
+        grounded = self.grounder.ground(
+            slots.model_dump(mode="json"), slots.unresolved, parser_context
+        )
+        if grounded.ambiguity:
+            raise SemanticError(grounded.ambiguity.get("message") or "值绑定失败")
+        bindings = []
+        for binding in grounded.bindings:
+            ids = binding.get("ids") or binding.get("values") or []
+            if not binding.get("dim") or not ids:
+                continue
+            slots.filters[binding["dim"]] = FilterSpec(
+                op=binding.get("op", "in"), value=list(ids)
+            )
+            bindings.append(binding)
+        events.append(("values.grounded", {
+            "bindings": bindings,
+            "notes": grounded.notes,
+        }))
+
+        try:
+            if slots.intent == "lookup":
+                dim = slots.dimensions[0] if slots.dimensions else None
+                plan = member_list_plan(dim, slots, self.sem)
+            else:
+                plan = plan_from_slots(slots, self.sem)
+            plan.interpretation_id = ident
+            plan.interpretation_label = question[:32]
+            plan.preferred = preferred
+        except Exception as exc:
+            raise SemanticError(str(exc)) from exc
+        events.append(("plan.compiled", {"plan": plan.model_dump(mode="json")}))
+
+        try:
+            compiled, issues = prepare(plan, self.sem)
+        except PipelineError as exc:
+            degraded = (
+                degrade_unsupported_dimensions(plan, self.sem)
+                if any(issue.code == "UNSUPPORTED_GRAIN" for issue in exc.issues)
+                else None
+            )
+            if not degraded:
+                raise
+            plan, removed = degraded
+            plan.interpretation_id = ident
+            plan.interpretation_label = question[:32]
+            plan.preferred = preferred
+            events.append(("plan.degraded", {
+                "reason": plan.degraded_reason,
+                "removed_dimensions": removed,
+                "interpretation_id": ident,
+            }))
+            events.append(("plan.compiled", {"plan": plan.model_dump(mode="json")}))
+            compiled, issues = prepare(plan, self.sem)
+
+        compiler_version = int(self.sem.raw.get("compiler_version", 1))
+        fingerprint = compiled.fingerprint(compiler_version, self.sem.version)
+        events.append(("sql.compiled", {
+            "sql": compiled.sql,
+            "params": [str(param) for param in compiled.params],
+            "fingerprint": fingerprint,
+            "columns": compiled.columns,
+            "tables_used": compiled.tables_used,
+            "meta": compiled.meta,
+            "issues": [issue.as_dict() for issue in issues if issue.severity != "error"],
+            "interpretation_id": ident,
+            "preferred": preferred,
+        }))
+        try:
+            artifact = execute_prepared(compiled, db_path=self.warehouse)
+        except Exception as exc:
+            raise SemanticError("查询执行失败，可缩小时间或维度范围后重试。") from exc
+        artifact.fingerprint = fingerprint
+        artifact.result_id = f"r{state.turn}-{ident}-{fingerprint}"
+        payload = artifact.as_dict()
+        payload.update({
+            "question": question,
+            "display": display_spec(plan, self.sem, artifact),
+            "plan": plan.model_dump(mode="json"),
+            "interpretation_id": ident,
+            "interpretation_label": question[:32],
+            "preferred": preferred,
+            "subquestion_id": ident,
+        })
+        if analysis_section:
+            payload["analysis_section"] = analysis_section
+        if analysis_item:
+            payload["analysis_item"] = analysis_item
+        events.append(("sql.executed", payload))
+
+        issues_checked, facts = check(
+            plan, self.sem, artifact,
+            db_path=self.warehouse, quality=self.quality,
+        )
+        issue_payload = [issue.as_dict() for issue in issues_checked]
+        events.append(("checks.completed", {
+            "result_id": artifact.result_id,
+            "issues": issue_payload,
+            "facts": facts,
+            "blocked": any(issue.severity == "error" for issue in issues_checked),
+            "interpretation_id": ident,
+            "preferred": preferred,
+        }))
+        return events, {
+            "id": ident,
+            "question": question,
+            "slots": slots,
+            "plan": plan,
+            "artifact": artifact,
+            "issues": issue_payload,
+            "facts": facts,
+        }
+
+    def _entry_context(self, entry: dict) -> dict:
+        plan, artifact = entry["plan"], entry["artifact"]
+        metric = self.sem.metric(plan.metric) if plan.metric else None
+        comparison = (
+            plan.comparison.model_dump(mode="json")
+            if plan.comparison else None
+        )
+        time = (
+            comparison.get("current") if comparison
+            else plan.time.model_dump(mode="json") if plan.time else None
+        )
+        return {
+            "question": entry["question"],
+            "metric": plan.metric,
+            "metric_name": metric.name if metric else "结果",
+            "metric_unit": metric.raw.get("unit") if metric else None,
+            "metric_type": metric.type if metric else "aggregate",
+            "dimension_labels": [
+                self.sem.dimension(dim).raw.get("name_zh", dim)
+                for dim in plan.dimensions
+            ],
+            "rows": artifact.rows,
+            "columns": artifact.columns,
+            "row_count": artifact.row_count,
+            "truncated": artifact.truncated,
+            "time": time,
+            "comparison": comparison,
+            "compare": bool(comparison or plan.compare),
+            "filters_label": self._plan_filters_label(plan),
+            "checks": entry["issues"],
+            "facts": entry["facts"],
+            "meta": artifact.meta,
+        }
+
+    def _analysis_events(self, state: SessionState,
+                         options: dict | None) -> list[tuple[str, dict]]:
+        options = options or {}
+        focus = self._analysis_focus(state)
+        raw_sections = options.get("sections")
+        selected = None if not raw_sections else list(raw_sections)
+        items, window = build_analysis_items(self.sem, focus, selected)
+        custom_text = str(options.get("custom_text") or "").strip()[:500]
+        custom_title = str(options.get("custom_title") or "").strip()[:60]
+        custom_failure = None
+
+        if custom_text:
+            try:
+                parsed = self.parser.parse(
+                    custom_text,
+                    project_for_parser(state, dim_values_path=self.dim_values_path),
+                )
+                custom_subs = parsed.subquestions[:MAX_SUBQUESTIONS]
+                if custom_subs:
+                    for idx, sub in enumerate(custom_subs, 1):
+                        if sub.get("slots"):
+                            items.append(custom_analysis_item(
+                                dict(sub["slots"]),
+                                str(sub.get("question") or custom_title or "自定义分析"),
+                                f"cx{idx}",
+                            ))
+                elif parsed.intent_type == "query" and parsed.slots:
+                    items.append(custom_analysis_item(
+                        dict(parsed.slots), custom_title or "自定义分析", "cx1"
+                    ))
+                else:
+                    custom_failure = (
+                        parsed.explanation
+                        or "自定义分析没有识别出可执行的指标或维度。"
+                    )
+            except Exception as exc:
+                custom_failure = f"自定义分析解析失败：{type(exc).__name__}: {exc}"
+
+        if custom_failure:
+            items.append(custom_analysis_item({}, custom_title or "自定义分析", "cx1"))
+
+        if not items:
+            return [("error.raised", {
+                "code": "NO_ANALYSIS_MODULE",
+                "message": "当前数据源没有足够的已发布指标和维度来生成经营分析。",
+                "recoverable": False,
+            })]
+
+        events: list[tuple[str, dict]] = [("analysis.requested", {
+            "focus": focus,
+            "window": window,
+            "modules": sorted({
+                item.module for item in items if item.module != "custom"
+            }),
+            "items": [
+                {
+                    "id": item.id,
+                    "module": item.module,
+                    "section": item.section,
+                    "title": item.title,
+                }
+                for item in items
+            ],
+        })]
+        entries: list[dict] = []
+        failures: list[dict] = []
+        seen: set[str] = set()
+
+        for item in items:
+            if item.id == "cx1" and custom_failure:
+                failures.append({
+                    "id": item.id,
+                    "section": item.section,
+                    "title": item.title,
+                    "reason": custom_failure,
+                })
+                events.append(("analysis.section.failed", failures[-1]))
+                continue
+            try:
+                sub_events, entry = self._run_subquestion(
+                    state, item.id, item.title, item.slots,
+                    preferred=not entries,
+                    analysis_section=item.section,
+                    analysis_item=item.id,
+                )
+            except Exception as first_error:
+                if item.slots.get("filters"):
+                    retry_slots = dict(item.slots)
+                    retry_slots.pop("filters", None)
+                    try:
+                        sub_events, entry = self._run_subquestion(
+                            state, item.id, item.title, retry_slots,
+                            preferred=not entries,
+                            analysis_section=item.section,
+                            analysis_item=item.id,
+                        )
+                    except Exception as exc:
+                        reason = str(exc)
+                    else:
+                        reason = None
+                        events.append(("analysis.filter_dropped", {
+                            "id": item.id,
+                            "reason": "会话筛选不适用于该板块，已按当前数据源全量口径计算",
+                        }))
+                else:
+                    reason = str(first_error)
+                if reason:
+                    failures.append({
+                        "id": item.id,
+                        "section": item.section,
+                        "title": item.title,
+                        "reason": reason,
+                    })
+                    events.append(("analysis.section.failed", failures[-1]))
+                    continue
+
+            if entry["artifact"].fingerprint in seen:
+                continue
+            seen.add(entry["artifact"].fingerprint)
+            events.extend(sub_events)
+            insights = build_insights(
+                entry["plan"], entry["artifact"].columns, entry["artifact"].rows,
+                entry["artifact"].row_count, entry["artifact"].truncated,
+                entry["issues"], self.sem,
+            )
+            entry["section"] = item.section
+            entry["title"] = item.title
+            entry["insights"] = insights
+            entries.append(entry)
+            events.append(("analysis.section", {
+                "id": item.id,
+                "section": item.section,
+                "title": item.title,
+                "result_id": entry["artifact"].result_id,
+                "insights": insights,
+                "issues": entry["issues"],
+            }))
+
+        if not entries:
+            events.append(("error.raised", {
+                "code": "ANALYSIS_EMPTY",
+                "message": "所有分析板块都未能生成可执行结果。",
+                "recoverable": False,
+            }))
+            return events
+
+        llm_context = {
+            "dataset": self.sem.dataset,
+            "focus": focus,
+            "window": window,
+            "brief": {
+                "focus_text": custom_text,
+                "modules": sorted({entry["section"] for entry in entries}),
+                "custom_title": custom_title,
+            },
+            "sections": [
+                {
+                    "id": entry["id"],
+                    "section": entry["section"],
+                    "title": entry["title"],
+                    "metric": self.sem.metric(entry["plan"].metric).name
+                    if entry["plan"].metric else None,
+                    "columns": entry["artifact"].columns,
+                    "rows": entry["artifact"].rows[:8],
+                    "insights": entry["insights"],
+                    "caveats": [
+                        issue.get("title") or issue.get("message")
+                        for issue in entry["issues"]
+                        if issue.get("severity") != "info"
+                    ][:4],
+                }
+                for entry in entries
+            ],
+            "failures": failures,
+        }
+        llm = self.analysis_writer.write(llm_context)
+        report, core = self._build_analysis_report(
+            focus, window, entries, failures, llm,
+        )
+        result_id = entries[0]["artifact"].result_id
+        section_count = len({entry["section"] for entry in entries})
+        summary = (
+            f"经营分析已完成：{section_count} 个板块、{len(entries)} 个查询"
+            + (f"，{len(failures)} 个板块未完成" if failures else "")
+        )
+        chat_lines = [summary]
+        if core:
+            chat_lines.extend(f"- {line}" for line in core[:3])
+        chat_lines.append("完整报告已放在左侧「经营分析」标签中。")
+        events.append(("analysis.completed", {
+            "report": report,
+            "summary": summary,
+            "result_id": result_id,
+            "writer": "llm" if llm else "template",
+            "core_conclusions": core,
+            "watchouts": (llm or {}).get("watchouts", []),
+            "sections": [
+                {
+                    "id": entry["id"],
+                    "section": entry["section"],
+                    "title": entry["title"],
+                    "result_id": entry["artifact"].result_id,
+                    "insights": entry["insights"],
+                }
+                for entry in entries
+            ],
+            "failures": failures,
+            "window": window,
+        }))
+        events.append(("answer.composed", {
+            "text": self._with_draft_notice("\n".join(chat_lines)),
+            "result_id": result_id,
+            "kind": "analysis",
+            "semantic_status": self._semantic_status(),
+            "options": [],
+        }))
+        events.append(("result.presented", {"result_id": result_id}))
+        return events
+
+    def _build_analysis_report(self, focus: dict, window: dict,
+                               entries: list[dict], failures: list[dict],
+                               llm: dict | None) -> tuple[str, list[str]]:
+        from app.llm.compose_answer import fmt_number
+
+        lines = ["# 经营分析报告", ""]
+        if focus.get("focus_label"):
+            lines.append(f"> 会话聚焦：{focus['focus_label']}")
+        else:
+            lines.append(
+                f"> 数据覆盖：{self.sem.time_range[0]} 至 {self.sem.time_range[1]}"
+            )
+        lines.append("")
+        commentary = (llm or {}).get("sections") or {}
+        core = list((llm or {}).get("core_conclusions") or [])
+        if not core:
+            for entry in entries:
+                if entry["insights"]:
+                    core.append(entry["insights"][0])
+                if len(core) >= 4:
+                    break
+        if core:
+            lines.extend(["## 核心结论", ""])
+            lines.extend(f"- {point}" for point in core[:4])
+            lines.append("")
+
+        current_section = None
+        by_section: dict[str, list[dict]] = {}
+        for entry in entries:
+            by_section.setdefault(entry["section"], []).append(entry)
+        for section, section_entries in by_section.items():
+            lines.extend([f"## {section}", ""])
+            for entry in section_entries:
+                plan = entry["plan"]
+                artifact = entry["artifact"]
+                metric = self.sem.metric(plan.metric) if plan.metric else None
+                unit = metric.raw.get("unit") if metric else None
+                lines.extend([f"### {entry['title']}", ""])
+                if commentary.get(entry["id"]):
+                    lines.extend([commentary[entry["id"]], ""])
+                for insight in entry["insights"][:3]:
+                    lines.append(f"- {insight}")
+                if entry["insights"]:
+                    lines.append("")
+                if artifact.rows:
+                    shown_columns = artifact.columns[:6]
+                    lines.append("| " + " | ".join(shown_columns) + " |")
+                    lines.append("| " + " | ".join("---" for _ in shown_columns) + " |")
+                    for row in artifact.rows[:6]:
+                        values = [
+                            fmt_number(value, unit)
+                            for value in row[:len(shown_columns)]
+                        ]
+                        lines.append("| " + " | ".join(values) + " |")
+                    lines.append("")
+                lines.append(f"结果记录：`{artifact.result_id}`")
+                caveats = [
+                    issue.get("title") or issue.get("message")
+                    for issue in entry["issues"]
+                    if issue.get("severity") != "info"
+                ]
+                if caveats:
+                    lines.append("口径提示：" + "；".join(caveats[:4]))
+                lines.append("")
+
+        if failures:
+            lines.extend(["## 未完成的板块", ""])
+            for failure in failures:
+                lines.append(f"- {failure['title']}：{failure['reason']}")
+            lines.append("")
+        watchouts = (llm or {}).get("watchouts") or []
+        if watchouts:
+            lines.extend(["## 需要关注", ""])
+            lines.extend(f"- {item}" for item in watchouts[:4])
+            lines.append("")
+        checks = (self.quality or {}).get("checks") or []
+        notable = [
+            f"{item.get('title')}：{item.get('count')}"
+            for item in checks
+            if item.get("count") and item.get("severity") in {"warn", "error"}
+        ][:5]
+        if notable:
+            lines.extend(["## 数据质量提示", ""])
+            lines.extend(f"- {item}" for item in notable)
+            lines.append("")
+        lines.append(
+            "> 报告中的数值均来自已执行的只读查询；经营判断不替代业务确认。"
+        )
+        return "\n".join(lines).strip(), core[:4]
 
     def _multi_interpretation_events(self, state: SessionState, result) -> list[tuple[str, dict]]:
         """Run each plausible interpretation and let the composer present them.
@@ -451,7 +1164,11 @@ class Controller:
                     "message": str(exc),
                 }))
                 continue
-            artifact.result_id = f"r{state.turn}-{iid}-{compiled.fingerprint(self.sem.version)}"
+            artifact.fingerprint = compiled.fingerprint(
+                int(self.sem.raw.get("compiler_version", 1)),
+                self.sem.version,
+            )
+            artifact.result_id = f"r{state.turn}-{iid}-{artifact.fingerprint}"
             self._results[(state.session_id, state.turn, iid)] = artifact
             payload = artifact.as_dict()
             payload.update({
@@ -700,7 +1417,11 @@ class Controller:
                 "recoverable": False,
                 "hint": "可以缩小时间范围或减少维度后重试。",
             })]
-        result.result_id = f"r{state.turn}-{compiled.fingerprint(self.sem.version)}"
+        result.fingerprint = compiled.fingerprint(
+            int(self.sem.raw.get("compiler_version", 1)),
+            self.sem.version,
+        )
+        result.result_id = f"r{state.turn}-{result.fingerprint}"
         self._results[(state.session_id, state.turn)] = result
         payload = result.as_dict()
         payload["question"] = self._last_user_text(state)
@@ -715,7 +1436,11 @@ class Controller:
             # replay path: deterministic re-execution
             compiled, _ = prepare(plan, self.sem)
             result = execute_prepared(compiled, db_path=self.warehouse)
-            result.result_id = f"r{state.turn}-{compiled.fingerprint(self.sem.version)}"
+            result.fingerprint = compiled.fingerprint(
+                int(self.sem.raw.get("compiler_version", 1)),
+                self.sem.version,
+            )
+            result.result_id = f"r{state.turn}-{result.fingerprint}"
             self._results[(state.session_id, state.turn)] = result
         issues, facts = check(plan, self.sem, result,
                               db_path=self.warehouse, quality=self.quality)
