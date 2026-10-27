@@ -60,7 +60,7 @@ def execute_prepared(compiled: Compiled, db_path=WAREHOUSE_PATH) -> ResultSet:
 def check(plan: QueryPlan, sem: SemanticLayer, result: ResultSet,
           db_path=WAREHOUSE_PATH, quality: dict | None = None):
     if plan.kind == "member_list":
-        return run_member_list_checks(plan, result)
+        return run_member_list_checks(plan, result, quality=quality)
     return run_checks(plan, sem.metric(plan.metric), result, sem,
                       db_path=db_path, quality=quality)
 

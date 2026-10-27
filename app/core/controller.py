@@ -15,7 +15,13 @@ from app.config.settings import (
     MAX_SUBQUESTIONS,
     WAREHOUSE_PATH,
 )
-from app.core.context import project_for_composer, project_for_parser
+from app.core.context import (
+    apply_context_action,
+    build_conversation_context,
+    context_for_event,
+    project_for_composer,
+    project_for_parser,
+)
 from app.core.event_store import EventStore
 from app.core.events import Event
 from app.core.interfaces import AnswerComposer, IntentParser, ValueGrounder
@@ -158,6 +164,12 @@ class Controller:
             trace_id=trace_id,
         )
         state.turn = turn
+        yield self.store.append(
+            session_id,
+            "context.compiled",
+            context_for_event(build_conversation_context(state, self.sem)),
+            trace_id=trace_id,
+        )
         try:
             events = self._analysis_events(state, options)
         except Exception as exc:
@@ -243,16 +255,20 @@ class Controller:
     def _handle_parsing(self, state: SessionState) -> list[tuple[str, dict]]:
         original = self._last_user_text(state)
         rw = rewrite(original)
-        events: list[tuple[str, dict]] = [(
-            "query.normalized",
-            {
-                "original": rw.original,
-                "normalized": rw.normalized,
-                "changes": rw.changes,
-                "kind": rw.kind,
-                "followup": rw.followup,
-            },
-        )]
+        conversation_context = build_conversation_context(state, self.sem)
+        events: list[tuple[str, dict]] = [
+            ("context.compiled", context_for_event(conversation_context)),
+            (
+                "query.normalized",
+                {
+                    "original": rw.original,
+                    "normalized": rw.normalized,
+                    "changes": rw.changes,
+                    "kind": rw.kind,
+                    "followup": rw.followup,
+                },
+            ),
+        ]
 
         if rw.kind == "smalltalk":
             events.append(("answer.composed", {"text": SMALLTALK_TEXT, "result_id": None}))
@@ -289,7 +305,11 @@ class Controller:
             }))
             return events
 
-        ctx = project_for_parser(state, dim_values_path=self.dim_values_path)
+        ctx = project_for_parser(
+            state,
+            dim_values_path=self.dim_values_path,
+            conversation_context=conversation_context,
+        )
         try:
             result = self._call_with_retry(
                 "parse_intent", lambda: self.parser.parse(rw.normalized, ctx), state, events
@@ -304,10 +324,15 @@ class Controller:
             }))
             return events
 
+        apply_context_action(result, conversation_context)
+
         events.append(("intent.classified", {
             "intent_type": result.intent_type, "tier": result.tier,
             "confidence": result.confidence,
             "rewritten_question": result.rewritten_question,
+            "context_action": result.context_action,
+            "context_source": result.context_source,
+            "context_confidence": result.context_confidence,
         }))
 
         if result.intent_type == "smalltalk":
@@ -326,6 +351,7 @@ class Controller:
                         "id": f"sq{idx}",
                         "question": q.get("question", ""),
                         "intent_type": q.get("intent_type", "query"),
+                        "context_action": q.get("context_action", "new"),
                     }
                     for idx, q in enumerate(result.subquestions, 1)
                 ],
@@ -524,12 +550,19 @@ class Controller:
                 slots_payload["dimensions"] = [dim] if dim else []
             if (
                 previous_slots
-                and not any(slots_payload.get(key) for key in (
-                    "metric", "dimensions", "filters", "time", "comparison"
-                ))
-                and re.search(r"^(那|呢|再|同样|其中)", question)
+                and sub.get("context_action") in {"inherit", "refine"}
             ):
-                slots_payload = {**previous_slots, **slots_payload}
+                inherited = dict(previous_slots)
+                inherited.update({
+                    key: value
+                    for key, value in slots_payload.items()
+                    if value not in (None, [], {})
+                })
+                inherited["filters"] = {
+                    **(previous_slots.get("filters") or {}),
+                    **(slots_payload.get("filters") or {}),
+                }
+                slots_payload = inherited
 
             try:
                 sub_events, entry = self._run_subquestion(
@@ -757,38 +790,86 @@ class Controller:
         focus = self._analysis_focus(state)
         raw_sections = options.get("sections")
         selected = None if not raw_sections else list(raw_sections)
-        items, window = build_analysis_items(self.sem, focus, selected)
         custom_text = str(options.get("custom_text") or "").strip()[:500]
         custom_title = str(options.get("custom_title") or "").strip()[:60]
         custom_failure = None
+        custom_items: list = []
+        custom_scope = None
 
         if custom_text:
             try:
                 parsed = self.parser.parse(
                     custom_text,
-                    project_for_parser(state, dim_values_path=self.dim_values_path),
+                    project_for_parser(
+                        state,
+                        dim_values_path=self.dim_values_path,
+                        conversation_context=build_conversation_context(
+                            state, self.sem
+                        ),
+                    ),
                 )
                 custom_subs = parsed.subquestions[:MAX_SUBQUESTIONS]
                 if custom_subs:
                     for idx, sub in enumerate(custom_subs, 1):
                         if sub.get("slots"):
-                            items.append(custom_analysis_item(
+                            custom_items.append(custom_analysis_item(
                                 dict(sub["slots"]),
                                 str(sub.get("question") or custom_title or "自定义分析"),
                                 f"cx{idx}",
                             ))
-                elif parsed.intent_type == "query" and parsed.slots:
-                    items.append(custom_analysis_item(
+                elif (
+                    parsed.intent_type == "query"
+                    and (
+                        parsed.slots.get("metric")
+                        or parsed.slots.get("dimensions")
+                    )
+                ):
+                    custom_items.append(custom_analysis_item(
                         dict(parsed.slots), custom_title or "自定义分析", "cx1"
                     ))
                 else:
-                    custom_failure = (
-                        parsed.explanation
-                        or "自定义分析没有识别出可执行的指标或维度。"
-                    )
+                    parsed_filters = parsed.slots.get("filters") or {}
+                    resolved = None
+                    if not parsed_filters:
+                        resolved = self.grounder.resolve_term(custom_text)
+                    if resolved and resolved.get("status") == "resolved":
+                        dim = resolved["dimension"]
+                        parsed_filters = {
+                            dim: {
+                                "op": "eq" if len(resolved.get("ids") or []) == 1 else "in",
+                                "value": (
+                                    resolved["ids"][0]
+                                    if len(resolved.get("ids") or []) == 1
+                                    else resolved["ids"]
+                                ),
+                            }
+                        }
+                    if parsed_filters:
+                        focus = dict(focus)
+                        filters = dict(focus.get("filters") or {})
+                        filters.update(parsed_filters)
+                        focus["filters"] = filters
+                        custom_scope = {
+                            "filters": parsed_filters,
+                            "label": custom_text,
+                        }
+                        focus["custom_scope"] = custom_scope
+                        focus["focus_label"] = "、".join(filter(None, [
+                            focus.get("focus_label"),
+                            custom_text,
+                        ]))
+                    elif resolved and resolved.get("status") == "ambiguous":
+                        custom_failure = "自定义实体存在多个可能维度，请明确业务维度。"
+                    else:
+                        custom_failure = (
+                            parsed.explanation
+                            or "自定义分析没有识别出可执行的指标、维度或实体。"
+                        )
             except Exception as exc:
                 custom_failure = f"自定义分析解析失败：{type(exc).__name__}: {exc}"
 
+        items, window = build_analysis_items(self.sem, focus, selected)
+        items.extend(custom_items)
         if custom_failure:
             items.append(custom_analysis_item({}, custom_title or "自定义分析", "cx1"))
 
@@ -802,6 +883,7 @@ class Controller:
         events: list[tuple[str, dict]] = [("analysis.requested", {
             "focus": focus,
             "window": window,
+            "custom_scope": custom_scope,
             "modules": sorted({
                 item.module for item in items if item.module != "custom"
             }),
@@ -939,6 +1021,20 @@ class Controller:
         chat_lines = [summary]
         if core:
             chat_lines.extend(f"- {line}" for line in core[:3])
+        quality_notes = [
+            item for item in ((self.quality or {}).get("checks") or [])
+            if item.get("severity") in {"warn", "error"}
+            and (item.get("count") or 0) > 0
+        ]
+        if quality_notes:
+            chat_lines.append(
+                "数据提示："
+                + "；".join(
+                    f"{item.get('title')}（{item.get('count')}）"
+                    for item in quality_notes[:3]
+                )
+                + "。结果按可用记录计算，异常或缺失数据可能影响结论。"
+            )
         chat_lines.append("完整报告已放在左侧「经营分析」标签中。")
         events.append(("analysis.completed", {
             "report": report,
@@ -1474,6 +1570,13 @@ class Controller:
                 scope.append(f"{state.plan.time.start}~{state.plan.time.end}")
             if scope:
                 text = f"限定范围：{'；'.join(scope)}。\n\n{text}"
+            quality_notes = [
+                issue for issue in state.checks
+                if issue.get("id") == "DATA_QUALITY"
+            ]
+            if quality_notes:
+                issue = quality_notes[0]
+                text += f"\n\n数据提示：{issue.get('detail') or issue.get('title')}"
             return [
                 ("answer.composed", {"text": text, "result_id": state.last_result_id}),
                 ("result.presented", {"result_id": state.last_result_id}),

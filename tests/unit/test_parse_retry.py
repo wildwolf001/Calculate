@@ -2,6 +2,7 @@
 falling back; and the offline fallback understands enumeration questions."""
 from __future__ import annotations
 
+from app.core.context import apply_context_action
 from app.core.interfaces import ParseResult
 from app.domain.semantic.loader import load_semantic
 from app.llm.parse_intent import IntentParseError, LLMIntentParser
@@ -53,21 +54,37 @@ def test_two_failures_fall_back_to_rule_parser_with_lookup(sem):
     assert any("模型解析失败" in n for n in result.notes)
 
 
-def test_every_merchant_counts_as_explicit_dimension(sem):
-    """'每家的延迟率' must keep seller; the follow-up cleanup used to drop it."""
-    parser = LLMIntentParser(sem, client=FakeClient([]))
-    prev = {
-        "slots": {
-            "metric": "delay_rate", "dimensions": ["seller"],
+def test_model_context_decision_is_validated(sem):
+    payload = dict(VALID)
+    payload["context"] = {
+        "action": "reference_result",
+        "source": "active_result",
+        "confidence": 0.91,
+    }
+    result = LLMIntentParser(sem, client=FakeClient([payload])).parse(
+        "分别是哪两个", {}
+    )
+    assert result.context_action == "reference_result"
+    assert result.context_source == "active_result"
+    assert result.context_confidence == 0.91
+
+
+def test_explicit_context_action_inherits_without_keyword_heuristics(sem):
+    """Scope inheritance is structural, not based on a follow-up word list."""
+    context = {
+        "active_scope": {
+            "metric": "delay_rate",
+            "dimensions": ["seller"],
             "time": {"start": "2025-05-01", "end": "2025-06-01"},
+            "filters": {"category": {"op": "eq", "value": "electronics"}},
         }
     }
     result = ParseResult(
         intent_type="query", tier="B", confidence=0.9,
-        slots={
-            "metric": "delay_rate", "dimensions": ["seller"],
-            "time": {"start": "2025-05-01", "end": "2025-06-01"},
-        },
+        slots={"dimensions": []},
+        context_action="refine",
     )
-    out = parser._postprocess_followup(result, "每家的延迟率都是多少", prev)
-    assert out.slots["dimensions"] == ["seller"]
+    apply_context_action(result, context)
+    assert result.slots["metric"] == "delay_rate"
+    assert result.slots["dimensions"] == ["seller"]
+    assert result.slots["filters"]["category"]["value"] == "electronics"

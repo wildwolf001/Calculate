@@ -93,6 +93,7 @@ class SessionState:
     interpretations: list[dict] = field(default_factory=list)
     preferred_interpretation: str | None = None
     interpretation_results: list[dict] = field(default_factory=list)
+    context: dict | None = None
     trace_id: str | None = None
 
     def to_dict(self) -> dict:
@@ -113,6 +114,7 @@ class SessionState:
             "interpretations": self.interpretations,
             "preferred_interpretation": self.preferred_interpretation,
             "interpretation_results": self.interpretation_results,
+            "context": self.context,
             "analysis": self.analysis,
             "summary": self.summary,
             "last_seq": self.last_seq,
@@ -168,6 +170,7 @@ def reduce(events: list, session_id: str | None = None) -> SessionState:
             state.checks = []
             state.facts = {}
             state.analysis = None
+            state.context = None
         elif t == "user.message":
             text = p.get("text", "")
             state.turn = max(state.turn, int(p.get("turn", state.turn + 1)))
@@ -211,6 +214,8 @@ def reduce(events: list, session_id: str | None = None) -> SessionState:
         elif t == "query.normalized":
             if p.get("notes"):
                 state.slots.notes = list(dict.fromkeys(state.slots.notes + p["notes"]))
+        elif t == "context.compiled":
+            state.context = p
         elif t == "intent.parsed":
             state.slots = _slots_from_payload(p, state.slots)
             state.interpretations = list(p.get("interpretations") or [])

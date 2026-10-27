@@ -1,6 +1,7 @@
 """Dataset-aware analysis planning without a warehouse dependency."""
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date
 
 from app.domain.analysis import (
@@ -130,3 +131,32 @@ def test_ratio_metric_supports_explicit_period_comparison():
     assert compiled.columns == [
         "current", "baseline", "delta", "growth_rate",
     ]
+
+
+def test_default_analysis_uses_sales_instead_of_payment_metric():
+    sem = _semantic()
+    coupon = Metric("coupon_amount", {
+        "name_zh": "优惠券支付金额",
+        "type": "aggregate",
+        "fact": "orders",
+        "expr": "SUM(coupon_amount)",
+        "additive": True,
+        "supported_grain": ["none"],
+        "selected": True,
+    })
+    sem = replace(sem, metrics={**sem.metrics, coupon.id: coupon})
+    items, _ = build_analysis_items(sem, modules=["overview"])
+    assert items[0].slots["metric"] == "sales"
+
+
+def test_partial_latest_month_uses_last_complete_month():
+    sem = replace(_semantic(), time_range=("2025-01-01", "2025-07-09"))
+    _, window = build_analysis_items(sem, modules=["overview"])
+    assert window["current"] == {
+        "start": "2025-06-01",
+        "end": "2025-07-01",
+    }
+    assert window["baseline"] == {
+        "start": "2025-05-01",
+        "end": "2025-06-01",
+    }

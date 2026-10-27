@@ -36,7 +36,41 @@ def _quality_counts(path=QUALITY_PATH) -> dict:
     return {c["id"]: c for c in data.get("checks", [])}
 
 
-def run_member_list_checks(plan: QueryPlan, result: ResultSet) -> tuple[list[CheckIssue], dict]:
+def _quality_notice(quality: dict | None) -> tuple[CheckIssue | None, list[dict]]:
+    checks = (quality or {}).get("checks") or []
+    notable = [
+        check for check in checks
+        if check.get("severity") in {"error", "warn"}
+        and (check.get("count") or 0) > 0
+    ]
+    if not notable:
+        return None, []
+    summary = "；".join(
+        f"{check.get('title', check.get('id'))}（{check.get('count')}）"
+        for check in notable[:4]
+    )
+    return (
+        CheckIssue(
+            "DATA_QUALITY",
+            "warn",
+            "数据质量提示",
+            f"{summary}。本次结果按可用记录计算，缺失或异常数据可能影响结论。",
+        ),
+        [
+            {
+                "id": check.get("id"),
+                "severity": check.get("severity"),
+                "title": check.get("title"),
+                "count": check.get("count"),
+            }
+            for check in notable[:8]
+        ],
+    )
+
+
+def run_member_list_checks(plan: QueryPlan, result: ResultSet,
+                           quality: dict | None = None
+                           ) -> tuple[list[CheckIssue], dict]:
     """Checks for the member_list shape (no metric involved)."""
     issues: list[CheckIssue] = []
     facts: dict = {
@@ -46,8 +80,13 @@ def run_member_list_checks(plan: QueryPlan, result: ResultSet) -> tuple[list[Che
         "range": [str(plan.time.start), str(plan.time.end)] if plan.time else None,
     }
     if result.row_count == 0:
-        issues.append(CheckIssue("EMPTY_RESULT", "error", "清单为空",
-                                 "当前筛选与时间范围内没有成员。"))
+        issues.append(CheckIssue("EMPTY_RESULT", "warn", "清单为空",
+                                 "当前筛选与时间范围内没有成员；可能是筛选条件、时间范围或源数据缺失。"))
+        facts["empty_result"] = True
+        quality_issue, quality_facts = _quality_notice(quality)
+        if quality_issue:
+            issues.append(quality_issue)
+            facts["data_quality"] = quality_facts
         return issues, facts
     if result.truncated or result.row_count >= plan.limit:
         issues.append(CheckIssue("TRUNCATED", "warn", "结果被截断",
@@ -56,6 +95,10 @@ def run_member_list_checks(plan: QueryPlan, result: ResultSet) -> tuple[list[Che
     if plan.time or plan.filters:
         scope += "筛选条件与时间窗已应用到成员清单。"
     issues.append(CheckIssue("LOOKUP_SCOPE", "info", "统计范围", scope))
+    quality_issue, quality_facts = _quality_notice(quality)
+    if quality_issue:
+        issues.append(quality_issue)
+        facts["data_quality"] = quality_facts
     return issues, facts
 
 
@@ -71,8 +114,14 @@ def run_checks(plan: QueryPlan, metric, result: ResultSet, sem: SemanticLayer,
         ))
 
     if result.row_count == 0:
-        issues.append(CheckIssue("EMPTY_RESULT", "error", "查询结果为空",
-                                 "当前口径与筛选下没有数据，无法得出结论。"))
+        issues.append(CheckIssue("EMPTY_RESULT", "warn", "查询结果为空",
+                                 "当前口径、筛选或时间范围内没有可用数据；"
+                                 "可能是数据缺失、筛选无匹配或源数据未覆盖。"))
+        facts["empty_result"] = True
+        quality_issue, quality_facts = _quality_notice(quality)
+        if quality_issue:
+            issues.append(quality_issue)
+            facts["data_quality"] = quality_facts
         return issues, facts
 
     if result.truncated:
@@ -125,9 +174,11 @@ def run_checks(plan: QueryPlan, metric, result: ResultSet, sem: SemanticLayer,
                                          "基期为 0，无法计算增长率（已用 NULL 而非无穷大）。"))
 
     q = quality if quality is not None else _quality_counts()
+    quality_issue, quality_facts = _quality_notice(q)
+    if quality_issue:
+        issues.append(quality_issue)
+        facts["data_quality"] = quality_facts
     business_checks = set(sem.capabilities.get("business_checks") or [])
-    if not business_checks:
-        q = {}
 
     # ---- metric-level caveats ----
     for caveat in metric.raw.get("caveats", []) or []:

@@ -86,6 +86,66 @@ class RuleGrounder:
         return [], [], fuzzy
 
     # ---------- main ----------
+    def resolve_term(self, term: str, dimensions: list[str] | None = None) -> dict:
+        """Resolve one standalone entity term across the semantic value catalog.
+
+        This is a typed lookup primitive for tools and analysis scope binding.
+        It reports ambiguity instead of choosing an arbitrary duplicate column.
+        """
+        text = str(term or "").strip()
+        if not text:
+            return {"status": "none", "term": text, "candidates": []}
+        allowed = dimensions or list(self.sem.dimensions)
+        exact_hits: list[dict] = []
+        partial_hits: list[dict] = []
+        for dim in allowed:
+            if dim not in self.sem.dimensions:
+                continue
+            exact, prefix, fuzzy = self._match_one(dim, text)
+            values = exact or prefix or fuzzy
+            if not values:
+                continue
+            candidate = {
+                "dimension": dim,
+                "dimension_label": self._dim_name(dim),
+                "values": values[:20],
+                "ids": self._to_ids(dim, values[:20]),
+                "match": "exact" if exact else ("prefix" if prefix else "fuzzy"),
+            }
+            if exact:
+                exact_hits.append(candidate)
+            else:
+                partial_hits.append(candidate)
+        hits = exact_hits or partial_hits
+        # The same value can exist on duplicated physical paths. Prefer the
+        # shortest join path, but only when all hits still point to one value.
+        if hits:
+            hits.sort(key=lambda item: (
+                len(self.sem.dimensions[item["dimension"]].join_path),
+                item["dimension"],
+            ))
+            first_values = set(hits[0]["values"])
+            if len(hits) == 1 or all(
+                set(hit["values"]) == first_values for hit in hits
+            ):
+                selected = hits[0]
+                return {
+                    "status": "resolved",
+                    "term": text,
+                    "dimension": selected["dimension"],
+                    "dimension_label": selected["dimension_label"],
+                    "values": selected["values"],
+                    "ids": selected["ids"],
+                    "match": selected["match"],
+                    "alternatives": hits[1:5],
+                }
+            return {
+                "status": "ambiguous",
+                "term": text,
+                "candidates": hits[:10],
+            }
+        return {"status": "none", "term": text, "candidates": []}
+
     def ground(self, slots: dict, unresolved: list[str], context: dict) -> GroundResult:
         bindings: list[dict] = []
         notes: list[str] = []

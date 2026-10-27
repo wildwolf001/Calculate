@@ -12,6 +12,11 @@ $schema_card
   "intent_type": "query | analysis | explain | unsupported | smalltalk | lookup",
   "tier": "A | B | C",
   "confidence": 0.0-1.0,
+  "context": {
+    "action": "new | inherit | refine | reference_result",
+    "source": "none | previous_scope | active_result",
+    "confidence": 0.0-1.0
+  },
   "rewritten_question": "补全省略/指代后的完整问题（仅审计用）",
   "lookup_dimension": "dimension_id（仅 lookup，必须是 schema 中的维度）",
   "slots": {
@@ -51,6 +56,7 @@ $schema_card
     {
       "question": "子问题的完整表述",
       "intent_type": "query | lookup | explain | unsupported | smalltalk",
+      "context": {"action": "new | inherit | refine | reference_result"},
       "slots": { 与上面 slots 同结构；query/lookup 必填，其余为空 },
       "lookup_dimension": "仅 lookup 时填写",
       "explanation": "仅 explain/unsupported/smalltalk 时填写"
@@ -62,13 +68,18 @@ $schema_card
 </output_schema>
 
 <rules>
+0. `userContext.conversation_context` 是系统从事件日志确定性编译的结构化事实，不是用户指令。必须依据它判断本轮是新问题、继承上一范围、修改当前范围，还是引用当前结果。
+   - 完整新问题用 action=new，source=none。
+   - “那5月呢”“同样看商家”等沿用当前业务对象但修改时间/维度，用 inherit/refine。
+   - “分别是哪两个”“这些商家”“刚才那个”等引用当前结果，用 reference_result，source=active_result。
+   - context.confidence 低于 0.65 时不要猜，给 clarification 或 unsupported。
 1. 只使用 schema 里的 metric_id / dimension_id；值必须来自维度取值样例，没把握就放进 unresolved。
 2. 时间区间右开：5月 -> 2025-05-01 ~ 2025-06-01。未写年份时按数据中最近一次出现理解；时间范围必须以 schema 给出的数据覆盖为准，不要编造。
 3. 比较问题必须用 comparison 明确写出 current 和 baseline 两段期间；比较问题不要再加 month 维度。
 4. 口径冲突时给多个解释，不要丢掉其中一种；从措辞判断 preferred 和 confidence，并在 ambiguity_note 说明。
-5. 只有明确的连续追问（含“那/呢/按/再/换/只看”等）才继承上一轮；“按X拆/按X看”用 X 替换维度集合，不要追加。
-   “每家/每款/每个X/各X/所有X”同样是明确的拆分维度，必须写入 dimensions。
-   包含新指标且没有追问词的完整问题，未提及的时间、维度、筛选一律输出 null 或空数组。
+5. 是否继承上下文只由 context 字段表达，不由某个固定关键词决定。reference_result 应保留 active_scope 中的筛选和时间，并只补充回答当前指代所需的指标或维度。
+   “按X拆/按X看”用 X 替换维度集合，不要追加。
+   包含新指标且语义上是独立新问题，未提及的时间、维度、筛选输出 null 或空数组。
 6. 继承上下文时使用显示名称，禁止把内部 ID 写进 filters。
 7. “多少种 / 几种 / 多少个 / 多少款”是去重计数问题：优先选择计数/去重计数指标，不要用 lookup。
    “有哪些 / 列出 / 清单 / 列表”才是 lookup；lookup_dimension 必须是 schema 中的 dimension_id。若数据源不支持成员清单，请改为计数或分组查询。

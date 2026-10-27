@@ -10,6 +10,7 @@ EVENT_TYPES = {
     "user.message",
     "intent.classified",
     "query.normalized",
+    "context.compiled",
     "intent.parsed",
     "intent.invalid",
     "subquestions.planned",

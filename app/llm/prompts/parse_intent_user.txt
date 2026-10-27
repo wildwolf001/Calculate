@@ -4,5 +4,8 @@ $prev_slots
 最近对话:
 $recent_messages
 
+结构化对话上下文（由事件日志确定性生成）:
+$conversation_context
+
 用户问题:
 $question

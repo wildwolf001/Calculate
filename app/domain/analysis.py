@@ -82,11 +82,20 @@ def _primary_metric(sem: SemanticLayer) -> Metric | None:
         if metric.type != "aggregate" or not metric.raw.get("additive"):
             continue
         terms = _terms(metric)
-        score = 0
-        if _matches(terms, r"销售|金额|收入|营收|成交|gmv|sales|revenue|amount"):
-            score += 8
+        score = int(metric.raw.get("analysis_priority") or 0)
+        role = str(metric.raw.get("analysis_role") or "")
+        if role in {"primary_sales", "sales_primary"}:
+            score += 30
+        if _matches(terms, r"商品销售额|销售额|销售收入|gmv|sales"):
+            score += 14
+        elif _matches(terms, r"金额|收入|营收|成交|revenue|amount"):
+            score += 7
         elif "sum(" in str(metric.raw.get("expr", "")).lower():
             score += 5
+        if _matches(terms, r"优惠券|信用卡|voucher|credit_card|支付"):
+            score -= 12
+        if _matches(terms, r"运费|freight"):
+            score -= 4
         if _matches(terms, r"订单数|记录数|行数|客户数|商品数|count"):
             score -= 5
         if metric.raw.get("time_via"):
@@ -163,13 +172,29 @@ def _window(sem: SemanticLayer, focus: dict | None) -> dict:
     lower = _as_date(sem.time_range[0]) or date(1970, 1, 1)
     upper_exclusive = _as_date(sem.time_range[1]) or date.today()
     upper = max(lower + timedelta(days=1), upper_exclusive - timedelta(days=1))
-    anchor = _as_date(focus.get("anchor_end")) or upper
-    anchor = min(max(anchor, lower), upper)
+    anchor = _as_date(focus.get("anchor_end"))
+    if anchor is not None:
+        anchor = min(max(anchor, lower), upper)
 
-    current_start = _month_start(anchor)
-    if current_start < lower:
-        current_start = lower
-    current_end = min(upper_exclusive, _add_months(current_start, 1))
+    # A report should not compare a partial latest month with a complete prior
+    # month. Unless the caller supplied an earlier explicit anchor, use the
+    # most recent complete calendar month.
+    latest = upper_exclusive - timedelta(days=1)
+    month_start = _month_start(latest)
+    next_month = _add_months(month_start, 1)
+    latest_complete = latest.day == (next_month - timedelta(days=1)).day
+    if latest_complete:
+        default_start, default_end = month_start, upper_exclusive
+    else:
+        default_end = month_start
+        default_start = _add_months(default_end, -1)
+
+    if anchor is not None and anchor < month_start:
+        current_start = _month_start(anchor)
+        current_end = min(upper_exclusive, _add_months(current_start, 1))
+    else:
+        current_start, current_end = default_start, default_end
+    current_start = max(lower, current_start)
     if current_end <= current_start:
         current_end = min(upper_exclusive, current_start + timedelta(days=1))
 
@@ -198,7 +223,7 @@ def _window(sem: SemanticLayer, focus: dict | None) -> dict:
         "trend": trend,
         "comparison": comparison,
         "filters": filters,
-        "anchor_end": anchor.isoformat(),
+        "anchor_end": (anchor or current_start).isoformat(),
     }
 
 

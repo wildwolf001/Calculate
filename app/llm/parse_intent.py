@@ -155,6 +155,18 @@ class LLMIntentParser:
                 "slots": {},
                 "explanation": item.get("explanation"),
             }
+            raw_context = item.get("context") if isinstance(item.get("context"), dict) else {}
+            action = str(raw_context.get("action") or "new").lower()
+            action = {
+                "new_query": "new",
+                "inherit_scope": "inherit",
+                "refine_query": "refine",
+                "result_reference": "reference_result",
+            }.get(action, action)
+            entry["context_action"] = (
+                action if action in {"new", "inherit", "refine", "reference_result"}
+                else "new"
+            )
             if intent in {"query", "lookup"}:
                 try:
                     entry["slots"] = self._validate_slots(item.get("slots") or {})
@@ -198,6 +210,31 @@ class LLMIntentParser:
         slots["visualization"] = viz
         if len(subquestions) >= 2:
             intent_type = "query"
+        raw_context = data.get("context") if isinstance(data.get("context"), dict) else {}
+        context_action = str(
+            raw_context.get("action")
+            or data.get("context_action")
+            or "new"
+        ).strip().lower()
+        aliases = {
+            "new_query": "new",
+            "inherit_scope": "inherit",
+            "refine_query": "refine",
+            "result_reference": "reference_result",
+        }
+        context_action = aliases.get(context_action, context_action)
+        if context_action not in {"new", "inherit", "refine", "reference_result"}:
+            context_action = "new"
+        context_source = raw_context.get("source") or data.get("context_source")
+        try:
+            context_confidence = float(
+                raw_context.get("confidence")
+                or data.get("context_confidence")
+                or 0.0
+            )
+        except (TypeError, ValueError):
+            context_confidence = 0.0
+        context_confidence = max(0.0, min(1.0, context_confidence))
         if data.get("assumptions"):
             slots["notes"] += [f"模型假设：{a}" for a in data["assumptions"]]
 
@@ -253,57 +290,10 @@ class LLMIntentParser:
             preferred_interpretation=preferred,
             ambiguity_note=data.get("ambiguity_note"),
             visualization=viz,
+            context_action=context_action,
+            context_source=str(context_source) if context_source else None,
+            context_confidence=context_confidence,
         )
-
-    FOLLOWUP_CUES = re.compile(r"那|呢|再|换|改成|改为|只看|按|同样|这个|其中|对比|相比|相较于|较|比")
-    TIME_CUES = re.compile(r"\d|月|年|季度|本周|上周|本月|上月|今年|去年|近|最近")
-    DIM_WORDS = {
-        "品类": "category", "类目": "category", "分类": "category",
-        "商家": "seller", "店铺": "seller", "卖家": "seller",
-        "商品": "product", "产品": "product",
-        "省份": "state", "地区": "state", "城市": "city",
-        "支付方式": "payment_type", "月份": "month",
-        "延迟": "late", "准时": "late", "低分": "low_score",
-    }
-
-    def _dim_from_word(self, word: str) -> str | None:
-        if self.sem.parser == "ecommerce" and word in self.DIM_WORDS:
-            return self.DIM_WORDS[word]
-        for dim in self.sem.dimensions.values():
-            names = [dim.id, dim.raw.get("name_zh", ""), *dim.raw.get("synonyms", [])]
-            if word in {str(n) for n in names if n}:
-                return dim.id
-        if word in self.sem.dimensions:
-            return word
-        return self.DIM_WORDS.get(word) if self.sem.parser == "ecommerce" else None
-
-    def _explicit_dims(self, text: str) -> list[str]:
-        hits = re.findall(
-            r"按\s*(?:是否)?\s*(品类|类目|分类|商家|店铺|卖家|商品|产品|省份|地区|"
-            r"城市|支付方式|月份|延迟|准时|低分)", text)
-        dims = [
-            dim_id for dim_id in (self._dim_from_word(h) for h in hits) if dim_id
-        ]
-        dims = list(dict.fromkeys(dims))
-        # "每家/每款/各品类" are explicit grouping requests too; treating them
-        # as absent makes follow-ups silently lose the dimension.
-        cue_dims = [
-            (r"每家|每户|每个商家|各个商家|各商家|所有商家|全部商家", "seller"),
-            (r"每款|每个商品|每件商品|各个商品|各商品|所有商品|全部商品", "product"),
-            (r"每个品类|各个品类|各品类|所有品类|全部品类", "category"),
-            (r"每个月|各月|每月", "month"),
-            (r"每个省份|各省|所有省份", "state"),
-            (r"每个城市|各城市|所有城市", "city"),
-            (r"每种支付方式|各支付方式|所有支付方式", "payment_type"),
-        ]
-        for pattern, dim in cue_dims:
-            if not re.search(pattern, text):
-                continue
-            if dim in self.sem.dimensions:
-                dims.append(dim)
-            elif self.sem.parser == "ecommerce":
-                dims.append(dim)
-        return list(dict.fromkeys(dims))
 
     def _postprocess_lookup(self, result: ParseResult, text: str) -> ParseResult:
         """“多少种/几个”通常是计数，不是成员清单。"""
@@ -340,43 +330,17 @@ class LLMIntentParser:
         ))
         return result
 
-    def _postprocess_followup(self, result: ParseResult, text: str, context: dict) -> ParseResult:
-        """Enforce follow-up semantics the prompt cannot guarantee.
-
-        - "按X拆" replaces the dimension set;
-        - a fresh question does not inherit the previous turn's time/dims/filters.
-        """
-        slots = result.slots
-        explicit = self._explicit_dims(text)
-        if explicit:
-            slots["dimensions"] = explicit
-            return result
-
-        prev = context.get("slots") or {}
-        if prev and self.FOLLOWUP_CUES.search(text) and not slots.get("filters"):
-            slots["filters"] = dict(prev.get("filters") or {})
-            result.notes.append("比较问题继承上一轮筛选条件")
-        if not prev or self.FOLLOWUP_CUES.search(text):
-            return result
-        if slots.get("time") and prev.get("time") and slots["time"] == prev["time"]:
-            if not self.TIME_CUES.search(text):
-                slots["time"] = None
-                result.notes.append("新问题未提时间，未继承上一轮时间范围")
-        if slots.get("dimensions") and slots["dimensions"] == prev.get("dimensions"):
-            slots["dimensions"] = []
-            result.notes.append("新问题未提拆分维度，未继承上一轮维度")
-        if slots.get("filters") and slots["filters"] == prev.get("filters"):
-            if not any(str(v.get("value")) in text for v in slots["filters"].values()):
-                slots["filters"] = {}
-                result.notes.append("新问题未提筛选值，未继承上一轮筛选条件")
-        return result
-
     # ---------- main ----------
     def parse(self, text: str, context: dict) -> ParseResult:
         if self.client.available:
             base_user = self._user.substitute(
                 prev_slots=json.dumps(context.get("slots") or {}, ensure_ascii=False),
                 recent_messages=json.dumps(context.get("recent_messages") or [], ensure_ascii=False),
+                conversation_context=json.dumps(
+                    context.get("conversation_context") or {},
+                    ensure_ascii=False,
+                    default=str,
+                ),
                 question=text,
             )
             system = self._system.substitute(schema_card=self._schema_card)
@@ -396,7 +360,6 @@ class LLMIntentParser:
                                                      stage="parse_intent")
                     result = self._validate(data)
                     result = self._postprocess_lookup(result, text)
-                    result = self._postprocess_followup(result, text, context)
                     result.notes = list(dict.fromkeys(result.notes + ["由模型解析意图"]))
                     return result
                 except (LLMError, LLMUnavailable, IntentParseError, ValueError) as exc:

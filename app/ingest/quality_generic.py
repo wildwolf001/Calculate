@@ -42,6 +42,7 @@ def run_generic_quality(con: duckdb.DuckDBPyConnection,
     })
 
     empty_cols: dict[str, list[str]] = {}
+    missing_values: dict[str, dict[str, int]] = {}
     constant_cols: dict[str, list[str]] = {}
     pii_cols: dict[str, list[str]] = {}
     weak_cols: dict[str, list[str]] = {}
@@ -55,6 +56,11 @@ def run_generic_quality(con: duckdb.DuckDBPyConnection,
             c.physical for c in table.columns
             if c.null_rate >= 0.999
         ]
+        missing_values[table.table_id] = {
+            c.physical: int(c.null_count)
+            for c in table.columns
+            if 0 < int(c.null_count) < table.rows
+        }
         constant_cols[table.table_id] = [
             c.physical for c in table.columns
             if c.distinct == 1
@@ -82,6 +88,19 @@ def run_generic_quality(con: duckdb.DuckDBPyConnection,
             "title": "存在全空列",
             "count": sum(len(v) for v in empty_cols.values()),
             "detail": {k: v for k, v in empty_cols.items() if v},
+        },
+        {
+            "id": "missing_values",
+            "severity": "warn",
+            "title": "部分字段存在缺失值，聚合结果按可用记录计算",
+            "count": sum(
+                sum(values.values()) for values in missing_values.values()
+            ),
+            "detail": {
+                table_id: values
+                for table_id, values in missing_values.items()
+                if values
+            },
         },
         {
             "id": "constant_columns",
