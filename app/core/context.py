@@ -15,29 +15,29 @@ import json
 from app.config.settings import DIM_VALUES_PATH, KEEP_RECENT_TURNS
 from app.core.state import SessionState, slots_has_content
 
-_ID_REVERSE_CACHE: dict | None = None
+_ID_REVERSE_CACHE: dict[str, dict[str, dict]] = {}
 
 
-def _id_reverse() -> dict[str, dict]:
-    """dim -> {id: display name}, built once from the generated catalog."""
-    global _ID_REVERSE_CACHE
-    if _ID_REVERSE_CACHE is not None:
-        return _ID_REVERSE_CACHE
+def _id_reverse(dim_values_path=DIM_VALUES_PATH) -> dict[str, dict]:
+    """dim -> {id: display name}, cached per dataset artifact file."""
+    key = str(dim_values_path)
+    if key in _ID_REVERSE_CACHE:
+        return _ID_REVERSE_CACHE[key]
     out: dict[str, dict] = {}
     try:
-        data = json.loads(DIM_VALUES_PATH.read_text(encoding="utf-8"))
+        data = json.loads(dim_values_path.read_text(encoding="utf-8"))
         for dim, mapping in (data.get("id_maps") or {}).items():
             out[dim] = {str(v): str(k) for k, v in mapping.items()}
     except Exception:
         out = {}
-    _ID_REVERSE_CACHE = out
+    _ID_REVERSE_CACHE[key] = out
     return out
 
 
-def humanize_slots(slots: dict) -> dict:
+def humanize_slots(slots: dict, dim_values_path=DIM_VALUES_PATH) -> dict:
     """Replace internal IDs with display names before showing slots to the LLM."""
     out = json.loads(json.dumps(slots))
-    rev = _id_reverse()
+    rev = _id_reverse(dim_values_path)
     for dim, spec in (out.get("filters") or {}).items():
         if dim not in rev or not isinstance(spec, dict):
             continue
@@ -56,7 +56,8 @@ def estimate_tokens(value) -> int:
     return max(1, len(value) // 2)
 
 
-def project_for_parser(state: SessionState, keep_turns: int = KEEP_RECENT_TURNS) -> dict:
+def project_for_parser(state: SessionState, keep_turns: int = KEEP_RECENT_TURNS,
+                       *, dim_values_path=DIM_VALUES_PATH) -> dict:
     recent = state.messages[-keep_turns * 2:]
     # While PARSING, `slots` still holds this turn's (empty) container; the
     # parser needs the previous turn's slots to resolve "那5月呢"-style follow-ups.
@@ -68,7 +69,7 @@ def project_for_parser(state: SessionState, keep_turns: int = KEEP_RECENT_TURNS)
         "recent_messages": [
             {"role": m["role"], "text": m["text"]} for m in recent
         ],
-        "slots": humanize_slots(base.model_dump(mode="json")),
+        "slots": humanize_slots(base.model_dump(mode="json"), dim_values_path),
         "current_slots": state.slots.model_dump(mode="json"),
         "pending_clarification": state.pending,
         "summary": state.summary,

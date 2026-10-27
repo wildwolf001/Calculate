@@ -12,6 +12,44 @@ export interface SessionSummary {
   session_id: string
   title: string
   turns: number
+  dataset_id?: string | null
+  updated_at: string
+}
+
+export interface DatasetSummary {
+  dataset_id: string
+  name: string
+  status: string
+  rows?: number | null
+  tables?: number | null
+  semantic_version?: number | null
+  data_version?: string | null
+  updated_at?: string | null
+  readiness?: string | null
+}
+
+export interface UploadResult {
+  upload_id: string
+  files: { name: string; size: number; sha256: string }[]
+}
+
+export interface AnalyzeStart {
+  job_id: string
+  dataset_id: string
+  name: string
+}
+
+export interface JobStatus {
+  job_id: string
+  kind: string
+  status: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'
+  stage: string
+  percent: number
+  message: string
+  error?: string | null
+  result?: any
+  params?: any
+  created_at: string
   updated_at: string
 }
 
@@ -68,7 +106,10 @@ export interface MetricMeta {
 }
 
 export interface Meta {
+  dataset_id?: string
   dataset: string
+  mode?: 'draft' | 'published'
+  data_version?: string
   semantic_version: number
   compiler_version: number
   time_range: [string, string]
@@ -107,4 +148,5 @@ export interface ChatMessage {
   kind?: 'normal' | 'error' | 'clarify'
   options?: string[]
   trace?: string[]
+  semanticStatus?: 'draft' | 'published'
 }

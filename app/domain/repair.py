@@ -57,33 +57,54 @@ def _supports(metric, dim: str) -> bool:
     return dim in (metric.raw.get("supported_grain") or [])
 
 
+def _preferred_metrics(sem: SemanticLayer) -> list:
+    selected = [m for m in sem.metrics.values() if m.raw.get("selected", True)]
+    return selected or list(sem.metrics.values())
+
+
+def _filter_context(sem: SemanticLayer, filters: dict) -> list[tuple[str, str, str]]:
+    out: list[tuple[str, str, str]] = []
+    for dim_id, spec in filters.items():
+        if dim_id not in sem.dimensions:
+            continue
+        value = _first_value(spec)
+        if not value:
+            continue
+        label = sem.dimensions[dim_id].raw.get("name_zh", dim_id)
+        out.append((dim_id, label, value))
+    return out
+
+
 def build_repair(sem: SemanticLayer, slots,
                  unknown: list[str] | None = None) -> dict:
     data = _as_dict(slots)
     filters = data.get("filters") or {}
-    product = _first_value(filters.get("product"))
     period = time_label(data.get("time"))
     requested = sem.metrics.get(data.get("metric") or "")
+    selected = _preferred_metrics(sem)
+    contexts = _filter_context(sem, filters)
 
-    product_metrics = [m for m in _aggregate_metrics(sem) if _supports(m, "product")]
     options: list[str] = []
-    if product:
-        for m in product_metrics[:3]:
-            options.append(f"{product}的{m.name}是多少？")
-        if requested and not _supports(requested, "product"):
-            scope = f"{period}全部已送达订单" if period else "全部已送达订单"
-            options.append(f"{scope}的{requested.name}是多少？")
-    else:
-        pool = []
-        if requested:
-            pool.append(requested)
-        for mid in ("gmv", "item_count", "order_count"):
-            m = sem.metrics.get(mid)
-            if m and m not in pool:
-                pool.append(m)
-        for m in pool[:3]:
+    primary_dim = None
+    primary_value = None
+    for dim_id, _label, value in contexts:
+        compatible = [m for m in selected if _supports(m, dim_id)]
+        if compatible:
+            primary_dim, primary_value = dim_id, value
+            for metric in compatible[:3]:
+                options.append(f"{value}的{metric.name}是多少？")
+            break
+
+    if requested and primary_dim and not _supports(requested, primary_dim):
+        prefix = f"{period}的" if period else ""
+        options.append(f"{prefix}{requested.name}是多少？")
+    if not options:
+        pool = ([requested] if requested else []) + [
+            m for m in selected if m is not requested
+        ]
+        for metric in pool[:3]:
             prefix = f"{period}的" if period else ""
-            options.append(f"{prefix}{m.name}是多少？")
+            options.append(f"{prefix}{metric.name}是多少？")
 
     options = list(dict.fromkeys(options))[:4]
 
@@ -94,14 +115,16 @@ def build_repair(sem: SemanticLayer, slots,
         note = "当前口径下这个指标不能按所问维度计算。"
 
     clarification = None
-    if product and requested and not _supports(requested, "product") and product_metrics:
-        scope = f"{period}全部已送达订单" if period else "全部已送达订单"
-        clarification = (
-            f"你是想看「{product}」的{product_metrics[0].name}，"
-            f"还是「{scope}」的{requested.name}？"
-        )
-    elif product:
-        clarification = f"你想先看「{product}」的哪项指标？"
+    if primary_dim and requested and not _supports(requested, primary_dim):
+        compatible = [m for m in selected if _supports(m, primary_dim)]
+        if compatible:
+            prefix = f"{period}的" if period else ""
+            clarification = (
+                f"你是想看「{primary_value}」的{compatible[0].name}，"
+                f"还是「{prefix}全部数据」的{requested.name}？"
+            )
+    elif primary_dim:
+        clarification = f"你想先看「{primary_value}」的哪项指标？"
 
     return {
         "note": note,

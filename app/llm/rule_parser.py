@@ -106,10 +106,21 @@ class RuleParser:
             "order_payments.payment_type": "payment_type",
         }
         index: list[tuple[str, str]] = []
-        for key, dim in key_dim.items():
-            for v in self.dim_values.get("values", {}).get(key, []):
-                if isinstance(v, str) and len(v) >= 2:
-                    index.append((v, dim))
+        values = self.dim_values.get("values", {})
+        if self.sem.parser == "ecommerce":
+            for key, dim in key_dim.items():
+                for v in values.get(key, []):
+                    if isinstance(v, str) and len(v) >= 2:
+                        index.append((v, dim))
+        if self.sem.raw.get("generic"):
+            for dim in self.sem.dimensions.values():
+                if dim.kind == "time":
+                    continue
+                key = dim.raw.get("filter_lookup") or dim.raw.get("column")
+                for v in values.get(key, []) if key else []:
+                    text = str(v)
+                    if len(text) >= 2 and not re.fullmatch(r"-?\d+(\.\d+)?", text):
+                        index.append((text, dim.id))
         for key, aliases in (self.dim_values.get("aliases") or {}).items():
             dim = key_dim.get(key)
             if not dim:
@@ -132,6 +143,11 @@ class RuleParser:
         # "客户 + 至少2笔" without the word 复购
         if re.search(r"(客户|买家|人).*(?:至少|不少于|完成).{0,6}[2二两]\s*笔", text):
             hits.append(("repeat_customer_count", "至少2笔"))
+        # Generic datasets: match the semantic layer's names/synonyms directly.
+        for metric in self.sem.metrics.values():
+            for term in [metric.name, *metric.synonyms]:
+                if term and len(str(term)) >= 2 and str(term).lower() in low:
+                    hits.append((metric.id, str(term)))
         # de-duplicate by metric, keeping the longest matched term
         best: dict[str, str] = {}
         for mid, term in hits:
@@ -141,6 +157,12 @@ class RuleParser:
 
     # ---------- time ----------
     def _latest_month(self) -> tuple[int, int]:
+        if self.sem.raw.get("generic") and self.sem.time_range[1]:
+            try:
+                end = date.fromisoformat(str(self.sem.time_range[1]))
+                return end.year, end.month
+            except ValueError:
+                pass
         return 2025, 12
 
     def _parse_time(self, text: str):
@@ -148,15 +170,15 @@ class RuleParser:
 
         if re.search(r"本月|这个月", text):
             s, e = _month_bounds(latest_y, latest_m)
-            return (s, _clamp(e, self.sem)), "按数据最新月份理解为本月（2025-12）"
+            return (s, _clamp(e, self.sem)), f"按数据最新月份理解为本月（{latest_y}-{latest_m:02d}）"
         if re.search(r"上月|上个月", text):
             y, m = (latest_y, latest_m - 1) if latest_m > 1 else (latest_y - 1, 12)
             s, e = _month_bounds(y, m)
             return (s, _clamp(e, self.sem)), f"按数据最新月份理解 {y}-{m:02d}"
         if "今年" in text:
-            return (date(2025, 1, 1), _clamp(date(2026, 1, 1), self.sem)), "今年=2025"
+            return (date(latest_y, 1, 1), _clamp(date(latest_y + 1, 1, 1), self.sem)), f"今年={latest_y}"
         if "去年" in text:
-            return (date(2024, 1, 1), date(2025, 1, 1)), "去年=2024"
+            return (date(latest_y - 1, 1, 1), date(latest_y, 1, 1)), f"去年={latest_y - 1}"
         m = re.search(r"(?:近|最近)\s*(\d+)\s*个月", text)
         if m:
             n = max(1, int(m.group(1)))
@@ -308,6 +330,15 @@ class RuleParser:
         if ("低分" in text or "差评" in text) and any(c in text for c in ["按", "分别", "区分"]):
             dims.append("low_score")
             explicit = True
+        if self.sem.raw.get("generic"):
+            cues = list(self.GROUP_CUES) + ["按", "各", "每", "分"]
+            for dim in self.sem.dimensions.values():
+                if dim.kind == "time":
+                    continue
+                names = [dim.raw.get("name_zh", dim.id), *dim.raw.get("synonyms", [])]
+                if any(str(n) and str(n) in text for n in names) and any(c in text for c in cues):
+                    dims.append(dim.id)
+                    explicit = True
         return list(dict.fromkeys(dims)), explicit
 
     # ---------- filters ----------
@@ -472,11 +503,239 @@ class RuleParser:
             return None
         if any(phrase == t for _, terms in self.METRIC_PATTERNS for t in terms):
             return None
+        for metric in self.sem.metrics.values():
+            if phrase in {metric.name, *metric.synonyms}:
+                return None
         return phrase
+
+    # ---------- generic datasets ----------
+    GENERIC_UNSUPPORTED = {
+        "利润": "当前数据没有成本/费用字段，无法计算利润。",
+        "毛利": "当前数据没有成本字段，无法计算毛利。",
+        "退款": "当前数据没有退款状态或退款金额。",
+        "库存": "当前数据没有库存字段。",
+        "转化率": "当前数据没有曝光/访问数据，无法计算转化率。",
+    }
+
+    def _generic_metric_hits(self, text: str) -> list[tuple[str, str]]:
+        low = text.lower()
+        by_term: dict[str, list[str]] = {}
+        for metric in self.sem.metrics.values():
+            for term in [metric.name, *metric.synonyms]:
+                term = str(term or "")
+                if len(term) >= 2 and term.lower() in low:
+                    by_term.setdefault(term, []).append(metric.id)
+        hits: list[tuple[str, str]] = []
+        for term, mids in by_term.items():
+            if len(mids) == 1:
+                hits.append((mids[0], term))
+                continue
+            names = {self.sem.metric(mid).name for mid in mids}
+            if len(names) > 1:
+                hits.extend((mid, term) for mid in mids)
+                continue
+            selected = [
+                mid for mid in mids
+                if self.sem.metric(mid).raw.get("selected")
+            ]
+            pool = selected or mids
+            best = max(
+                pool,
+                key=lambda mid: float(self.sem.metric(mid).raw.get("confidence") or 0),
+            )
+            hits.append((best, term))
+        best_by_metric: dict[str, str] = {}
+        for mid, term in hits:
+            if len(term) > len(best_by_metric.get(mid, "")):
+                best_by_metric[mid] = term
+        return [(mid, term) for mid, term in best_by_metric.items()]
+
+    def _generic_dims(self, text: str,
+                      allowed: set[str] | None = None) -> list[str]:
+        dims: list[str] = []
+        if re.search(r"按月|每月|月度|各月|趋势", text):
+            if allowed is None or "month" in allowed:
+                dims.append("month")
+        cues = ["按", "各", "每", "分", "分别", "对比", "最高", "最低", "最多", "最少", "排名"]
+        if not any(c in text for c in cues):
+            return list(dict.fromkeys(dims))
+        matches: list[tuple[str, str]] = []
+        for dim in self.sem.dimensions.values():
+            if dim.kind == "time" or dim.id == "month":
+                continue
+            if allowed is not None and dim.id not in allowed:
+                continue
+            names = [dim.raw.get("name_zh", dim.id), *dim.raw.get("synonyms", [])]
+            for name in names:
+                term = str(name or "")
+                if len(term) >= 2 and term in text:
+                    matches.append((term, dim.id))
+        matches.sort(key=lambda item: len(item[0]), reverse=True)
+        kept_terms: list[str] = []
+        for term, dim_id in matches:
+            if dim_id in dims:
+                continue
+            if any(term in existing for existing in kept_terms):
+                continue
+            dims.append(dim_id)
+            kept_terms.append(term)
+        return list(dict.fromkeys(dims))
+
+    def _generic_rank(self, text: str) -> tuple[list[dict], int]:
+        limit = 100
+        m = re.search(r"(?:前|top)\s*(\d+)", text.lower())
+        if m:
+            limit = max(1, min(int(m.group(1)), 200))
+        desc = any(w in text for w in ["最高", "最多", "最大", "排名", "前", "top", "降序"])
+        asc = any(w in text for w in ["最低", "最少", "最小", "升序"])
+        if desc:
+            return [{"field": "value", "direction": "desc"}], limit
+        if asc:
+            return [{"field": "value", "direction": "asc"}], limit
+        return [], limit
+
+    def _count_metric_for_noun(self, text: str) -> str | None:
+        match = re.search(
+            r"(?:多少|几)\s*(?:种|个|款|类|位|名|家)?\s*([\u4e00-\u9fffA-Za-z_]{2,8})",
+            text,
+        )
+        if not match:
+            return None
+        noun = match.group(1)
+        candidates = []
+        for metric in self.sem.metrics.values():
+            expr = str(metric.raw.get("expr") or "").upper()
+            if noun in metric.name and ("数" in metric.name or "COUNT(DISTINCT" in expr):
+                candidates.append(metric)
+        if not candidates:
+            return None
+        selected = [m for m in candidates if m.raw.get("selected", True)]
+        return (selected or candidates)[0].id
+
+    def _generic_lookup_dim(self, text: str) -> str | None:
+        if not re.search(
+            r"有哪些|哪些|列出|列举|所有|全部|清单|列表|包含|包括|"
+            r"多少种|几种|多少个|多少款",
+            text,
+        ):
+            return None
+        matches: list[tuple[str, str]] = []
+        for dim in self.sem.dimensions.values():
+            if dim.kind == "time" or dim.id == "month":
+                continue
+            names = [dim.raw.get("name_zh", dim.id), *dim.raw.get("synonyms", [])]
+            for name in names:
+                term = str(name or "")
+                if len(term) >= 2 and term in text:
+                    matches.append((term, dim.id))
+        if not matches:
+            return None
+        matches.sort(key=lambda item: len(item[0]), reverse=True)
+        return matches[0][1]
+
+    def _parse_generic(self, text: str, context: dict) -> ParseResult:
+        prev = context.get("slots") or {}
+        notes: list[str] = []
+        hits = self._generic_metric_hits(text)
+
+        if any(w in text for w in ["口径", "定义", "什么意思", "含义", "怎么算", "如何计算"]):
+            if hits:
+                return self._explain(text, hits)
+
+        for word, reason in self.GENERIC_UNSUPPORTED.items():
+            if word in text:
+                return ParseResult(
+                    intent_type="unsupported", tier="A", confidence=0.9,
+                    explanation=reason + " 可以换一个已定义的指标再问。",
+                )
+
+        time_range, time_note = self._parse_time(text)
+        if time_note:
+            notes.append(time_note)
+        masked = text
+        for _mid, term in sorted(hits, key=lambda item: len(item[1]), reverse=True):
+            if term:
+                masked = masked.replace(term, " ")
+        filters, _spans = self._parse_filters(masked)
+        dims = self._generic_dims(masked)
+        order_by, limit = self._generic_rank(text)
+
+        if not hits:
+            count_metric = self._count_metric_for_noun(text)
+            if count_metric:
+                hits = [(count_metric, "")]
+            else:
+                lookup_dim = self._generic_lookup_dim(masked)
+                if lookup_dim and self.sem.capabilities.get("member_list", True):
+                    return ParseResult(
+                        intent_type="lookup", tier="A", confidence=0.7,
+                        lookup_dim=lookup_dim,
+                        slots={
+                            "intent": "lookup",
+                            "dimensions": [lookup_dim],
+                            "filters": filters,
+                            "time": time_range,
+                        },
+                        notes=notes + ["规则解析：维度成员清单"],
+                    )
+
+        if not hits and prev.get("metric") and re.search(r"那|呢|再|按|只看|改成|改为", text):
+            hits = [(prev["metric"], "")]
+            if not dims and not re.search(r"按|各|每|分", text):
+                dims = list(prev.get("dimensions") or [])
+            if not filters:
+                filters = dict(prev.get("filters") or {})
+            if not time_range and prev.get("time"):
+                time_range = prev["time"]
+            notes.append("沿用上一轮指标")
+
+        if not hits:
+            if not dims and not filters and not time_range:
+                return ParseResult(
+                    intent_type="unsupported", tier="C", confidence=0.4,
+                    explanation=(
+                        "这个问题没有对应到当前数据源中已定义的指标。"
+                        "可以问：" + "、".join(m.name for m in list(self.sem.metrics.values())[:8])
+                        + "，并指定时间或维度。"
+                    ),
+                )
+            return ParseResult(
+                intent_type="query", tier="A", confidence=0.2,
+                slots={"metric": None, "dimensions": dims, "filters": filters},
+                unresolved=[text],
+                notes=["没有识别出指标"],
+            )
+
+        top_len = max(len(t) for _, t in hits)
+        top = [mid for mid, t in hits if len(t) == top_len]
+        if len(set(top)) > 1:
+            return ParseResult(
+                intent_type="query", tier="A", confidence=0.4,
+                unresolved=[text],
+                notes=["指标不唯一：" + "、".join(sorted(set(top)))],
+            )
+        chosen = top[0]
+        metric = self.sem.metric(chosen)
+        allowed = set(metric.supported_grain)
+        kept_dims = self._generic_dims(masked, allowed)
+        if not kept_dims:
+            kept_dims = [d for d in dims if d in allowed]
+        dropped_filters = [d for d in filters if d not in allowed]
+        kept_filters = {d: v for d, v in filters.items() if d in allowed}
+        if dropped_filters:
+            notes.append("已忽略与指标粒度不兼容的筛选：" + "、".join(dropped_filters))
+        slots = self._slots(chosen, kept_dims, time_range, kept_filters, [], None,
+                            order_by, limit, text, notes)
+        return ParseResult(
+            intent_type="query", tier="A", confidence=0.8,
+            slots=slots, notes=notes,
+        )
 
     # ---------- main ----------
     def parse(self, text: str, context: dict) -> ParseResult:
         text = normalize_text(text)
+        if self.sem.parser != "ecommerce":
+            return self._parse_generic(text, context)
         prev = context.get("slots") or {}
         notes: list[str] = []
 

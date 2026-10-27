@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from app.config.settings import WAREHOUSE_PATH
 from app.domain.checks import CheckIssue, run_checks, run_member_list_checks
 from app.domain.compiler import Compiled, compile_plan
 from app.domain.executor import ResultSet, execute
@@ -52,29 +53,32 @@ def prepare(plan: QueryPlan, sem: SemanticLayer) -> tuple[Compiled, list[Issue]]
     return compiled, plan_issues + sql_issues
 
 
-def execute_prepared(compiled: Compiled) -> ResultSet:
-    return execute(compiled)
+def execute_prepared(compiled: Compiled, db_path=WAREHOUSE_PATH) -> ResultSet:
+    return execute(compiled, db_path=db_path)
 
 
-def check(plan: QueryPlan, sem: SemanticLayer, result: ResultSet):
+def check(plan: QueryPlan, sem: SemanticLayer, result: ResultSet,
+          db_path=WAREHOUSE_PATH, quality: dict | None = None):
     if plan.kind == "member_list":
         return run_member_list_checks(plan, result)
-    return run_checks(plan, sem.metric(plan.metric), result, sem)
+    return run_checks(plan, sem.metric(plan.metric), result, sem,
+                      db_path=db_path, quality=quality)
 
 
-def run_query(plan: QueryPlan, sem: SemanticLayer) -> QueryOutcome:
+def run_query(plan: QueryPlan, sem: SemanticLayer,
+              db_path=WAREHOUSE_PATH, quality: dict | None = None) -> QueryOutcome:
     try:
         compiled, issues = prepare(plan, sem)
     except PipelineError as exc:
         return QueryOutcome(ok=False, plan=plan, plan_issues=exc.issues, error=str(exc))
 
     try:
-        result = execute_prepared(compiled)
+        result = execute_prepared(compiled, db_path=db_path)
     except Exception as exc:  # timeout / execution error
         return QueryOutcome(ok=False, plan=plan, compiled=compiled,
                             plan_issues=issues, error=str(exc))
 
-    checks, facts = check(plan, sem, result)
+    checks, facts = check(plan, sem, result, db_path=db_path, quality=quality)
     blocked = any(c.severity == "error" for c in checks)
     return QueryOutcome(
         ok=not blocked,

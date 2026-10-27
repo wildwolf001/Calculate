@@ -7,6 +7,7 @@ import {
   getMeta,
   getResult,
   getSessionEvents,
+  listDatasets,
   listSessions,
   streamTurn,
 } from '../api'
@@ -14,6 +15,7 @@ import type {
   ApiEvent,
   ChatMessage,
   CheckIssue,
+  DatasetSummary,
   HistoryItem,
   InterpretationEntry,
   Meta,
@@ -25,6 +27,8 @@ import type {
 
 const GREETING =
   '你好，我是明账。已连接只读电商数仓，可以问订单、销售额、品类、商家、履约和评价类问题。'
+const NO_DATA_GREETING =
+  '还没有可用的数据源。请先在「数据管理」页导入 CSV/Excel，确认口径并发布，然后回来提问。'
 
 const SUGGESTIONS = [
   '2024年1月至2025年12月的商品销售额',
@@ -52,6 +56,8 @@ const STAGE_LABELS: Record<string, string> = {
 
 interface State {
   sessionId: string
+  datasetId: string
+  datasets: DatasetSummary[]
   status: string
   busy: boolean
   busySince: number
@@ -83,6 +89,8 @@ interface State {
 export const useSessionStore = defineStore('session', {
   state: (): State => ({
     sessionId: '',
+    datasetId: '',
+    datasets: [],
     status: 'IDLE',
     busy: false,
     busySince: 0,
@@ -111,7 +119,21 @@ export const useSessionStore = defineStore('session', {
     drawerOpen: false,
   }),
   getters: {
-    suggestions: () => SUGGESTIONS,
+    suggestions: (s) => {
+      if (!s.datasetId || !s.meta) return []
+      const demo = s.meta.dataset_id === 'ds_ecommerce_demo'
+        || s.meta.dataset === 'ecommerce_agent_demo'
+      if (demo) return SUGGESTIONS
+      return (s.meta.metrics || []).slice(0, 4).map((m) => `${m.name}是多少？`)
+    },
+    greeting: (s) => {
+      if (!s.datasetId || !s.meta) return NO_DATA_GREETING
+      const demo = s.meta.dataset_id === 'ds_ecommerce_demo'
+        || s.meta.dataset === 'ecommerce_agent_demo'
+      if (demo) return GREETING
+      const mode = s.meta.mode === 'draft' ? '自动推断口径，尚未经业务确认' : '口径已确认'
+      return `你好，我是明账。当前数据源「${s.meta.dataset || s.datasetId}」，包含 ${s.meta.metrics.length} 个指标（${mode}）。可以问计数、合计、平均、按维度分组等基础问题。`
+    },
     hasResult: (s) => !!s.result,
     blocks: (s) => s.checks.filter((c) => c.severity === 'error'),
     activePlan: (s): PlanSummary | null =>
@@ -120,13 +142,47 @@ export const useSessionStore = defineStore('session', {
   actions: {
     async init() {
       try {
-        this.meta = await getMeta()
-        this.sessionId = await createSession()
+        await this.refreshDatasets()
+        if (!this.datasetId) {
+          this.meta = null
+          this.sessionId = ''
+          this.messages = []
+          this.addAssistant(NO_DATA_GREETING)
+          return
+        }
+        this.meta = await getMeta(this.datasetId)
+        this.sessionId = await createSession(this.datasetId)
         await this.refreshHistory()
         await this.loadSessions()
-        this.addAssistant(GREETING)
+        this.addAssistant(this.greeting)
       } catch (err: any) {
         this.toast = `初始化失败：${err.message || err}`
+      }
+    },
+    async refreshDatasets() {
+      try {
+        const data = await listDatasets()
+        this.datasets = data.datasets
+        if (!this.datasetId) {
+          this.datasetId = data.default || data.datasets[0]?.dataset_id || ''
+        }
+      } catch {
+        /* non-critical */
+      }
+    },
+    async switchDataset(datasetId: string) {
+      if (this.busy || !datasetId || datasetId === this.datasetId) return
+      try {
+        this.datasetId = datasetId
+        this.meta = await getMeta(datasetId)
+        this.resetConversation()
+        this.sessionId = await createSession(datasetId)
+        this.addAssistant(this.greeting)
+        await this.refreshHistory()
+        await this.loadSessions()
+        this.setToast(`已切换数据源：${this.meta.dataset}`)
+      } catch (err: any) {
+        this.setToast(`切换数据源失败：${err.message || err}`)
       }
     },
     resetConversation() {
@@ -166,11 +222,15 @@ export const useSessionStore = defineStore('session', {
     },
     async newChat() {
       if (this.busy) return
+      if (!this.datasetId) {
+        this.setToast('请先在数据管理页导入数据源')
+        return
+      }
       try {
-        const sid = await createSession()
+        const sid = await createSession(this.datasetId)
         this.resetConversation()
         this.sessionId = sid
-        this.addAssistant(GREETING)
+        this.addAssistant(this.greeting)
         this.drawerOpen = false
         await this.loadSessions()
         await this.refreshHistory()
@@ -185,6 +245,16 @@ export const useSessionStore = defineStore('session', {
       }
       try {
         const events = await getSessionEvents(sessionId)
+        const created = events.find((ev) => ev.type === 'session.created')
+        const datasetId = created?.payload?.dataset_id
+        if (datasetId) {
+          this.datasetId = datasetId
+          try {
+            this.meta = await getMeta(datasetId)
+          } catch {
+            /* keep the previous meta */
+          }
+        }
         this.resetConversation()
         this.sessionId = sessionId
         for (const ev of events) {
@@ -233,6 +303,10 @@ export const useSessionStore = defineStore('session', {
     },
     async ask(text: string) {
       const content = text.trim()
+      if (!this.datasetId) {
+        this.setToast('请先在数据管理页导入数据源')
+        return
+      }
       if (!content || this.busy || !this.sessionId) return
       this.addUser(content)
       this.busy = true
@@ -309,9 +383,11 @@ export const useSessionStore = defineStore('session', {
           }
           break
         }
-        case 'answer.composed':
-          this.addAssistant(p.text || '', 'normal', p.options || undefined)
+        case 'answer.composed': {
+          const message = this.addAssistant(p.text || '', 'normal', p.options || undefined)
+          if (p.semantic_status === 'draft') message.semanticStatus = 'draft'
           break
+        }
         case 'ambiguity.detected':
           this.pending = p
           this.addAssistant(p.message || '需要确认一下。', 'clarify', p.candidates || [])

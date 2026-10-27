@@ -5,6 +5,7 @@ import asyncio
 
 import pytest
 
+from app.config.settings import DATASET_DIR
 from app.core.controller import Controller
 from app.core.event_store import EventStore
 from app.core.interfaces import ParseResult
@@ -14,6 +15,14 @@ from app.llm.client import LLMTruncated
 from app.llm.compose_answer import LLMComposer, TemplateComposer
 from app.llm.parse_intent import LLMIntentParser
 from app.llm.rule_parser import RuleParser
+
+_DATA_AVAILABLE = (
+    (DATASET_DIR / "dataset.json").exists()
+    and (DATASET_DIR / "warehouse.duckdb").exists()
+)
+pytestmark = pytest.mark.skipif(
+    not _DATA_AVAILABLE, reason="未导入默认数据源"
+)
 
 
 def make(store, sem, parser=None):

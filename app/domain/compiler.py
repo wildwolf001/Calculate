@@ -135,7 +135,9 @@ class _Builder:
             expr = self.metric.raw.get(expr_key)
             if isinstance(expr, str):
                 needed |= self._expr_tables(expr)
-        needed |= self._expr_tables(self.metric.raw.get("time_via", ""))
+        time_via = self.metric.raw.get("time_via")
+        if isinstance(time_via, str):
+            needed |= self._expr_tables(time_via)
         for ref in self.metric.raw.get("scope", {}):
             needed.add(self._table_of(ref))
         # dimensions & filters
@@ -160,30 +162,55 @@ class _Builder:
         # BFS over the join graph, starting at fact.
         from collections import deque
 
-        adj: dict[str, list[tuple[str, str, str]]] = {}
+        adj: dict[str, list[tuple[str, str, str, str]]] = {}
         for src, targets in self.sem.joins.items():
             for dst, spec in targets.items():
-                adj.setdefault(src, []).append((dst, spec["on"], "forward"))
-                adj.setdefault(dst, []).append((src, spec["on"], "reverse"))
+                left = spec.get("left") or spec.get("on")
+                right = spec.get("right") or spec.get("on")
+                if not left or not right:
+                    raise SemanticError(f"join {src}->{dst} 缺少连接列")
+                adj.setdefault(src, []).append((dst, left, right, "forward"))
+                adj.setdefault(dst, []).append((src, right, left, "reverse"))
 
         needed = self._needed_tables()
+        parent: dict[str, tuple[str, str, str, str, int] | None] = {fact: None}
+        depth: dict[str, int] = {fact: 0}
         seen = {fact}
         queue = deque([fact])
-        joins: list[str] = []
         while queue:
             node = queue.popleft()
-            for dst, on, direction in adj.get(node, []):
+            for dst, node_col, dst_col, direction in adj.get(node, []):
                 if dst in seen:
                     continue
-                if dst not in needed:
-                    continue
                 seen.add(dst)
-                if direction == "forward":
-                    joins.append(f"JOIN {_q(dst)} ON {_q(node)}.{_q(on)} = {_q(dst)}.{_q(on)}")
-                else:
-                    joins.append(f"JOIN {_q(dst)} ON {_q(dst)}.{_q(on)} = {_q(node)}.{_q(on)}")
+                parent[dst] = (node, node_col, dst_col, direction, depth[node])
+                depth[dst] = depth[node] + 1
                 queue.append(dst)
-        for line in joins:
+
+        # A needed table may be several hops away. Walk its parent chain so
+        # intermediate tables are joined too (e.g. order_items -> products ->
+        # categories for COUNT(DISTINCT categories.id)).
+        edges: dict[frozenset, tuple[int, str]] = {}
+        for target in needed:
+            if target == fact:
+                continue
+            if target not in parent:
+                raise SemanticError(
+                    f"指标 {self.metric.id} 需要的表 {target} 无法从事实表 {fact} 关联"
+                )
+            cur = target
+            while parent[cur] is not None:
+                node, node_col, dst_col, direction, node_depth = parent[cur]
+                key = frozenset((node, cur))
+                if key not in edges:
+                    if direction == "forward":
+                        cond = f"{_q(node)}.{_q(node_col)} = {_q(cur)}.{_q(dst_col)}"
+                    else:
+                        cond = f"{_q(cur)}.{_q(dst_col)} = {_q(node)}.{_q(node_col)}"
+                    edges[key] = (node_depth, f"JOIN {_q(cur)} ON {cond}")
+                cur = node
+
+        for line in [line for _d, line in sorted(edges.values(), key=lambda x: x[0])]:
             clause += "\n  " + line
         self.tables_used |= seen
         return clause
@@ -286,7 +313,12 @@ class _Builder:
         ]
         if self.plan.dimensions:
             sql.append("GROUP BY " + ", ".join(str(i + 1) for i in range(len(self.plan.dimensions))))
-        sql.append(self._having_clause({"order_count": "COUNT(DISTINCT orders.order_id)"}))
+        grain = (self.sem.tables.get(self.metric.fact) or {}).get("grain") or []
+        having_count = (
+            f"COUNT(DISTINCT {self.phys(f'{self.metric.fact}.{grain[0]}')})"
+            if grain else "COUNT(*)"
+        )
+        sql.append(self._having_clause({"order_count": having_count}))
         order = self._order_clause(set(self.plan.dimensions) | {"value"})
         if order:
             sql.append(order)
@@ -295,11 +327,19 @@ class _Builder:
         return self._finalize("\n".join(x for x in sql if x), columns)
 
     def _compile_ratio(self) -> Compiled:
-        grain_key_name = self.plan.ratio_grain or self.metric.raw.get("ratio_grain") or self.sem.policies.get("ratio_grain", "order")
-        key_map = {"order": "orders.order_id", "review": "order_reviews.review_id"}
-        if grain_key_name not in key_map:
-            raise SemanticError(f"未知 ratio_grain: {grain_key_name}")
-        key = self.phys(key_map[grain_key_name])
+        if not self.sem.capabilities.get("ratio", True):
+            raise SemanticError("当前数据源未启用比率指标能力")
+        grain_key_name = self.plan.ratio_grain or self.metric.raw.get("ratio_grain") or "fact"
+        ratio_key = self.metric.raw.get("ratio_key")
+        if ratio_key:
+            key = self.phys(str(ratio_key))
+        else:
+            grain = (self.sem.tables.get(self.metric.fact) or {}).get("grain") or []
+            if not grain:
+                raise SemanticError(
+                    f"比率指标 {self.metric.id} 没有可用的分母粒度"
+                )
+            key = self.phys(f"{self.metric.fact}.{grain[0]}")
         num = self.metric.raw.get("grain_numerator")
         den = self.metric.raw.get("grain_denominator")
         if not num or not den:
@@ -336,6 +376,8 @@ class _Builder:
                               {"ratio_grain": grain_key_name})
 
     def _compile_entity(self) -> Compiled:
+        if not self.sem.capabilities.get("entity_count", True):
+            raise SemanticError("当前数据源未启用实体计数能力")
         entity = self.metric.raw.get("entity")
         count_orders = self.metric.raw.get("count_orders")
         min_orders = int(self.metric.raw.get("min_orders", 2))
@@ -534,123 +576,115 @@ def compile_plan(plan: QueryPlan, sem: SemanticLayer) -> Compiled:
 # semantic dimension declaration and the declared join graph, and every filter
 # is a bound parameter. This is the *only* place list SQL is assembled.
 
-def _join_graph(sem: SemanticLayer) -> dict[str, list[tuple[str, str]]]:
-    graph: dict[str, list[tuple[str, str]]] = {}
+def _join_graph(sem: SemanticLayer) -> dict[str, list[tuple[str, str, str]]]:
+    """node -> [(neighbor, node_column, neighbor_column)]"""
+    graph: dict[str, list[tuple[str, str, str]]] = {}
     for child, links in (sem.raw.get("joins") or {}).items():
         for parent, info in links.items():
-            on = info.get("on")
-            if not on:
+            left = info.get("left") or info.get("on")
+            right = info.get("right") or info.get("on")
+            if not left or not right:
                 continue
-            graph.setdefault(child, []).append((parent, on))
-            graph.setdefault(parent, []).append((child, on))
+            graph.setdefault(child, []).append((parent, left, right))
+            graph.setdefault(parent, []).append((child, right, left))
     return graph
 
 
-def _bfs_from(graph: dict[str, list[tuple[str, str]]], base: str):
+def _bfs_from(graph: dict[str, list[tuple[str, str, str]]], base: str):
     from collections import deque
 
-    prev: dict[str, tuple[str, str] | None] = {base: None}
+    prev: dict[str, tuple[str, str, str] | None] = {base: None}
     depth = {base: 0}
     queue = deque([base])
     while queue:
         node = queue.popleft()
-        for nxt, on in graph.get(node, []):
+        for nxt, node_col, nxt_col in graph.get(node, []):
             if nxt in prev:
                 continue
-            prev[nxt] = (node, on)
+            prev[nxt] = (node, node_col, nxt_col)
             depth[nxt] = depth[node] + 1
             queue.append(nxt)
     return prev, depth
 
 
-def _path_edges(prev, target: str) -> list[tuple[str, str, str]]:
+def _path_edges(prev, target: str) -> list[tuple[str, str, str, str]]:
+    """Return edges from base to target: (parent, child, parent_col, child_col)."""
     if target not in prev:
         raise SemanticError(f"join 图中找不到到 {target} 的路径")
-    edges: list[tuple[str, str, str]] = []
+    edges: list[tuple[str, str, str, str]] = []
     cur = target
     while prev[cur] is not None:
-        parent, on = prev[cur]
-        edges.append((parent, cur, on))
+        parent, parent_col, child_col = prev[cur]
+        edges.append((parent, cur, parent_col, child_col))
         cur = parent
+    edges.reverse()
     return edges
 
 
 def _compile_member_list(plan: QueryPlan, sem: SemanticLayer) -> Compiled:
+    if not sem.capabilities.get("member_list", True):
+        raise SemanticError("当前数据源未启用维度成员清单能力")
     dim = sem.dimension(plan.list_dim or "")
     raw = dim.raw
     base_ref = raw.get("column") or ""
     base_table, _, base_col = base_ref.partition(".")
+    if not base_table or not base_col:
+        raise SemanticError("成员清单维度缺少物理列")
+
+    coverage = sem.capabilities.get("member_list_coverage") or {}
+    coverage_fact = coverage.get("fact")
+    coverage_key = coverage.get("key")
+    coverage_label = coverage.get("label") or "记录数"
+    coverage_time = coverage.get("time_column")
 
     graph = _join_graph(sem)
     prev, depth = _bfs_from(graph, base_table)
 
-    # Filters are part of the member scope; orders is always needed for the
-    # coverage column.
     filter_defs: list[tuple[str, str, object]] = []
-    filter_targets: set[str] = set()
+    targets: set[str] = set()
     for fdim, spec in plan.filters.items():
         draw = sem.dimension(fdim).raw
         ref = draw.get("filter_column") or draw.get("column")
         if not ref:
             raise SemanticError(f"维度 {fdim} 不能作为过滤条件")
         ftable, _, fcol = ref.partition(".")
-        filter_targets.add(ftable)
+        if ftable == base_table:
+            filter_defs.append((ftable, fcol, spec))
+            continue
+        targets.add(ftable)
         filter_defs.append((ftable, fcol, spec))
 
-    targets = set(filter_targets)
-    targets.add("orders")
+    if coverage_fact and coverage_fact != base_table:
+        targets.add(coverage_fact)
 
-    # Collect the join tree and remember which edges are required by a filter
-    # or by the time window (those are INNER); the coverage-only path to orders
-    # stays LEFT so zero-coverage members still appear.
-    edge_order: list[tuple[str, str, str]] = []
-    seen: set[frozenset] = set()
-    inner: set[frozenset] = set()
+    edge_order: list[tuple[str, str, str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    inner: set[tuple[str, str]] = set()
+    filter_targets = {t for t, _c, _s in filter_defs if t != base_table}
     for target in sorted(targets, key=lambda t: depth.get(t, 10**6)):
-        for parent, child, on in _path_edges(prev, target):
-            key = frozenset((parent, child))
+        for parent, child, parent_col, child_col in _path_edges(prev, target):
+            key = (parent, child)
             if key not in seen:
                 seen.add(key)
-                edge_order.append((parent, child, on))
-            if target in filter_targets or (plan.time and target == "orders"):
+                edge_order.append((parent, child, parent_col, child_col))
+            if target in filter_targets:
                 inner.add(key)
     edge_order.sort(key=lambda e: depth.get(e[1], 0))
 
-    # Stable aliases: base = b, then every joined table in join order.
     alias: dict[str, str] = {base_table: "b"}
-    for i, (_parent, child, _on) in enumerate(edge_order, start=1):
+    for i, (_parent, child, _pc, _cc) in enumerate(edge_order, start=1):
         alias.setdefault(child, f"t{i}")
-    if "orders" not in alias:
-        alias["orders"] = "b"  # base table is orders
 
     params: list = []
 
-    def col(table: str, logical: str) -> str:
-        return f"{alias[table]}.{_q(sem.column(f'{table}.{logical}'))}"
+    def phys(table: str, column: str) -> str:
+        return f"{alias[table]}.{_q(sem.column(f'{table}.{column}'))}"
 
-    value_expr = f"{alias[base_table]}.{_q(sem.column(base_ref))}"
-
-    joins: list[str] = []
-    for parent, child, on in edge_order:
-        kind = "INNER" if frozenset((parent, child)) in inner else "LEFT"
-        cond = f"{col(parent, on)} = {col(child, on)}"
-        if child == "orders":
-            status_col = sem.column("orders.order_status")
-            cond += f" AND {alias['orders']}.{_q(status_col)} = ?"
-            params.append("delivered")
-            if plan.time:
-                time_col = sem.column(f"orders.{sem.tables['orders'].get('time', 'purchase_at')}")
-                cond += f" AND {alias['orders']}.{_q(time_col)} >= ? AND {alias['orders']}.{_q(time_col)} < ?"
-                params.extend([str(plan.time.start), str(plan.time.end)])
-        joins.append(f"  {kind} JOIN {_q(child)} {alias[child]} ON {cond}")
-
-    where: list[str] = []
-    for ftable, fcol, spec in filter_defs:
-        target = f"{alias[ftable]}.{_q(sem.column(f'{ftable}.{fcol}'))}"
+    def add_condition(target: str, spec) -> None:
         values = spec.value if isinstance(spec.value, list) else [spec.value]
         values = [v for v in values if v is not None]
         if not values:
-            continue
+            return
         if spec.op in {"eq", "in"}:
             where.append(f"{target} IN ({', '.join('?' for _ in values)})")
             params.extend(values)
@@ -663,38 +697,67 @@ def _compile_member_list(plan: QueryPlan, sem: SemanticLayer) -> Compiled:
                 where.append(f"{target} {symbol} ?")
                 params.append(values[0])
 
-    orders_joined = any(child == "orders" for _p, child, _o in edge_order)
-    if plan.time and not orders_joined:
-        # base table is orders: apply the time window to the base rows.
-        time_col = sem.column(f"orders.{sem.tables['orders'].get('time', 'purchase_at')}")
-        where.append(f"b.{_q(time_col)} >= ? AND b.{_q(time_col)} < ?")
-        params.extend([str(plan.time.start), str(plan.time.end)])
+    joins: list[str] = []
+    for parent, child, parent_col, child_col in edge_order:
+        kind = "INNER" if (parent, child) in inner else "LEFT"
+        cond = f"{phys(parent, parent_col)} = {phys(child, child_col)}"
+        joins.append(f"  {kind} JOIN {_q(child)} {alias[child]} ON {cond}")
 
-    if base_table == "orders":
-        status_col = sem.column("orders.order_status")
-        where.insert(0, f"b.{_q(status_col)} = ?")
-        params.insert(0, "delivered")
+    where: list[str] = []
+    for ftable, fcol, spec in filter_defs:
+        add_condition(phys(ftable, fcol), spec)
+
+    applied_time = False
+    if plan.time:
+        if coverage_fact and coverage_time:
+            table, _, column = coverage_time.partition(".")
+            where.append(
+                f"{phys(table, column)} >= ? AND {phys(table, column)} < ?"
+            )
+            params.extend([str(plan.time.start), str(plan.time.end)])
+            applied_time = True
+        elif sem.tables.get(base_table, {}).get("time"):
+            column = sem.tables[base_table]["time"]
+            where.append(f"{phys(base_table, column)} >= ? AND {phys(base_table, column)} < ?")
+            params.extend([str(plan.time.start), str(plan.time.end)])
+            applied_time = True
+        else:
+            raise SemanticError(
+                "该数据源的成员清单没有配置时间覆盖列，无法按时间筛选成员"
+            )
+
+    value_expr = phys(base_table, base_col)
+    has_coverage = bool(coverage_fact and coverage_key)
+    select = [f"{value_expr} AS \"value\""]
+    columns = ["value"]
+    if has_coverage:
+        select.append(
+            f"COUNT(DISTINCT {phys(coverage_fact, coverage_key)}) AS \"order_count\""
+        )
+        columns.append("order_count")
 
     order_parts: list[str] = []
     for spec in plan.order_by:
-        target = "2" if spec.field in {"value", "order_count"} else "1"
+        target = "2" if spec.field in {"value", "order_count"} and has_coverage else "1"
         direction = "DESC" if spec.direction == "desc" else "ASC"
         order_parts.append(f"{target} {direction}")
     if not order_parts:
-        order_parts = ["2 DESC", "1 ASC"]
+        order_parts = (["2 DESC", "1 ASC"] if has_coverage else ["1 ASC"])
     elif not any(p.startswith("1 ") for p in order_parts):
         order_parts.append("1 ASC")
 
     sql_parts = [
-        f"SELECT {value_expr} AS \"value\", "
-        f"COUNT(DISTINCT {alias['orders']}.{_q(sem.column('orders.order_id'))}) AS \"order_count\"",
+        "SELECT " + ", ".join(select),
         f"FROM {_q(base_table)} b",
         *joins,
     ]
     if where:
         sql_parts.append("WHERE " + " AND ".join(where))
+    if has_coverage:
+        sql_parts.append("GROUP BY 1")
+    else:
+        sql_parts[0] = "SELECT DISTINCT " + ", ".join(select)
     sql_parts += [
-        "GROUP BY 1",
         "ORDER BY " + ", ".join(order_parts),
         f"LIMIT {int(plan.limit)}",
     ]
@@ -702,12 +765,12 @@ def _compile_member_list(plan: QueryPlan, sem: SemanticLayer) -> Compiled:
     return Compiled(
         sql="\n".join(sql_parts),
         params=params,
-        columns=["value", "order_count"],
-        applied_time_filter=bool(plan.time),
+        columns=columns,
+        applied_time_filter=applied_time,
         tables_used=sorted(set(alias)),
         meta={
             "lookup": plan.list_dim,
-            "coverage": "delivered_orders",
+            "coverage": coverage_label if has_coverage else None,
             "range": [str(plan.time.start), str(plan.time.end)] if plan.time else None,
         },
     )

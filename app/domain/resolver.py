@@ -12,22 +12,11 @@ from app.config.settings import DIM_VALUES_PATH
 from app.core.interfaces import GroundResult
 from app.domain.semantic.loader import SemanticLayer
 
-DIM_VALUE_KEY = {
-    "category": "categories.category_name_zh",
-    "seller": "sellers.seller_name",
-    "product": "products.product_name",
-    "state": "customers.customer_state",
-    "city": "customers.customer_city",
-    "seller_state": "sellers.seller_state",
-    "payment_type": "order_payments.payment_type",
-    "order_status": "orders.order_status",
-}
-
-ALIAS_KEY = {
-    "category": "categories.category_name_zh",
-    "payment_type": "order_payments.payment_type",
-    "order_status": "orders.order_status",
-}
+# Dataset-specific value keys come from each dimension's `filter_lookup` or
+# `column`. These maps exist only as a compatibility seam for older semantic
+# files that explicitly set them.
+DIM_VALUE_KEY: dict[str, str] = {}
+ALIAS_KEY: dict[str, str] = {}
 
 FUZZY_THRESHOLD = 0.72
 FAMILY_DIMS = {"product"}
@@ -49,10 +38,19 @@ class RuleGrounder:
     # ---------- helpers ----------
     def _candidates(self, dim: str) -> list[str]:
         key = DIM_VALUE_KEY.get(dim)
+        if not key and dim in self.sem.dimensions:
+            raw = self.sem.dimension(dim).raw
+            key = raw.get("filter_lookup") or raw.get("column")
+            if key:
+                table, _, column = key.partition(".")
+                key = f"{table}.{column}" if column else key
         return list(self.values.get(key, [])) if key else []
 
     def _alias_reverse(self, dim: str) -> dict[str, str]:
         key = ALIAS_KEY.get(dim)
+        if not key and dim in self.sem.dimensions:
+            raw = self.sem.dimension(dim).raw
+            key = raw.get("filter_lookup") or raw.get("column")
         if not key:
             return {}
         out: dict[str, str] = {}

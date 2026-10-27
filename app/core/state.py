@@ -12,6 +12,7 @@ from enum import Enum
 
 from pydantic import BaseModel, Field
 
+from app.config.settings import DEFAULT_DATASET_ID
 from app.domain.plan import (
     CompareSpec,
     ComparisonSpec,
@@ -67,6 +68,7 @@ class FailurePolicy:
 @dataclass
 class SessionState:
     session_id: str
+    dataset_id: str = DEFAULT_DATASET_ID
     status: Status = Status.IDLE
     slots: Slots = field(default_factory=Slots)
     prev_slots: Slots = field(default_factory=Slots)
@@ -95,6 +97,7 @@ class SessionState:
     def to_dict(self) -> dict:
         return {
             "session_id": self.session_id,
+            "dataset_id": self.dataset_id,
             "status": self.status.value,
             "turn": self.turn,
             "slots": self.slots.model_dump(mode="json"),
@@ -152,7 +155,11 @@ def reduce(events: list, session_id: str | None = None) -> SessionState:
             state.trace_id = ev.trace_id
         t, p = ev.type, ev.payload
 
-        if t == "turn.started":
+        if t == "session.created":
+            dataset_id = p.get("dataset_id")
+            if isinstance(dataset_id, str) and dataset_id:
+                state.dataset_id = dataset_id
+        elif t == "turn.started":
             state.turn = int(p.get("turn", state.turn + 1))
             state.plan = None
             state.error = None

@@ -27,6 +27,11 @@ function onKeydown(e: KeyboardEvent) {
   }
 }
 
+function onDatasetChange(e: Event) {
+  const value = (e.target as HTMLSelectElement).value
+  store.switchDataset(value)
+}
+
 function resize() {
   const el = box.value
   if (!el) return
@@ -82,18 +87,44 @@ const slow = computed(() => elapsed.value >= 30)
       <div class="session">
         <span class="dataset">
           <span class="dot-live" :class="{ 'dot-off': store.meta && !store.meta.llm.enabled }"></span>
-          {{ store.meta?.dataset || 'ecommerce_demo' }} ·
-          {{ store.meta?.llm.enabled ? '模型在线' : '离线规则模式' }}
+          <select
+            class="dataset-select"
+            :value="store.datasetId"
+            :disabled="store.busy || store.datasets.length <= 1"
+            title="切换数据源"
+            @change="onDatasetChange"
+          >
+            <option v-if="!store.datasets.length" value="">无数据源</option>
+            <option v-for="d in store.datasets" :key="d.dataset_id" :value="d.dataset_id">
+              {{ d.name }}{{ d.status === 'published' ? '' : ' · 草稿' }}
+            </option>
+          </select>
+          <span
+            v-if="store.meta"
+            class="mode-badge"
+            :class="store.meta.mode === 'draft' ? 'draft' : 'live'"
+          >
+            {{ store.meta.mode === 'draft' ? '草稿口径' : '已发布' }}
+          </span>
         </span>
-        <span>SESSION {{ sessionLabel }}</span>
-        <span class="sbtns">
-          <button class="sbtn" title="新建对话" @click="store.newChat()">＋</button>
-          <button class="sbtn" title="对话记录" @click="store.toggleDrawer()">☰</button>
+        <span class="session-right">
+          <span class="llm-hint">{{ store.meta?.llm.enabled ? '模型在线' : '离线规则' }}</span>
+          <span>SESSION {{ sessionLabel }}</span>
+          <span class="sbtns">
+            <a class="sbtn manage" href="/manage" target="_blank" title="管理数据源">管理</a>
+            <button class="sbtn" title="新建对话" @click="store.newChat()">＋</button>
+            <button class="sbtn" title="对话记录" @click="store.toggleDrawer()">☰</button>
+          </span>
         </span>
       </div>
     </header>
 
     <div ref="msgs" class="msgs">
+      <div v-if="!store.datasetId" class="no-data">
+        <b>还没有数据源</b>
+        <p>导入 CSV/Excel、确认口径并发布后，这里就能开始问答。</p>
+        <a class="primary-link" href="/manage">去导入数据源 →</a>
+      </div>
       <div
         v-for="m in store.messages"
         :key="m.id"
@@ -102,6 +133,7 @@ const slow = computed(() => elapsed.value >= 30)
       >
         <div class="who">
           <i></i>{{ m.role === 'user' ? 'YOU' : 'MINGZHANG' }}
+          <span v-if="m.semanticStatus === 'draft'" class="msg-badge">草稿口径</span>
         </div>
         <div v-if="m.role === 'user' || m.kind === 'error'" class="body">{{ m.text }}</div>
         <MarkdownBody v-else :text="m.text" />
@@ -147,11 +179,16 @@ const slow = computed(() => elapsed.value >= 30)
           v-model="input"
           class="input"
           rows="1"
-          placeholder="问一个经营问题…"
+          :placeholder="store.datasetId ? '问一个经营问题…' : '请先导入数据源'"
+          :disabled="!store.datasetId"
           @keydown="onKeydown"
           @input="resize"
         ></textarea>
-        <button class="send" :disabled="store.busy || !input.trim()" @click="send()">
+        <button
+          class="send"
+          :disabled="!store.datasetId || store.busy || !input.trim()"
+          @click="send()"
+        >
           发送 ↵
         </button>
       </div>

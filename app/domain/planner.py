@@ -45,18 +45,27 @@ def member_list_plan(dim: str | None, slots: Slots, sem: SemanticLayer) -> Query
     """
     if not dim:
         raise SemanticError("没有识别出要列举的维度")
+    if not sem.capabilities.get("member_list", True):
+        raise SemanticError("当前数据源未启用维度成员清单能力")
     d = sem.dimension(dim)
     raw = d.raw
     if raw.get("kind") in {"time", "derived"} or not raw.get("column"):
         raise SemanticError(f"维度「{raw.get('name_zh', dim)}」不支持枚举")
 
     notes = list(slots.notes)
-    notes.append("成员清单来自维度表；order_count 为该成员覆盖的已送达订单数。")
+    coverage = sem.capabilities.get("member_list_coverage") or {}
+    if coverage.get("label"):
+        notes.append(f"成员清单来自维度表；{coverage['label']}为该成员覆盖的统计值。")
+    else:
+        notes.append("成员清单来自维度表。")
     if slots.time:
-        notes.append(
-            f"时间 {slots.time.start}~{slots.time.end} 同时约束成员：只保留该期间"
-            "有已送达订单的成员，覆盖数也只统计期间内订单。"
-        )
+        base_table = str(raw.get("column", "")).split(".")[0]
+        if coverage.get("time_column") or (sem.tables.get(base_table) or {}).get("time"):
+            notes.append(
+                f"时间 {slots.time.start}~{slots.time.end} 同时约束成员的时间覆盖。"
+            )
+        else:
+            notes.append("该维度没有时间覆盖列，时间条件不会改变成员集合。")
     # A member list is exhaustive by nature; truncation is reported, not
     # silently capped at the aggregate default of 100.
     limit = MAX_ROW_LIMIT
@@ -82,12 +91,14 @@ def plan_from_slots(slots: Slots, sem: SemanticLayer) -> QueryPlan:
     if time is None:
         if slots.comparison:
             time = slots.comparison.current
-        else:
+        elif metric.raw.get("time_via"):
             lo, hi = sem.time_range
             time = TimeRange(start=lo, end=hi)
             notes.append(
                 f"未指定时间，默认使用数据全集 {lo} ~ {hi}（右开区间，与全量口径等价）。"
             )
+        else:
+            notes.append("该指标没有时间列，按全部数据统计。")
 
     dims = [d for d in slots.dimensions if d != "none"]
     if slots.comparison and dims == ["month"]:

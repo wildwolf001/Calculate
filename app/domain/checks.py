@@ -29,10 +29,10 @@ class CheckIssue:
         return {"id": self.id, "severity": self.severity, "title": self.title, "detail": self.detail}
 
 
-def _quality_counts() -> dict:
-    if not QUALITY_PATH.exists():
+def _quality_counts(path=QUALITY_PATH) -> dict:
+    if not path.exists():
         return {}
-    data = json.loads(QUALITY_PATH.read_text(encoding="utf-8"))
+    data = json.loads(path.read_text(encoding="utf-8"))
     return {c["id"]: c for c in data.get("checks", [])}
 
 
@@ -52,7 +52,7 @@ def run_member_list_checks(plan: QueryPlan, result: ResultSet) -> tuple[list[Che
     if result.truncated or result.row_count >= plan.limit:
         issues.append(CheckIssue("TRUNCATED", "warn", "结果被截断",
                                  f"仅返回前 {result.row_count} 行成员。"))
-    scope = "清单来自维度表；order_count 为覆盖的已送达订单数。"
+    scope = "清单来自维度表。"
     if plan.time or plan.filters:
         scope += "筛选条件与时间窗已应用到成员清单。"
     issues.append(CheckIssue("LOOKUP_SCOPE", "info", "统计范围", scope))
@@ -60,7 +60,7 @@ def run_member_list_checks(plan: QueryPlan, result: ResultSet) -> tuple[list[Che
 
 
 def run_checks(plan: QueryPlan, metric, result: ResultSet, sem: SemanticLayer,
-               db_path=WAREHOUSE_PATH) -> tuple[list[CheckIssue], dict]:
+               db_path=WAREHOUSE_PATH, quality: dict | None = None) -> tuple[list[CheckIssue], dict]:
     """Return (issues, facts). `facts` is machine-readable context for the composer."""
     issues: list[CheckIssue] = []
     facts: dict = {"metric": plan.metric, "dimensions": plan.dimensions}
@@ -124,7 +124,10 @@ def run_checks(plan: QueryPlan, metric, result: ResultSet, sem: SemanticLayer,
                 issues.append(CheckIssue("BASELINE_ZERO", "warn", "基期为 0",
                                          "基期为 0，无法计算增长率（已用 NULL 而非无穷大）。"))
 
-    q = _quality_counts()
+    q = quality if quality is not None else _quality_counts()
+    business_checks = set(sem.capabilities.get("business_checks") or [])
+    if not business_checks:
+        q = {}
 
     # ---- metric-level caveats ----
     for caveat in metric.raw.get("caveats", []) or []:
@@ -169,7 +172,8 @@ def run_checks(plan: QueryPlan, metric, result: ResultSet, sem: SemanticLayer,
                 f"有 {n} 笔订单包含多个商家，按商家统计订单数时会被计入多次。",
             ))
 
-    if plan.metric == "paid_amount" and "payment_type" in plan.dimensions:
+    if ("split_payment" in business_checks
+            and plan.metric == "paid_amount" and "payment_type" in plan.dimensions):
         n = q.get("multi_payment_orders", {}).get("count", 0)
         issues.append(CheckIssue(
             "SPLIT_PAYMENT", "info", "拆分支付",
@@ -178,7 +182,7 @@ def run_checks(plan: QueryPlan, metric, result: ResultSet, sem: SemanticLayer,
         ))
 
     # ---- payment reconciliation (only for paid_amount) ----
-    if plan.metric == "paid_amount":
+    if plan.metric == "paid_amount" and "payment_reconciliation" in business_checks:
         try:
             con = duckdb.connect(str(db_path), read_only=True)
             try:

@@ -5,7 +5,16 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
+from app.config.settings import DATASET_DIR
 from app.main import app
+
+_DATA_AVAILABLE = (
+    (DATASET_DIR / "dataset.json").exists()
+    and (DATASET_DIR / "warehouse.duckdb").exists()
+)
+pytestmark = pytest.mark.skipif(
+    not _DATA_AVAILABLE, reason="未导入默认数据源"
+)
 
 
 @pytest.fixture(scope="module")

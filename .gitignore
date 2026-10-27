@@ -7,8 +7,12 @@ data/datasets/*/warehouse.duckdb.tmp
 data/datasets/*/catalog.json
 data/datasets/*/dim_values.json
 data/datasets/*/quality_report.json
+data/datasets/*/manifest.json
 data/runtime/
 data/dev/
+data/uploads/
+data/trash/
+data/datasets/ds_*/
 web/node_modules/
 web/dist/
 .pytest_cache/

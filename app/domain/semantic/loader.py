@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -72,6 +73,8 @@ class SemanticLayer:
     policies: dict[str, Any]
     time_range: tuple[str, str]
     binding: dict[str, Any]
+    capabilities: dict[str, Any] = field(default_factory=dict)
+    parser: str = "generic"
     raw: dict[str, Any] = field(repr=False, default_factory=dict)
 
     # ---- lookup helpers ----
@@ -101,6 +104,17 @@ class SemanticLayer:
         return self.binding.get("tables", {}).get(table, {}).get(col, col)
 
 
+def normalize_date_bound(value: Any) -> str:
+    """Semantic ranges are date-only; tolerate timestamps from inferred minima."""
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    try:
+        return date.fromisoformat(text[:10]).isoformat()
+    except ValueError:
+        return text
+
+
 def _load_yaml(path: Path) -> dict:
     if not path.exists():
         raise SemanticError(f"找不到文件: {path}")
@@ -111,19 +125,19 @@ def _load_yaml(path: Path) -> dict:
     return data
 
 
-def _catalog_tables() -> dict[str, set[str]]:
-    if not CATALOG_PATH.exists():
-        raise SemanticError("catalog.json 不存在，请先运行 scripts/ingest.py")
-    cat = json.loads(CATALOG_PATH.read_text(encoding="utf-8"))
+def _catalog_tables(catalog_path: Path = CATALOG_PATH) -> dict[str, set[str]]:
+    if not catalog_path.exists():
+        raise SemanticError(f"catalog.json 不存在，请先运行 ingest: {catalog_path}")
+    cat = json.loads(catalog_path.read_text(encoding="utf-8"))
     return {
         name: {c["name"] for c in tbl["columns"]}
         for name, tbl in cat["tables"].items()
     }
 
 
-def validate(sem: dict, binding: dict) -> None:
+def validate(sem: dict, binding: dict, catalog_path: Path = CATALOG_PATH) -> None:
     errors: list[str] = []
-    physical = _catalog_tables()
+    physical = _catalog_tables(catalog_path)
 
     # 1) binding covers everything semantic references
     for table, cols in binding.get("tables", {}).items():
@@ -157,8 +171,29 @@ def validate(sem: dict, binding: dict) -> None:
         if m.get("type") == "entity_count" and not m.get("entity"):
             errors.append(f"metric {mid}: entity_count 缺少 entity")
 
-    # 4) dimension join paths must be declared N:1
+    # 4) join columns must resolve and be N:1/1:1
     joins = sem.get("joins", {})
+    for child, links in joins.items():
+        if child not in physical:
+            errors.append(f"join: 子表不存在 {child}")
+            continue
+        for parent, spec in links.items():
+            if parent not in physical:
+                errors.append(f"join {child}->{parent}: 父表不存在")
+                continue
+            left = spec.get("left") or spec.get("on")
+            right = spec.get("right") or spec.get("on")
+            if not left or not right:
+                errors.append(f"join {child}->{parent}: 缺少连接列")
+                continue
+            if left not in physical[child]:
+                errors.append(f"join {child}->{parent}: 子表列不存在 {left}")
+            if right not in physical[parent]:
+                errors.append(f"join {child}->{parent}: 父表列不存在 {right}")
+            if spec.get("card") not in {"N:1", "1:1"}:
+                errors.append(f"join {child}->{parent}: 不是 N:1/1:1")
+
+    # 5) dimension join paths must be declared N:1
     for did, d in sem.get("dimensions", {}).items():
         for step in d.get("join_path", []):
             src, _, dst = step.partition(" -> ")
@@ -174,10 +209,11 @@ def validate(sem: dict, binding: dict) -> None:
 def load_semantic(
     semantic_path: Path = SEMANTIC_PATH,
     binding_path: Path = BINDING_PATH,
+    catalog_path: Path = CATALOG_PATH,
 ) -> SemanticLayer:
     sem = _load_yaml(semantic_path)
     binding = _load_yaml(binding_path)
-    validate(sem, binding)
+    validate(sem, binding, catalog_path=catalog_path)
     metrics = {mid: Metric(mid, m) for mid, m in sem.get("metrics", {}).items()}
     dimensions = {did: Dimension(did, d) for did, d in sem.get("dimensions", {}).items()}
     return SemanticLayer(
@@ -189,15 +225,21 @@ def load_semantic(
         metrics=metrics,
         dimensions=dimensions,
         policies=sem.get("policies", {}),
-        time_range=tuple(sem.get("time_range", ["", ""])),
+        time_range=tuple(
+            normalize_date_bound(v) for v in sem.get("time_range", ["", ""])
+        ),
         binding=binding,
+        capabilities=sem.get("capabilities", {}),
+        parser=str(sem.get("parser", "generic")),
         raw=sem,
     )
 
 
-def available_dimension_values(dim_id: str, db_path: Path = WAREHOUSE_PATH) -> list:
+def available_dimension_values(dim_id: str,
+                               db_path: Path = WAREHOUSE_PATH,
+                               sem: SemanticLayer | None = None) -> list:
     """Read distinct values for grounding. Never trust hard-coded lists."""
-    sem = load_semantic()
+    sem = sem or load_semantic()
     dim = sem.dimension(dim_id)
     col = dim.raw.get("column") or dim.raw.get("filter_column")
     if not col:

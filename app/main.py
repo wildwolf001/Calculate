@@ -13,7 +13,9 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import router
-from app.config.settings import BASE_DIR, HOST, PORT
+from app.api.uploads import router as uploads_router
+from app.config.settings import BASE_DIR, HOST, JOBS_DIR, PORT
+from app.core.jobs import JobManager
 from app.factory import build_service
 
 DIST_DIR = BASE_DIR / "web" / "dist"
@@ -21,6 +23,7 @@ DIST_DIR = BASE_DIR / "web" / "dist"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    app.state.jobs = JobManager(JOBS_DIR)
     app.state.service = build_service()
     yield
 
@@ -36,6 +39,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(router)
+app.include_router(uploads_router)
 
 if DIST_DIR.exists():
     if (DIST_DIR / "assets").exists():

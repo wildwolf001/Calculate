@@ -1,4 +1,14 @@
-import type { ApiEvent, HistoryItem, Meta, ResultArtifact, SessionSummary } from './types'
+import type {
+  AnalyzeStart,
+  ApiEvent,
+  DatasetSummary,
+  HistoryItem,
+  JobStatus,
+  Meta,
+  ResultArtifact,
+  SessionSummary,
+  UploadResult,
+} from './types'
 
 const BASE = (import.meta as any).env?.VITE_API_BASE || ''
 
@@ -10,18 +20,157 @@ async function json<T>(resp: Response): Promise<T> {
   return resp.json() as Promise<T>
 }
 
-export async function createSession(): Promise<string> {
+export async function createSession(datasetId?: string): Promise<string> {
   const resp = await fetch(`${BASE}/api/sessions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: '{}',
+    body: JSON.stringify({ dataset_id: datasetId || null }),
   })
   const data = await json<{ session_id: string }>(resp)
   return data.session_id
 }
 
-export async function getMeta(): Promise<Meta> {
-  return json<Meta>(await fetch(`${BASE}/api/meta`))
+export async function getMeta(datasetId?: string): Promise<Meta> {
+  const query = datasetId ? `?dataset_id=${encodeURIComponent(datasetId)}` : ''
+  return json<Meta>(await fetch(`${BASE}/api/meta${query}`))
+}
+
+export async function listDatasets(): Promise<{ datasets: DatasetSummary[]; default: string }> {
+  return json<{ datasets: DatasetSummary[]; default: string }>(
+    await fetch(`${BASE}/api/datasets`),
+  )
+}
+
+export async function getDataset(datasetId: string): Promise<any> {
+  return json<any>(await fetch(`${BASE}/api/datasets/${encodeURIComponent(datasetId)}`))
+}
+
+export async function getDatasetReadiness(datasetId: string): Promise<any> {
+  return json<any>(
+    await fetch(`${BASE}/api/datasets/${encodeURIComponent(datasetId)}/readiness`),
+  )
+}
+
+export async function getDatasetProfile(datasetId: string): Promise<any> {
+  return json<any>(
+    await fetch(`${BASE}/api/datasets/${encodeURIComponent(datasetId)}/profile`),
+  )
+}
+
+export async function getDatasetDraft(datasetId: string): Promise<any> {
+  return json<any>(
+    await fetch(`${BASE}/api/datasets/${encodeURIComponent(datasetId)}/draft`),
+  )
+}
+
+export async function publishDataset(
+  datasetId: string,
+  metrics?: string[],
+  dimensions?: string[],
+): Promise<any> {
+  return json<any>(
+    await fetch(`${BASE}/api/datasets/${encodeURIComponent(datasetId)}/publish`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ metrics: metrics ?? null, dimensions: dimensions ?? null }),
+    }),
+  )
+}
+
+export async function deleteDataset(datasetId: string): Promise<any> {
+  return json<any>(
+    await fetch(`${BASE}/api/datasets/${encodeURIComponent(datasetId)}`, {
+      method: 'DELETE',
+    }),
+  )
+}
+
+export async function createUpload(files: File[]): Promise<UploadResult> {
+  const form = new FormData()
+  for (const file of files) form.append('files', file)
+  return json<UploadResult>(
+    await fetch(`${BASE}/api/uploads`, { method: 'POST', body: form }),
+  )
+}
+
+export async function analyzeUpload(
+  uploadId: string,
+  name?: string,
+  options: Record<string, any> = {},
+): Promise<AnalyzeStart> {
+  return json<AnalyzeStart>(
+    await fetch(`${BASE}/api/uploads/${encodeURIComponent(uploadId)}/analyze`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: name || null, ...options }),
+    }),
+  )
+}
+
+export async function rebuildDataset(
+  datasetId: string,
+  options: Record<string, any> = {},
+): Promise<{ job_id: string; dataset_id: string; backup?: string }> {
+  return json(
+    await fetch(`${BASE}/api/datasets/${encodeURIComponent(datasetId)}/rebuild`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(options),
+    }),
+  )
+}
+
+export async function editDatasetDraft(
+  datasetId: string,
+  payload: Record<string, any>,
+): Promise<any> {
+  return json<any>(
+    await fetch(`${BASE}/api/datasets/${encodeURIComponent(datasetId)}/draft`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+  )
+}
+
+export async function uploadDocumentation(datasetId: string, file: File): Promise<any> {
+  const form = new FormData()
+  form.append('file', file)
+  return json<any>(
+    await fetch(
+      `${BASE}/api/datasets/${encodeURIComponent(datasetId)}/documentation`,
+      { method: 'POST', body: form },
+    ),
+  )
+}
+
+export async function getDocumentation(datasetId: string): Promise<any> {
+  return json<any>(
+    await fetch(`${BASE}/api/datasets/${encodeURIComponent(datasetId)}/documentation`),
+  )
+}
+
+export async function applyDocumentation(datasetId: string): Promise<any> {
+  return json<any>(
+    await fetch(
+      `${BASE}/api/datasets/${encodeURIComponent(datasetId)}/documentation/apply`,
+      { method: 'POST' },
+    ),
+  )
+}
+
+export async function getJob(jobId: string): Promise<JobStatus> {
+  return json<JobStatus>(
+    await fetch(`${BASE}/api/jobs/${encodeURIComponent(jobId)}`),
+  )
+}
+
+export async function cancelJob(jobId: string): Promise<any> {
+  return json<any>(
+    await fetch(`${BASE}/api/jobs/${encodeURIComponent(jobId)}/cancel`, {
+      method: 'POST',
+    }),
+  )
 }
 
 export async function listSessions(): Promise<SessionSummary[]> {

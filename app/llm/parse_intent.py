@@ -7,6 +7,7 @@ import re
 from pathlib import Path
 from string import Template
 
+from app.config.settings import DIM_VALUES_PATH
 from app.core.interfaces import ParseResult
 from app.core.logging import log_event, logger
 from app.domain.plan import ComparisonSpec
@@ -28,13 +29,14 @@ def _template(name: str) -> Template:
 
 class LLMIntentParser:
     def __init__(self, sem: SemanticLayer, client: LLMClient | None = None,
-                 fallback: RuleParser | None = None):
+                 fallback: RuleParser | None = None,
+                 dim_values_path=DIM_VALUES_PATH):
         self.sem = sem
         self.client = client or LLMClient()
-        self.fallback = fallback or RuleParser(sem)
+        self.fallback = fallback or RuleParser(sem, dim_values_path)
         self._system = _template("parse_intent_system.txt")
         self._user = _template("parse_intent_user.txt")
-        self._schema_card = build_schema_card(sem)
+        self._schema_card = build_schema_card(sem, dim_values_path=dim_values_path)
 
     # ---------- validation ----------
     ALLOWED_SLOT_KEYS = {
@@ -55,6 +57,16 @@ class LLMIntentParser:
             raise IntentParseError(f"{name} 区间为空")
         return {"start": start, "end": end}
 
+    def _map_dimension(self, value: str) -> str:
+        if value in self.sem.dimensions:
+            return value
+        target = str(value or "").lower()
+        for dim in self.sem.dimensions.values():
+            names = [dim.id, dim.raw.get("name_zh", ""), *dim.raw.get("synonyms", [])]
+            if target and target in {str(n).lower() for n in names if n}:
+                return dim.id
+        raise IntentParseError(f"未知维度: {value}")
+
     def _validate_slots(self, raw_slots: dict) -> dict:
         if not isinstance(raw_slots, dict):
             raise IntentParseError("slots 不是对象")
@@ -74,14 +86,11 @@ class LLMIntentParser:
         dims = raw_slots.get("dimensions") or []
         if not isinstance(dims, list):
             raise IntentParseError("dimensions 必须是数组")
-        for d in dims:
-            if d not in self.sem.dimensions:
-                raise IntentParseError(f"未知维度: {d}")
+        dims = [self._map_dimension(d) for d in dims]
 
         filters = {}
         for dim, spec in (raw_slots.get("filters") or {}).items():
-            if dim not in self.sem.dimensions:
-                raise IntentParseError(f"未知过滤维度: {dim}")
+            dim = self._map_dimension(dim)
             if isinstance(spec, dict):
                 filters[dim] = {"op": spec.get("op", "eq"), "value": spec.get("value")}
             else:
@@ -164,8 +173,17 @@ class LLMIntentParser:
 
         lookup_dim = data.get("lookup_dimension")
         if intent_type == "lookup":
-            if lookup_dim not in {"category", "seller", "product", "state", "city", "payment_type"}:
-                raise IntentParseError(f"未知 lookup_dimension: {lookup_dim}")
+            if lookup_dim not in self.sem.dimensions:
+                mapped = None
+                target = str(lookup_dim or "").lower()
+                for dim in self.sem.dimensions.values():
+                    names = [dim.id, dim.raw.get("name_zh", ""), *dim.raw.get("synonyms", [])]
+                    if target and target in {str(n).lower() for n in names if n}:
+                        mapped = dim.id
+                        break
+                if mapped is None:
+                    raise IntentParseError(f"未知 lookup_dimension: {lookup_dim}")
+                lookup_dim = mapped
 
         return ParseResult(
             intent_type=intent_type,
@@ -195,11 +213,25 @@ class LLMIntentParser:
         "延迟": "late", "准时": "late", "低分": "low_score",
     }
 
+    def _dim_from_word(self, word: str) -> str | None:
+        if self.sem.parser == "ecommerce" and word in self.DIM_WORDS:
+            return self.DIM_WORDS[word]
+        for dim in self.sem.dimensions.values():
+            names = [dim.id, dim.raw.get("name_zh", ""), *dim.raw.get("synonyms", [])]
+            if word in {str(n) for n in names if n}:
+                return dim.id
+        if word in self.sem.dimensions:
+            return word
+        return self.DIM_WORDS.get(word) if self.sem.parser == "ecommerce" else None
+
     def _explicit_dims(self, text: str) -> list[str]:
         hits = re.findall(
             r"按\s*(?:是否)?\s*(品类|类目|分类|商家|店铺|卖家|商品|产品|省份|地区|"
             r"城市|支付方式|月份|延迟|准时|低分)", text)
-        dims = list(dict.fromkeys(self.DIM_WORDS[h] for h in hits))
+        dims = [
+            dim_id for dim_id in (self._dim_from_word(h) for h in hits) if dim_id
+        ]
+        dims = list(dict.fromkeys(dims))
         # "每家/每款/各品类" are explicit grouping requests too; treating them
         # as absent makes follow-ups silently lose the dimension.
         cue_dims = [
@@ -212,9 +244,48 @@ class LLMIntentParser:
             (r"每种支付方式|各支付方式|所有支付方式", "payment_type"),
         ]
         for pattern, dim in cue_dims:
-            if re.search(pattern, text) and dim not in dims:
+            if not re.search(pattern, text):
+                continue
+            if dim in self.sem.dimensions:
                 dims.append(dim)
-        return dims
+            elif self.sem.parser == "ecommerce":
+                dims.append(dim)
+        return list(dict.fromkeys(dims))
+
+    def _postprocess_lookup(self, result: ParseResult, text: str) -> ParseResult:
+        """“多少种/几个”通常是计数，不是成员清单。"""
+        if result.intent_type != "lookup":
+            return result
+        match = re.search(
+            r"(?:多少|几)\s*(?:种|个|款|类|位|名|家)?\s*([\u4e00-\u9fffA-Za-z_]{2,8})",
+            text,
+        )
+        if not match:
+            return result
+        noun = match.group(1)
+        candidates = []
+        for metric in self.sem.metrics.values():
+            expr = str(metric.raw.get("expr") or "").upper()
+            if noun in metric.name and ("数" in metric.name or "COUNT(DISTINCT" in expr):
+                candidates.append(metric)
+        if not candidates:
+            return result
+        selected = [m for m in candidates if m.raw.get("selected", True)]
+        metric = (selected or candidates)[0]
+        slots = dict(result.slots or {})
+        slots.update({
+            "metric": metric.id,
+            "dimensions": [],
+            "intent": "query",
+        })
+        result.intent_type = "query"
+        result.lookup_dim = None
+        result.slots = slots
+        result.unresolved = []
+        result.notes = list(dict.fromkeys(
+            result.notes + [f"“多少种”按计数指标「{metric.name}」理解"]
+        ))
+        return result
 
     def _postprocess_followup(self, result: ParseResult, text: str, context: dict) -> ParseResult:
         """Enforce follow-up semantics the prompt cannot guarantee.
@@ -271,6 +342,7 @@ class LLMIntentParser:
                     data = self.client.complete_json(system, user, max_tokens=2400,
                                                      stage="parse_intent")
                     result = self._validate(data)
+                    result = self._postprocess_lookup(result, text)
                     result = self._postprocess_followup(result, text, context)
                     result.notes = list(dict.fromkeys(result.notes + ["由模型解析意图"]))
                     return result

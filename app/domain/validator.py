@@ -69,6 +69,11 @@ def validate_plan(plan: QueryPlan, sem: SemanticLayer) -> list[Issue]:
             ))
 
     if plan.time:
+        if not metric.raw.get("time_via"):
+            issues.append(Issue(
+                "TIME_UNSUPPORTED",
+                f"指标「{metric.name}」没有时间列，不能按时间筛选",
+            ))
         if plan.time.start >= plan.time.end:
             issues.append(Issue("BAD_TIME_RANGE", "时间范围非法"))
         lo, hi = sem.time_range

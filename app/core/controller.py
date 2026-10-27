@@ -8,7 +8,7 @@ from __future__ import annotations
 import traceback
 from typing import AsyncIterator
 
-from app.config.settings import MAX_STEPS
+from app.config.settings import DIM_VALUES_PATH, MAX_STEPS, WAREHOUSE_PATH
 from app.core.context import project_for_composer, project_for_parser
 from app.core.event_store import EventStore
 from app.core.events import Event
@@ -58,13 +58,21 @@ HANDLERS = {
 class Controller:
     def __init__(self, store: EventStore, sem: SemanticLayer,
                  parser: IntentParser, grounder: ValueGrounder,
-                 composer: AnswerComposer, tracer: Tracer | None = None):
+                 composer: AnswerComposer, tracer: Tracer | None = None,
+                 ctx=None):
         self.store = store
-        self.sem = sem
+        self.sem = ctx.sem if ctx is not None else sem
         self.parser = parser
         self.grounder = grounder
         self.composer = composer
         self.tracer = tracer
+        self.ctx = ctx
+        self.dataset_id = ctx.dataset_id if ctx is not None else None
+        self.warehouse = ctx.warehouse if ctx is not None else WAREHOUSE_PATH
+        self.dim_values_path = (
+            ctx.dim_values_path if ctx is not None else DIM_VALUES_PATH
+        )
+        self.quality = ctx.quality if ctx is not None else None
         self._results: dict[tuple[str, int], object] = {}
 
     # ---------- public ----------
@@ -129,18 +137,34 @@ class Controller:
                 return m["text"]
         return ""
 
+    def _suggestions(self) -> str:
+        metrics = [m for m in self.sem.metrics.values() if m.raw.get("selected", True)]
+        names = [m.name for m in (metrics or list(self.sem.metrics.values()))[:10]]
+        if not names:
+            return "当前数据源还没有可查询的指标，请先在数据管理页确认语义草稿。"
+        return "可以问：" + "、".join(names) + "，并指定时间或维度。"
+
+    def _semantic_status(self) -> str:
+        return self.ctx.mode if self.ctx is not None else "published"
+
+    def _with_draft_notice(self, text: str) -> str:
+        if self.ctx is not None and self.ctx.mode == "draft":
+            return "【自动口径 · 未经业务确认】\n\n" + text
+        return text
+
     def _repair_slots(self, state: SessionState, slots: dict | None) -> dict:
         """Fill entity/time for repair hints, preferring display names."""
         data = dict(slots or {})
         try:
-            ctx = RuleParser(self.sem).extract_context(self._last_user_text(state))
+            ctx = RuleParser(self.sem, self.dim_values_path).extract_context(
+                self._last_user_text(state))
         except Exception:
             ctx = {}
         if ctx.get("filters"):
             data["filters"] = ctx["filters"]
         elif data.get("filters"):
             from app.core.context import humanize_slots
-            data = humanize_slots(data)
+            data = humanize_slots(data, self.dim_values_path)
         if ctx.get("time"):
             data["time"] = ctx["time"]
         return data
@@ -174,7 +198,14 @@ class Controller:
             events.append(("answer.composed", {"text": SMALLTALK_TEXT, "result_id": None}))
             events.append(("result.presented", {"result_id": None}))
             return events
-        if rw.kind == "lookup":
+        if rw.kind == "lookup" and self.sem.parser == "ecommerce":
+            if not self.sem.capabilities.get("member_list", True):
+                events.append(("error.raised", {
+                    "code": "LOOKUP_UNSUPPORTED",
+                    "message": "当前数据源暂不支持维度成员清单查询。" + self._suggestions(),
+                    "recoverable": False,
+                }))
+                return events
             # Enumeration is a plan shape, not a shortcut: emit slots and let
             # the normal state machine ground, plan, compile, check and answer.
             if not rw.lookup_dim:
@@ -190,7 +221,7 @@ class Controller:
             }))
             return events
 
-        ctx = project_for_parser(state)
+        ctx = project_for_parser(state, dim_values_path=self.dim_values_path)
         try:
             result = self._call_with_retry(
                 "parse_intent", lambda: self.parser.parse(rw.normalized, ctx), state, events
@@ -217,6 +248,13 @@ class Controller:
             return events
 
         if result.intent_type == "lookup":
+            if not self.sem.capabilities.get("member_list", True):
+                events.append(("error.raised", {
+                    "code": "LOOKUP_UNSUPPORTED",
+                    "message": "当前数据源暂不支持维度成员清单查询。" + self._suggestions(),
+                    "recoverable": False,
+                }))
+                return events
             dim = result.lookup_dim or rw.lookup_dim
             if not dim:
                 events.append(("error.raised", {
@@ -249,8 +287,8 @@ class Controller:
                     extra.append(repair["clarification"])
                 extra.append("可以这样问：\n" + "\n".join(f"- {q}" for q in repair["options"]))
                 message = f"{message}\n\n" + "\n\n".join(extra)
-            elif UNSUPPORTED_SUGGESTIONS not in message:
-                message = f"{message}\n\n{UNSUPPORTED_SUGGESTIONS}"
+            elif self._suggestions() not in message:
+                message = f"{message}\n\n{self._suggestions()}"
             events.append(("answer.composed", {
                 "text": message, "result_id": None, "options": repair["options"],
             }))
@@ -336,7 +374,7 @@ class Controller:
                 if slots.unresolved:
                     raise SemanticError(f"未绑定词: {', '.join(slots.unresolved)}")
                 grounded = self.grounder.ground(
-                    slots.model_dump(mode="json"), slots.unresolved, project_for_parser(state)
+                    slots.model_dump(mode="json"), slots.unresolved, project_for_parser(state, dim_values_path=self.dim_values_path)
                 )
                 if grounded.ambiguity:
                     raise SemanticError(grounded.ambiguity.get("message", "值绑定失败"))
@@ -406,7 +444,7 @@ class Controller:
                 "preferred": is_pref,
             }))
             try:
-                artifact = execute_prepared(compiled)
+                artifact = execute_prepared(compiled, db_path=self.warehouse)
             except Exception as exc:
                 events.append(("interpretation.rejected", {
                     "interpretation_id": iid, "label": interp.get("label"),
@@ -425,7 +463,8 @@ class Controller:
                 "plan": plan.model_dump(mode="json"),
             })
             events.append(("sql.executed", payload))
-            issues, facts = check(plan, self.sem, artifact)
+            issues, facts = check(plan, self.sem, artifact,
+                                  db_path=self.warehouse, quality=self.quality)
             events.append(("checks.completed", {
                 "result_id": artifact.result_id,
                 "issues": [i.as_dict() for i in issues],
@@ -463,7 +502,7 @@ class Controller:
             return events
 
         ctx = self._multi_composer_context(state, executed, result.ambiguity_note)
-        text = self._compose(ctx, state)
+        text = self._with_draft_notice(self._compose(ctx, state))
         options: list[str] = []
         if filter_failure:
             slots, reason = filter_failure
@@ -481,6 +520,7 @@ class Controller:
                 for e in executed
             ],
             "options": options,
+            "semantic_status": self._semantic_status(),
         }))
         events.append(("result.presented", {
             "result_id": next(
@@ -540,7 +580,7 @@ class Controller:
             return TemplateComposer().compose(ctx)
 
     def _handle_grounding(self, state: SessionState) -> list[tuple[str, dict]]:
-        ctx = project_for_parser(state)
+        ctx = project_for_parser(state, dim_values_path=self.dim_values_path)
         grounded = self.grounder.ground(
             state.slots.model_dump(mode="json"), state.slots.unresolved, ctx
         )
@@ -563,7 +603,7 @@ class Controller:
             else:
                 plan = plan_from_slots(slots, self.sem)
         except SemanticError as exc:
-            message = f"{exc}\n\n{UNSUPPORTED_SUGGESTIONS}"
+            message = f"{exc}\n\n{self._suggestions()}"
             return [
                 ("plan.rejected", {"reason": str(exc), "issues": [], "recoverable": False}),
                 ("error.raised", {
@@ -647,7 +687,7 @@ class Controller:
         plan = QueryPlan.model_validate(state.plan.model_dump())
         try:
             compiled, _ = prepare(plan, self.sem)
-            result = execute_prepared(compiled)
+            result = execute_prepared(compiled, db_path=self.warehouse)
         except PipelineError as exc:
             return [("error.raised", {"code": "PLAN_REJECTED", "message": str(exc),
                                       "recoverable": False})]
@@ -674,10 +714,11 @@ class Controller:
         if result is None:
             # replay path: deterministic re-execution
             compiled, _ = prepare(plan, self.sem)
-            result = execute_prepared(compiled)
+            result = execute_prepared(compiled, db_path=self.warehouse)
             result.result_id = f"r{state.turn}-{compiled.fingerprint(self.sem.version)}"
             self._results[(state.session_id, state.turn)] = result
-        issues, facts = check(plan, self.sem, result)
+        issues, facts = check(plan, self.sem, result,
+                              db_path=self.warehouse, quality=self.quality)
         payload = {
             "result_id": result.result_id,
             "issues": [i.as_dict() for i in issues],
@@ -698,7 +739,9 @@ class Controller:
         if state.plan is not None and state.plan.kind == "member_list":
             artifact = state.artifacts.get(state.last_result_id or "") or {}
             rows = artifact.get("rows") or []
-            text = lookup_mod.describe(state.plan.list_dim or "", rows, len(rows))
+            text = lookup_mod.describe(
+                self.sem, state.plan.list_dim or "", rows, len(rows)
+            )
             scope: list[str] = []
             if state.plan.filters:
                 scope.append(self._plan_filters_label(state.plan))
@@ -720,7 +763,12 @@ class Controller:
             from app.llm.compose_answer import TemplateComposer
             log_event(logger, "composer fallback", error=str(exc))
             text = TemplateComposer().compose(ctx)
-        events.append(("answer.composed", {"text": text, "result_id": state.last_result_id}))
+        text = self._with_draft_notice(text)
+        events.append(("answer.composed", {
+            "text": text,
+            "result_id": state.last_result_id,
+            "semantic_status": self._semantic_status(),
+        }))
         events.append(("result.presented", {"result_id": state.last_result_id}))
         return events
 
@@ -751,7 +799,7 @@ class Controller:
     def _plan_filters_label(self, plan: QueryPlan) -> str:
         from app.core.context import humanize_slots
         raw = {"filters": {d: spec.model_dump() for d, spec in plan.filters.items()}}
-        shown = humanize_slots(raw).get("filters", {})
+        shown = humanize_slots(raw, self.dim_values_path).get("filters", {})
         parts = []
         for dim, spec in shown.items():
             value = spec.get("value") if isinstance(spec, dict) else spec

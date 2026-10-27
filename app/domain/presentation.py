@@ -16,11 +16,17 @@ def display_spec(plan: QueryPlan, sem: SemanticLayer, result: ResultSet) -> dict
     if plan.kind == "member_list":
         dim = sem.dimension(plan.list_dim or "")
         label = dim.raw.get("name_zh", plan.list_dim)
+        columns = [{"key": "value", "label": label, "type": "text", "show": True}]
+        if "order_count" in result.columns:
+            coverage = sem.capabilities.get("member_list_coverage") or {}
+            columns.append({
+                "key": "order_count",
+                "label": coverage.get("label") or "覆盖数",
+                "type": "int",
+                "show": True,
+            })
         return {
-            "columns": [
-                {"key": "value", "label": label, "type": "text", "show": True},
-                {"key": "order_count", "label": "已送达订单数", "type": "int", "show": True},
-            ],
+            "columns": columns,
             "metric_name": f"{label}清单",
             "unit": None,
         }

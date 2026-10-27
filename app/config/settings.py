@@ -20,6 +20,8 @@ DATA_DIR = BASE_DIR / "data"
 # One folder per raw dataset: the source workbook plus every artifact derived
 # from it (warehouse, catalog, value dictionary, quality report).
 DATASET = os.getenv("DATASET", "ecommerce_agent_demo")
+# Stable public id for the built-in dataset. Uploaded datasets use ds_<hex>.
+DEFAULT_DATASET_ID = os.getenv("DEFAULT_DATASET_ID", "ds_ecommerce_demo")
 DATASETS_DIR = DATA_DIR / "datasets"
 DATASET_DIR = DATASETS_DIR / DATASET
 RAW_DIR = DATASET_DIR / "raw"
@@ -34,6 +36,14 @@ SESSIONS_DIR = RUNTIME_DIR / "sessions"
 LOG_DIR = RUNTIME_DIR / "logs"
 TRACE_DIR = RUNTIME_DIR / "traces"
 DEV_DIR = DATA_DIR / "dev"
+UPLOADS_DIR = Path(os.getenv("UPLOADS_DIR", DATA_DIR / "uploads"))
+JOBS_DIR = Path(os.getenv("JOBS_DIR", RUNTIME_DIR / "jobs"))
+TRASH_DIR = Path(os.getenv("TRASH_DIR", DATA_DIR / "trash"))
+
+# ---- Upload limits ----
+MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", str(200 * 1024 * 1024)))
+MAX_UPLOAD_FILES = int(os.getenv("MAX_UPLOAD_FILES", "10"))
+MAX_DATASETS = int(os.getenv("MAX_DATASETS", "50"))
 
 SEMANTIC_PATH = BASE_DIR / "app" / "domain" / "semantic" / "semantic.yaml"
 BINDING_PATH = BASE_DIR / "app" / "domain" / "semantic" / "binding.yaml"
@@ -47,6 +57,10 @@ LLM_MAX_RETRIES = int(os.getenv("LLM_MAX_RETRIES", "1"))
 # When no API key is configured the agent falls back to the deterministic
 # rule-based parser so the demo remains runnable offline.
 LLM_ENABLED = bool(LLM_API_KEY) and os.getenv("LLM_DISABLED", "").lower() not in {"1", "true"}
+# Ingest-time semantic drafting shares the same key/gateway but needs a larger
+# budget: reasoning models can spend thousands of tokens before any JSON text.
+LLM_SEMANTIC_DRAFT = os.getenv("LLM_SEMANTIC_DRAFT", "1").lower() not in {"0", "false", "no"}
+LLM_SEMANTIC_TIMEOUT_SECONDS = float(os.getenv("LLM_SEMANTIC_TIMEOUT_SECONDS", "120"))
 
 # ---- Controller ----
 MAX_STEPS = int(os.getenv("MAX_STEPS", "24"))
