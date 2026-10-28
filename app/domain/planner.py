@@ -81,7 +81,56 @@ def member_list_plan(dim: str | None, slots: Slots, sem: SemanticLayer) -> Query
     )
 
 
+def coverage_plan(slots: Slots, sem: SemanticLayer) -> QueryPlan:
+    """Build a period-coverage diagnostic over an aggregate metric."""
+    metric_id = slots.metric
+    if metric_id is None:
+        candidates = [
+            metric for metric in sem.metrics.values()
+            if metric.raw.get("selected", True)
+            and metric.type == "aggregate"
+            and metric.raw.get("time_via")
+        ]
+        candidates.sort(
+            key=lambda metric: (
+                str(metric.raw.get("analysis_role") or "") not in {
+                    "primary_sales", "sales_primary",
+                },
+                "销售额" not in metric.name and "销售" not in metric.name,
+                "记录数" in metric.name,
+                metric.name,
+            )
+        )
+        if not candidates:
+            raise SemanticError("覆盖诊断需要至少一个带时间列的聚合指标")
+        metric_id = candidates[0].id
+    metric = sem.metric(metric_id)
+    if metric.type != "aggregate":
+        raise SemanticError("覆盖诊断目前只支持聚合指标")
+    if not metric.raw.get("time_via"):
+        raise SemanticError(f"指标「{metric.name}」没有时间列，无法诊断时间段覆盖")
+    time = slots.time
+    if time is None:
+        lo, hi = sem.time_range
+        time = TimeRange(start=lo, end=hi)
+    return QueryPlan(
+        kind="coverage",
+        plan_id=f"coverage_{metric.id}",
+        metric=metric.id,
+        dimensions=[],
+        time=time,
+        filters=slots.filters,
+        limit=MAX_ROW_LIMIT,
+        notes=list(slots.notes) + [
+            "覆盖诊断使用完整自然月序列，并区分无记录月份与零业务量月份。"
+        ],
+        coverage_period="month",
+    )
+
+
 def plan_from_slots(slots: Slots, sem: SemanticLayer) -> QueryPlan:
+    if slots.intent == "coverage":
+        return coverage_plan(slots, sem)
     if not slots.metric:
         raise SemanticError("没有识别出可查询的指标")
     metric = sem.metric(slots.metric)

@@ -50,7 +50,8 @@ class Slots(BaseModel):
     order_by: list[OrderSpec] = Field(default_factory=list)
     limit: int = 100
     nested: NestedSpec | None = None
-    intent: str = "query"          # query | lookup | explain
+    intent: str = "query"          # query | lookup | coverage | explain
+    coverage_period: str = "month"
     unresolved: list[str] = Field(default_factory=list)
     notes: list[str] = Field(default_factory=list)
     visualization: dict | None = None
@@ -292,6 +293,11 @@ def reduce(events: list, session_id: str | None = None) -> SessionState:
                 state.last_result_id = rid
             state.status = Status.CHECKING
         elif t == "checks.completed":
+            result_id = p.get("result_id")
+            if result_id in state.artifacts:
+                state.artifacts[result_id]["checks"] = p.get("issues", [])
+                state.artifacts[result_id]["facts"] = p.get("facts", {})
+                state.artifacts[result_id]["blocked"] = bool(p.get("blocked"))
             if p.get("interpretation_id"):
                 for entry in state.interpretation_results:
                     if entry.get("id") == p["interpretation_id"]:

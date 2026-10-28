@@ -69,6 +69,25 @@ def test_model_context_decision_is_validated(sem):
     assert result.context_confidence == 0.91
 
 
+def test_model_coverage_intent_is_validated(sem):
+    payload = {
+        "intent_type": "coverage",
+        "tier": "B",
+        "confidence": 0.92,
+        "slots": {
+            "metric": "gmv",
+            "dimensions": [],
+            "coverage_period": "month",
+        },
+        "context": {"action": "refine", "source": "previous_scope"},
+    }
+    result = LLMIntentParser(sem, client=FakeClient([payload])).parse(
+        "这个商品的数据有缺失月份吗", {}
+    )
+    assert result.intent_type == "coverage"
+    assert result.slots["coverage_period"] == "month"
+
+
 def test_explicit_context_action_inherits_without_keyword_heuristics(sem):
     """Scope inheritance is structural, not based on a follow-up word list."""
     context = {

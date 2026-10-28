@@ -9,7 +9,7 @@ $schema_card
 
 <output_schema>
 {
-  "intent_type": "query | analysis | explain | unsupported | smalltalk | lookup",
+  "intent_type": "query | coverage | critique_response | analysis | explain | unsupported | smalltalk | lookup",
   "tier": "A | B | C",
   "confidence": 0.0-1.0,
   "context": {
@@ -34,6 +34,7 @@ $schema_card
     } 或 null,
     "order_by": [{"field": "value|growth_rate|dimension_id", "direction": "asc|desc"}],
     "limit": 100,
+    "coverage_period": "month（仅 coverage）",
     "nested": {"min_orders": 2} 或 null,
     "intent": "query",
     "unresolved": ["无法绑定的词"]
@@ -86,6 +87,10 @@ $schema_card
 8. “最高/最多/排名” -> order_by value desc；“增长最多” -> growth_rate desc；“不少于N笔/至少N笔” -> having 中对应的计数指标 gte N。
 9. 口径类问题（为什么/口径/定义/怎么算）intent_type=explain；问候/寒暄 intent_type=smalltalk；枚举维度值 intent_type=lookup。
    用户要求整体经营分析/经营诊断，且没有指定具体指标和期间时，intent_type=analysis，slots 留空。
+   用户询问“数据是否完整/有没有缺失月份/哪段时间断档”时，intent_type=coverage；
+   metric 选择当前业务最有解释力的聚合指标，coverage_period=month，dimensions 留空。
+   用户是在评价、纠正或要求深化上一轮回答（如“你只是给了数据，没有分析缺失”）时，
+   intent_type=critique_response，context.action=reference_result，不要创建新的经营分析。
 10. 数据中没有的字段或指标 intent_type=unsupported，explanation 直接面向用户说明原因，并给出当前数据源可问的替代方向。
 11. 只有实体本身无法确定（是哪个取值）时才 needs_clarification=true；同一指标、只是期间/口径不同，用 interpretations 全部给出。
 12. visualization 只能选 line / bar / pie / grouped_bar / kpi；月度趋势用 line，分类排名用 bar，占比用 pie（仅可加指标、单一维度），两期比较用 grouped_bar，单值用 kpi。

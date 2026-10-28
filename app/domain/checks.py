@@ -102,6 +102,80 @@ def run_member_list_checks(plan: QueryPlan, result: ResultSet,
     return issues, facts
 
 
+def run_coverage_checks(plan: QueryPlan, metric, result: ResultSet,
+                        quality: dict | None = None
+                        ) -> tuple[list[CheckIssue], dict]:
+    issues: list[CheckIssue] = []
+    expected: list[str] = []
+    observed: list[str] = []
+    missing: list[str] = []
+    zero_value: list[str] = []
+    values: list[dict] = []
+    columns = result.columns
+    month_idx = columns.index("month") if "month" in columns else 0
+    count_idx = columns.index("record_count") if "record_count" in columns else None
+    value_idx = columns.index("value") if "value" in columns else None
+    missing_idx = columns.index("is_missing") if "is_missing" in columns else None
+    for row in result.rows:
+        month = str(row[month_idx])
+        expected.append(month)
+        is_missing = bool(row[missing_idx]) if missing_idx is not None else False
+        record_count = row[count_idx] if count_idx is not None else None
+        metric_value = row[value_idx] if value_idx is not None else None
+        if is_missing or record_count is None:
+            missing.append(month)
+        else:
+            observed.append(month)
+            if metric_value is not None and float(metric_value) == 0:
+                zero_value.append(month)
+        values.append({
+            "month": month,
+            "record_count": record_count,
+            "value": metric_value,
+            "is_missing": is_missing or record_count is None,
+        })
+    total = len(expected)
+    facts = {
+        "coverage_period": plan.coverage_period,
+        "coverage_range": [
+            str(plan.time.start), str(plan.time.end)
+        ] if plan.time else None,
+        "expected_periods": expected,
+        "observed_periods": observed,
+        "missing_periods": missing,
+        "zero_value_periods": zero_value,
+        "coverage_ratio": round(len(observed) / total, 4) if total else 0.0,
+        "coverage_metric": metric.id,
+        "coverage_rows": values,
+    }
+    if total == 0:
+        issues.append(CheckIssue(
+            "COVERAGE_EMPTY_RANGE", "warn", "覆盖区间为空",
+            "指定时间范围内没有可检查的自然月。",
+        ))
+    elif missing:
+        issues.append(CheckIssue(
+            "TIME_GAP", "warn", "存在缺失时间段",
+            f"应覆盖 {total} 个月，实际有记录 {len(observed)} 个月；"
+            f"缺失：{'、'.join(missing)}。",
+        ))
+    else:
+        issues.append(CheckIssue(
+            "COVERAGE_COMPLETE", "info", "时间覆盖完整",
+            f"{total} 个自然月均有记录。",
+        ))
+    if zero_value:
+        issues.append(CheckIssue(
+            "ZERO_VALUE_PERIOD", "warn", "存在零业务量月份",
+            f"以下月份有记录但指标值为 0：{'、'.join(zero_value)}。",
+        ))
+    quality_issue, quality_facts = _quality_notice(quality)
+    if quality_issue:
+        issues.append(quality_issue)
+        facts["data_quality"] = quality_facts
+    return issues, facts
+
+
 def run_checks(plan: QueryPlan, metric, result: ResultSet, sem: SemanticLayer,
                db_path=WAREHOUSE_PATH, quality: dict | None = None) -> tuple[list[CheckIssue], dict]:
     """Return (issues, facts). `facts` is machine-readable context for the composer."""

@@ -8,7 +8,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from app.config.settings import WAREHOUSE_PATH
-from app.domain.checks import CheckIssue, run_checks, run_member_list_checks
+from app.domain.checks import (
+    CheckIssue,
+    run_checks,
+    run_coverage_checks,
+    run_member_list_checks,
+)
 from app.domain.compiler import Compiled, compile_plan
 from app.domain.executor import ResultSet, execute
 from app.domain.plan import QueryPlan
@@ -61,6 +66,10 @@ def check(plan: QueryPlan, sem: SemanticLayer, result: ResultSet,
           db_path=WAREHOUSE_PATH, quality: dict | None = None):
     if plan.kind == "member_list":
         return run_member_list_checks(plan, result, quality=quality)
+    if plan.kind == "coverage":
+        return run_coverage_checks(
+            plan, sem.metric(plan.metric), result, quality=quality
+        )
     return run_checks(plan, sem.metric(plan.metric), result, sem,
                       db_path=db_path, quality=quality)
 

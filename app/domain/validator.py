@@ -35,6 +35,8 @@ def validate_plan(plan: QueryPlan, sem: SemanticLayer) -> list[Issue]:
     issues: list[Issue] = []
     if plan.kind == "member_list":
         return _validate_member_list(plan, sem)
+    if plan.kind == "coverage":
+        return _validate_coverage(plan, sem)
 
     try:
         metric = sem.metric(plan.metric)
@@ -121,6 +123,33 @@ def validate_plan(plan: QueryPlan, sem: SemanticLayer) -> list[Issue]:
     for h in plan.having:
         if h.metric not in {"order_count", "value", plan.metric}:
             issues.append(Issue("BAD_HAVING", f"HAVING 不支持字段 {h.metric}"))
+    return issues
+
+
+def _validate_coverage(plan: QueryPlan, sem: SemanticLayer) -> list[Issue]:
+    issues: list[Issue] = []
+    try:
+        metric = sem.metric(plan.metric)
+    except Exception as exc:
+        return [Issue("UNKNOWN_METRIC", str(exc))]
+    if metric.type != "aggregate":
+        issues.append(Issue("COVERAGE_METRIC_UNSUPPORTED",
+                            "覆盖诊断目前只支持聚合指标"))
+    if not metric.raw.get("time_via"):
+        issues.append(Issue("COVERAGE_TIME_UNSUPPORTED",
+                            f"指标「{metric.name}」没有时间列"))
+    if plan.time is None:
+        issues.append(Issue("COVERAGE_TIME_REQUIRED", "覆盖诊断需要明确时间范围"))
+    elif plan.time.start >= plan.time.end:
+        issues.append(Issue("BAD_TIME_RANGE", "时间范围非法"))
+    if plan.dimensions:
+        issues.append(Issue("COVERAGE_DIMENSIONS_UNUSED",
+                            "覆盖诊断由月份序列驱动，不需要额外维度", "warn"))
+    for key in plan.filters:
+        if key not in sem.dimensions:
+            issues.append(Issue("UNKNOWN_FILTER", f"未知过滤字段: {key}"))
+    if plan.limit < 1 or plan.limit > MAX_ROW_LIMIT:
+        issues.append(Issue("BAD_LIMIT", f"limit 必须在 1..{MAX_ROW_LIMIT}"))
     return issues
 
 

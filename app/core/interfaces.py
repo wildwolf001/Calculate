@@ -12,7 +12,7 @@ from typing import Protocol
 
 @dataclass
 class ParseResult:
-    intent_type: str = "query"          # query | explain | unsupported | smalltalk | lookup
+    intent_type: str = "query"
     tier: str = "A"                     # A simple | B multi-step | C explanation
     slots: dict = field(default_factory=dict)
     unresolved: list[str] = field(default_factory=list)

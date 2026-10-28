@@ -54,7 +54,7 @@ class NestedSpec(BaseModel):
 class QueryPlan(BaseModel):
     # Two plan shapes share one contract: aggregates need a metric, member
     # lists enumerate the values of one dimension and only need list_dim.
-    kind: Literal["aggregate", "member_list"] = "aggregate"
+    kind: Literal["aggregate", "member_list", "coverage"] = "aggregate"
     plan_id: str = "p"
     metric: str | None = None
     list_dim: str | None = None
@@ -70,6 +70,7 @@ class QueryPlan(BaseModel):
     comparison: ComparisonSpec | None = None
     notes: list[str] = Field(default_factory=list)
     visualization: dict | None = None
+    coverage_period: Literal["month"] = "month"
     degraded_reason: str | None = None
     interpretation_id: str | None = None
     interpretation_label: str | None = None

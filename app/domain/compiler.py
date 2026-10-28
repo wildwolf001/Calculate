@@ -280,6 +280,8 @@ class _Builder:
 
     # ---------- compile paths ----------
     def compile(self) -> Compiled:
+        if self.plan.kind == "coverage":
+            return self._compile_coverage()
         if self.plan.comparison:
             return self._compile_explicit_comparison()
         if self.plan.compare:
@@ -325,6 +327,57 @@ class _Builder:
         sql.append(f"LIMIT {int(self.plan.limit)}")
         columns = list(self.plan.dimensions) + ["value"]
         return self._finalize("\n".join(x for x in sql if x), columns)
+
+    def _compile_coverage(self) -> Compiled:
+        if self.metric.type != "aggregate":
+            raise SemanticError("覆盖诊断目前只支持聚合指标")
+        expr = self.metric.raw.get("expr")
+        time_via = self.metric.raw.get("time_via")
+        if not expr or not time_via:
+            raise SemanticError(f"指标 {self.metric.id} 缺少 expr/time_via")
+        if not self.plan.time:
+            raise SemanticError("覆盖诊断需要明确时间范围")
+        start, end = self.plan.time.start, self.plan.time.end
+        expected_start = self.p(start)
+        expected_end = self.p(end)
+        time_column = self.phys(time_via)
+        actual = [
+            "actual AS (",
+            f"  SELECT CAST(date_trunc('month', {time_column}) AS DATE) "
+            f"AS {_q('_period_start')},",
+            f"         COUNT(*) AS {_q('_record_count')},",
+            f"         {expr} AS {_q('_value')}",
+            "  " + self._from_clause().replace("\n", "\n  "),
+            "  " + self._where_clause().replace("\n", "\n  "),
+            "  GROUP BY 1",
+            ")",
+        ]
+        sql = "\n".join([
+            "WITH expected AS (",
+            "  SELECT CAST(unnest(generate_series("
+            f"CAST({expected_start} AS DATE), "
+            f"CAST({expected_end} AS DATE) - INTERVAL '1 day', "
+            "INTERVAL '1 month')) AS DATE) AS \"_period_start\"",
+            "),",
+            *actual,
+            "SELECT strftime(e.\"_period_start\", '%Y-%m') AS \"month\",",
+            "       a.\"_record_count\" AS \"record_count\",",
+            "       a.\"_value\" AS \"value\",",
+            "       a.\"_record_count\" IS NULL AS \"is_missing\"",
+            "FROM expected e",
+            "LEFT JOIN actual a ON e.\"_period_start\" = a.\"_period_start\"",
+            "ORDER BY e.\"_period_start\"",
+            f"LIMIT {int(self.plan.limit)}",
+        ])
+        return self._finalize(
+            sql,
+            ["month", "record_count", "value", "is_missing"],
+            {
+                "coverage_period": "month",
+                "coverage_range": [str(start), str(end)],
+                "coverage_metric": self.metric.id,
+            },
+        )
 
     def _compile_ratio(self) -> Compiled:
         if not self.sem.capabilities.get("ratio", True):

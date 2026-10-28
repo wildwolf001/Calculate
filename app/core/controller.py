@@ -6,7 +6,6 @@ iteration (`reduce`), so an in-memory object can never drift from history.
 from __future__ import annotations
 
 import traceback
-import re
 from typing import AsyncIterator
 
 from app.config.settings import (
@@ -62,7 +61,6 @@ UNSUPPORTED_SUGGESTIONS = (
     "可以问：商品销售额 / 订单数 / 支付金额 / 延迟率 / 平均评分 / 低分率 / "
     "复购客户数 / 客单价，并指定时间（如「2025年5月」）和维度（如「按品类」）。"
 )
-ANALYSIS_CUE = re.compile(r"(经营分析|经营情况|整体分析|生意分析|经营诊断)")
 
 HANDLERS = {
     Status.PARSING: "PARSING",
@@ -106,6 +104,26 @@ class Controller:
                                 {"turn": turn}, trace_id=trace_id)
         yield self.store.append(session_id, "user.message",
                                 {"text": text, "turn": turn}, trace_id=trace_id)
+        state = self.store.replay(session_id)
+        yield self.store.append(
+            session_id,
+            "context.compiled",
+            context_for_event(build_conversation_context(state, self.sem)),
+            trace_id=trace_id,
+        )
+        rw = rewrite(text)
+        yield self.store.append(
+            session_id,
+            "query.normalized",
+            {
+                "original": rw.original,
+                "normalized": rw.normalized,
+                "changes": rw.changes,
+                "kind": rw.kind,
+                "followup": rw.followup,
+            },
+            trace_id=trace_id,
+        )
 
         for _ in range(MAX_STEPS):
             state = self.store.replay(session_id)
@@ -164,10 +182,24 @@ class Controller:
             trace_id=trace_id,
         )
         state.turn = turn
+        request_text = self._analysis_request_text(options)
         yield self.store.append(
             session_id,
             "context.compiled",
             context_for_event(build_conversation_context(state, self.sem)),
+            trace_id=trace_id,
+        )
+        rw = rewrite(request_text)
+        yield self.store.append(
+            session_id,
+            "query.normalized",
+            {
+                "original": rw.original,
+                "normalized": rw.normalized,
+                "changes": rw.changes,
+                "kind": "analysis",
+                "followup": False,
+            },
             trace_id=trace_id,
         )
         try:
@@ -255,33 +287,16 @@ class Controller:
     def _handle_parsing(self, state: SessionState) -> list[tuple[str, dict]]:
         original = self._last_user_text(state)
         rw = rewrite(original)
-        conversation_context = build_conversation_context(state, self.sem)
-        events: list[tuple[str, dict]] = [
-            ("context.compiled", context_for_event(conversation_context)),
-            (
-                "query.normalized",
-                {
-                    "original": rw.original,
-                    "normalized": rw.normalized,
-                    "changes": rw.changes,
-                    "kind": rw.kind,
-                    "followup": rw.followup,
-                },
-            ),
-        ]
+        conversation_context = (
+            state.context
+            or build_conversation_context(state, self.sem)
+        )
+        events: list[tuple[str, dict]] = []
 
         if rw.kind == "smalltalk":
             events.append(("answer.composed", {"text": SMALLTALK_TEXT, "result_id": None}))
             events.append(("result.presented", {"result_id": None}))
             return events
-        if self._wants_analysis(rw.normalized):
-            events.append(("intent.classified", {
-                "intent_type": "analysis",
-                "tier": "B",
-                "confidence": 1.0,
-                "rewritten_question": rw.normalized,
-            }))
-            return events + self._analysis_events(state, None)
         if rw.kind == "lookup" and self.sem.parser == "ecommerce":
             if not self.sem.capabilities.get("member_list", True):
                 events.append(("error.raised", {
@@ -342,6 +357,19 @@ class Controller:
 
         if result.intent_type == "analysis":
             return events + self._analysis_events(state, None)
+
+        if result.intent_type == "critique_response":
+            return events + self._critique_response_events(state, result)
+
+        if result.intent_type == "coverage":
+            slots = dict(result.slots)
+            slots["intent"] = "coverage"
+            slots.setdefault("coverage_period", "month")
+            events.append(("intent.parsed", {
+                "slots": slots,
+                "notes": result.notes,
+            }))
+            return events
 
         if len(result.subquestions) >= 2 and not result.interpretations:
             events.append(("subquestions.planned", {
@@ -456,15 +484,6 @@ class Controller:
         events.append(("intent.parsed", {"slots": slots, "notes": result.notes}))
         return events
 
-    @staticmethod
-    def _wants_analysis(text: str) -> bool:
-        value = (text or "").strip()
-        return (
-            bool(ANALYSIS_CUE.search(value))
-            and len(value) <= 36
-            and not re.search(r"\d", value)
-        )
-
     def _analysis_request_text(self, options: dict | None) -> str:
         options = options or {}
         catalog = {item["id"]: item["label"] for item in module_catalog(self.sem)}
@@ -477,6 +496,137 @@ class Controller:
         if custom:
             text += "\n自定义分析：" + custom[:500]
         return text
+
+    def _coverage_answer(self, state: SessionState, artifact: dict | None = None) -> str:
+        artifact = artifact or state.artifacts.get(state.last_result_id or "") or {}
+        facts = artifact.get("facts") or state.facts or {}
+        expected = facts.get("expected_periods") or []
+        observed = facts.get("observed_periods") or []
+        missing = facts.get("missing_periods") or []
+        zero_value = facts.get("zero_value_periods") or []
+        if not expected:
+            return "当前没有可用的月份覆盖结果，无法判断数据是否有缺失。"
+        scope = ""
+        plan_payload = artifact.get("plan") or {}
+        filters = plan_payload.get("filters") or {}
+        if filters:
+            labels = []
+            for dim, spec in filters.items():
+                name = self.sem.dimension(dim).raw.get("name_zh", dim)
+                value = spec.get("value") if isinstance(spec, dict) else spec
+                labels.append(f"{name}={value}")
+            scope = f"（{'、'.join(labels)}）"
+        lines = [
+            f"此次按自然月检查{scope}，应覆盖 {len(expected)} 个月，"
+            f"实际有记录 {len(observed)} 个月，覆盖率 "
+            f"{float(facts.get('coverage_ratio', 0)) * 100:.2f}%。"
+        ]
+        if missing:
+            lines.append("存在缺失记录的时间段：" + "、".join(missing) + "。")
+            internal = [
+                month for month in missing
+                if expected.index(month) not in {0, len(expected) - 1}
+            ]
+            boundary = [month for month in missing if month not in internal]
+            if boundary:
+                lines.append(
+                    "缺失分布："
+                    + "、".join(boundary)
+                    + " 位于观察窗口边缘，可能来自商品生命周期或数据集起止边界，"
+                    "仅凭当前数据不能认定为上游漏数。"
+                )
+            if internal:
+                lines.append(
+                    "缺失分布："
+                    + "、".join(internal)
+                    + " 位于观察窗口内部，更可能是业务断档、商品下架或源数据漏采。"
+                )
+            else:
+                lines.append(
+                    "观察窗口内部没有发现月中断档；缺失主要集中在首尾边界。"
+                )
+        else:
+            lines.append("所有预期月份都有记录，未发现时间缺口。")
+        if zero_value:
+            lines.append(
+                "以下月份虽然有记录，但指标值为 0：" + "、".join(zero_value) + "。"
+            )
+        lines.append(
+            "说明：“无记录”代表该月份没有落入当前商品和筛选范围的记录；"
+            "“零值”代表有记录但业务指标为 0，两者含义不同。"
+        )
+        coverage_rows = facts.get("coverage_rows") or []
+        observed_counts = [
+            row.get("record_count") for row in coverage_rows
+            if not row.get("is_missing") and row.get("record_count") is not None
+        ]
+        if observed_counts:
+            low = min(observed_counts)
+            high = max(observed_counts)
+            low_months = [
+                row["month"] for row in coverage_rows
+                if row.get("record_count") == low and not row.get("is_missing")
+            ]
+            high_months = [
+                row["month"] for row in coverage_rows
+                if row.get("record_count") == high and not row.get("is_missing")
+            ]
+            lines.append(
+                f"有记录月份的记录数范围是 {low} 至 {high}；"
+                f"最低出现在 {'、'.join(low_months)}，最高出现在 {'、'.join(high_months)}。"
+            )
+        if missing:
+            lines.append(
+                "对结论的影响：全期累计值可以使用，但月度趋势、连续增长和同期比较"
+                "必须把缺失月份单独说明，不能把“无记录”等同于“业务量为 0”。"
+            )
+        quality_notes = [
+            issue for issue in (artifact.get("checks") or state.checks)
+            if issue.get("id") == "DATA_QUALITY"
+        ]
+        if quality_notes:
+            lines.append("数据提示：" + (
+                quality_notes[0].get("detail") or quality_notes[0].get("title", "")
+            ))
+        return "\n\n".join(lines)
+
+    def _critique_response_events(self, state: SessionState,
+                                  result) -> list[tuple[str, dict]]:
+        """Treat feedback on the previous answer as a refinement, not a new job."""
+        artifact = state.artifacts.get(state.last_result_id or "") or {}
+        active_plan = artifact.get("plan") or {}
+        if active_plan.get("kind") == "coverage":
+            text = self._coverage_answer(state, artifact)
+            return [
+                ("answer.composed", {
+                    "text": text,
+                    "result_id": state.last_result_id,
+                    "kind": "critique_response",
+                }),
+                ("result.presented", {"result_id": state.last_result_id}),
+            ]
+        try:
+            plan = QueryPlan.model_validate(active_plan)
+        except Exception:
+            return [("answer.composed", {
+                "text": result.explanation
+                or "你说得对。当前没有可用于继续检查的查询结果，请指定要检查的实体和指标。",
+                "result_id": None,
+            })]
+        slots = Slots(
+            metric=plan.metric,
+            dimensions=[],
+            time=plan.time,
+            filters=plan.filters,
+            intent="coverage",
+            notes=[
+                "根据用户对上一轮答案的反馈，继续检查上一查询范围的时间覆盖。",
+            ],
+        )
+        return [("intent.parsed", {
+            "slots": slots.model_dump(mode="json"),
+            "notes": slots.notes,
+        })]
 
     def _analysis_focus(self, state: SessionState) -> dict:
         """Carry only explicit, bindable context from the latest query."""
@@ -1115,10 +1265,25 @@ class Controller:
                     lines.append("| " + " | ".join(shown_columns) + " |")
                     lines.append("| " + " | ".join("---" for _ in shown_columns) + " |")
                     for row in artifact.rows[:6]:
-                        values = [
-                            fmt_number(value, unit)
-                            for value in row[:len(shown_columns)]
-                        ]
+                        values = []
+                        for index, value in enumerate(row[:len(shown_columns)]):
+                            column_type = (
+                                artifact.column_types[index]
+                                if index < len(artifact.column_types) else ""
+                            ).upper()
+                            is_text = any(
+                                token in column_type
+                                for token in ("CHAR", "TEXT", "BOOL", "JSON", "UUID")
+                            )
+                            if value is None:
+                                values.append("—")
+                            elif is_text:
+                                values.append(str(value))
+                            else:
+                                try:
+                                    values.append(fmt_number(value, unit))
+                                except (TypeError, ValueError):
+                                    values.append(str(value))
                         lines.append("| " + " | ".join(values) + " |")
                     lines.append("")
                 lines.append(f"结果记录：`{artifact.result_id}`")
@@ -1557,6 +1722,17 @@ class Controller:
         return events
 
     def _handle_composing(self, state: SessionState) -> list[tuple[str, dict]]:
+        if state.plan is not None and state.plan.kind == "coverage":
+            artifact = state.artifacts.get(state.last_result_id or "") or {}
+            text = self._with_draft_notice(self._coverage_answer(state, artifact))
+            return [
+                ("answer.composed", {
+                    "text": text,
+                    "result_id": state.last_result_id,
+                    "semantic_status": self._semantic_status(),
+                }),
+                ("result.presented", {"result_id": state.last_result_id}),
+            ]
         if state.plan is not None and state.plan.kind == "member_list":
             artifact = state.artifacts.get(state.last_result_id or "") or {}
             rows = artifact.get("rows") or []

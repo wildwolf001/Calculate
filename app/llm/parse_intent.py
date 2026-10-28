@@ -42,6 +42,7 @@ class LLMIntentParser:
     ALLOWED_SLOT_KEYS = {
         "metric", "dimensions", "time", "filters", "having", "compare",
         "comparison", "order_by", "limit", "nested", "intent", "unresolved", "notes",
+        "coverage_period",
     }
 
     def _range(self, value: dict, name: str) -> dict:
@@ -130,6 +131,7 @@ class LLMIntentParser:
             "intent": raw_slots.get("intent", "query"),
             "unresolved": raw_slots.get("unresolved") or [],
             "notes": [],
+            "coverage_period": raw_slots.get("coverage_period", "month"),
         }
 
     def _validate_subquestions(self, raw: list) -> list[dict]:
@@ -190,7 +192,8 @@ class LLMIntentParser:
         subquestions = self._validate_subquestions(data.get("subquestions") or [])
         intent_type = data.get("intent_type", "query")
         if intent_type not in {
-            "query", "analysis", "explain", "unsupported", "smalltalk", "lookup",
+            "query", "analysis", "coverage", "critique_response",
+            "explain", "unsupported", "smalltalk", "lookup",
         }:
             if len(subquestions) < 2:
                 raise IntentParseError(f"未知 intent_type: {intent_type}")

@@ -13,6 +13,33 @@ from app.domain.semantic.loader import SemanticLayer
 
 
 def display_spec(plan: QueryPlan, sem: SemanticLayer, result: ResultSet) -> dict:
+    if plan.kind == "coverage":
+        metric = sem.metric(plan.metric)
+        unit = metric.raw.get("unit")
+        present = set(result.columns)
+        columns = []
+        if "month" in present:
+            columns.append({"key": "month", "label": "月份", "type": "text", "show": True})
+        if "record_count" in present:
+            columns.append({
+                "key": "record_count", "label": "记录数",
+                "type": "int", "show": True,
+            })
+        if "value" in present:
+            columns.append({
+                "key": "value", "label": metric.name,
+                "type": "percent" if unit == "%" else "metric", "show": True,
+            })
+        if "is_missing" in present:
+            columns.append({
+                "key": "is_missing", "label": "缺失",
+                "type": "text", "show": True,
+            })
+        return {
+            "columns": columns,
+            "metric_name": f"{metric.name}覆盖诊断",
+            "unit": unit,
+        }
     if plan.kind == "member_list":
         dim = sem.dimension(plan.list_dim or "")
         label = dim.raw.get("name_zh", plan.list_dim)
