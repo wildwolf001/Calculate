@@ -71,6 +71,8 @@ interface State {
   sessionId: string
   datasetId: string
   datasets: DatasetSummary[]
+  switching: boolean
+  switchSeq: number
   status: string
   busy: boolean
   busySince: number
@@ -115,6 +117,8 @@ export const useSessionStore = defineStore('session', {
     sessionId: '',
     datasetId: '',
     datasets: [],
+    switching: false,
+    switchSeq: 0,
     status: 'IDLE',
     busy: false,
     busySince: 0,
@@ -206,18 +210,28 @@ export const useSessionStore = defineStore('session', {
       }
     },
     async switchDataset(datasetId: string) {
-      if (this.busy || !datasetId || datasetId === this.datasetId) return
+      if (this.busy || this.switching || !datasetId || datasetId === this.datasetId) return
+      const sequence = ++this.switchSeq
+      this.switching = true
+      this.setToast('正在切换数据源…')
       try {
+        // Resolve a fully usable target context before changing any active UI
+        // state. A failed switch leaves the previous dataset/session intact.
+        const nextMeta = await getMeta(datasetId)
+        const nextSessionId = await createSession(datasetId)
+        if (sequence !== this.switchSeq) return
         this.datasetId = datasetId
-        this.meta = await getMeta(datasetId)
+        this.meta = nextMeta
         this.resetConversation()
-        this.sessionId = await createSession(datasetId)
+        this.sessionId = nextSessionId
         this.addAssistant(this.greeting)
         await this.refreshHistory()
         await this.loadSessions()
         this.setToast(`已切换数据源：${this.meta.dataset}`)
       } catch (err: any) {
         this.setToast(`切换数据源失败：${err.message || err}`)
+      } finally {
+        if (sequence === this.switchSeq) this.switching = false
       }
     },
     resetConversation() {
@@ -257,7 +271,7 @@ export const useSessionStore = defineStore('session', {
     },
     async loadSessions() {
       try {
-        this.sessions = await listSessions()
+        this.sessions = await listSessions(this.datasetId || undefined)
       } catch {
         /* the conversation list is non-critical */
       }
@@ -267,7 +281,7 @@ export const useSessionStore = defineStore('session', {
       if (this.drawerOpen) this.loadSessions()
     },
     async newChat() {
-      if (this.busy) return
+      if (this.busy || this.switching) return
       if (!this.datasetId) {
         this.setToast('请先在数据管理页导入数据源')
         return
@@ -285,7 +299,7 @@ export const useSessionStore = defineStore('session', {
       }
     },
     async loadSession(sessionId: string) {
-      if (this.busy || sessionId === this.sessionId) {
+      if (this.busy || this.switching || sessionId === this.sessionId) {
         this.drawerOpen = false
         return
       }
@@ -293,14 +307,17 @@ export const useSessionStore = defineStore('session', {
         const events = await getSessionEvents(sessionId)
         const created = events.find((ev) => ev.type === 'session.created')
         const datasetId = created?.payload?.dataset_id
+        let nextMeta = this.meta
         if (datasetId) {
-          this.datasetId = datasetId
           try {
-            this.meta = await getMeta(datasetId)
-          } catch {
-            /* keep the previous meta */
+            nextMeta = await getMeta(datasetId)
+          } catch (err: any) {
+            this.setToast(`历史会话的数据源不可用：${err.message || err}`)
+            return
           }
         }
+        if (datasetId) this.datasetId = datasetId
+        this.meta = nextMeta
         this.resetConversation()
         this.sessionId = sessionId
         for (const ev of events) {
@@ -353,7 +370,7 @@ export const useSessionStore = defineStore('session', {
         this.setToast('请先在数据管理页导入数据源')
         return
       }
-      if (!content || this.busy || !this.sessionId) return
+      if (!content || this.busy || this.switching || !this.sessionId) return
       this.addUser(content)
       this.busy = true
       this.busySince = Date.now()

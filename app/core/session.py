@@ -78,7 +78,13 @@ class SessionService:
         # Fail before writing an event if the dataset cannot be loaded.
         if self._context_resolver is not None:
             self._context_resolver(ds)
-        if not self.store.exists(sid):
+        if self.store.exists(sid):
+            existing = self.store.replay(sid)
+            if existing.dataset_id and existing.dataset_id != ds:
+                raise DatasetError(
+                    f"会话 {sid} 已绑定数据源 {existing.dataset_id}，不能切换为 {ds}"
+                )
+        else:
             self.store.append(sid, "session.created",
                               {"session_id": sid, "dataset_id": ds})
         return sid

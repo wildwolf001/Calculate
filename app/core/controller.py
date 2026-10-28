@@ -1748,11 +1748,13 @@ class Controller:
                 text = f"限定范围：{'；'.join(scope)}。\n\n{text}"
             quality_notes = [
                 issue for issue in state.checks
-                if issue.get("id") == "DATA_QUALITY"
+                if issue.get("id") in {"DATA_QUALITY", "SCOPE_TIME_DROPPED"}
             ]
-            if quality_notes:
-                issue = quality_notes[0]
-                text += f"\n\n数据提示：{issue.get('detail') or issue.get('title')}"
+            for issue in quality_notes:
+                text += (
+                    f"\n\n范围提示："
+                    f"{issue.get('detail') or issue.get('title')}"
+                )
             return [
                 ("answer.composed", {"text": text, "result_id": state.last_result_id}),
                 ("result.presented", {"result_id": state.last_result_id}),

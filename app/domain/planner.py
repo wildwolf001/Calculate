@@ -54,6 +54,8 @@ def member_list_plan(dim: str | None, slots: Slots, sem: SemanticLayer) -> Query
 
     notes = list(slots.notes)
     coverage = sem.capabilities.get("member_list_coverage") or {}
+    effective_time = slots.time
+    degraded_reason = None
     if coverage.get("label"):
         notes.append(f"成员清单来自维度表；{coverage['label']}为该成员覆盖的统计值。")
     else:
@@ -65,7 +67,11 @@ def member_list_plan(dim: str | None, slots: Slots, sem: SemanticLayer) -> Query
                 f"时间 {slots.time.start}~{slots.time.end} 同时约束成员的时间覆盖。"
             )
         else:
-            notes.append("该维度没有时间覆盖列，时间条件不会改变成员集合。")
+            effective_time = None
+            degraded_reason = (
+                "当前维度的成员清单没有时间覆盖列，已忽略时间范围并返回完整成员集合。"
+            )
+            notes.append(degraded_reason)
     # A member list is exhaustive by nature; truncation is reported, not
     # silently capped at the aggregate default of 100.
     limit = MAX_ROW_LIMIT
@@ -74,10 +80,11 @@ def member_list_plan(dim: str | None, slots: Slots, sem: SemanticLayer) -> Query
         plan_id=f"list_{dim}",
         list_dim=dim,
         filters=slots.filters,
-        time=slots.time,
+        time=effective_time,
         order_by=slots.order_by,
         limit=limit,
         notes=notes,
+        degraded_reason=degraded_reason,
     )
 
 

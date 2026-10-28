@@ -60,7 +60,8 @@ def meta(request: Request, dataset_id: str | None = None):
     catalog = ctx.catalog
     return {
         "dataset_id": ctx.dataset_id,
-        "dataset": sem.dataset,
+        "dataset": ctx.name,
+        "semantic_dataset": sem.dataset,
         "mode": ctx.mode,
         "data_version": ctx.data_version,
         "semantic_version": sem.version,
@@ -423,16 +424,18 @@ async def create_session(request: Request, body: CreateSessionRequest | None = N
 
 
 @router.get("/sessions")
-def list_sessions(request: Request, limit: int = 50):
+def list_sessions(request: Request, limit: int = 50,
+                  dataset_id: str | None = None):
     """Recent conversations, newest first. Title = first user message."""
     service = get_service(request)
     root = service.store.root
     items = []
+    filter_dataset = dataset_id
     paths = sorted(root.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)
-    for path in paths[: max(1, min(limit, 200))]:
+    for path in paths:
         title = None
         turns = 0
-        dataset_id = None
+        session_dataset_id = None
         try:
             for line in path.read_text(encoding="utf-8").splitlines():
                 try:
@@ -442,7 +445,7 @@ def list_sessions(request: Request, limit: int = 50):
                 if ev.get("type") == "turn.started":
                     turns += 1
                 elif ev.get("type") == "session.created":
-                    dataset_id = (ev.get("payload") or {}).get("dataset_id")
+                    session_dataset_id = (ev.get("payload") or {}).get("dataset_id")
                 elif ev.get("type") == "user.message" and title is None:
                     title = (ev.get("payload") or {}).get("text")
         except OSError:
@@ -451,12 +454,14 @@ def list_sessions(request: Request, limit: int = 50):
             "session_id": path.stem,
             "title": (title or "新对话")[:60],
             "turns": turns,
-            "dataset_id": dataset_id,
+            "dataset_id": session_dataset_id,
             "updated_at": datetime.fromtimestamp(
                 path.stat().st_mtime
             ).isoformat(timespec="seconds"),
         })
-    return {"sessions": items}
+    if filter_dataset is not None:
+        items = [item for item in items if item["dataset_id"] == filter_dataset]
+    return {"sessions": items[: max(1, min(limit, 200))]}
 
 
 @router.delete("/sessions/{session_id}")

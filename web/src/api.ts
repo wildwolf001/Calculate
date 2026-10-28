@@ -178,9 +178,10 @@ export async function cancelJob(jobId: string): Promise<any> {
   )
 }
 
-export async function listSessions(): Promise<SessionSummary[]> {
+export async function listSessions(datasetId?: string): Promise<SessionSummary[]> {
+  const query = datasetId ? `?dataset_id=${encodeURIComponent(datasetId)}` : ''
   const data = await json<{ sessions: SessionSummary[] }>(
-    await fetch(`${BASE}/api/sessions`),
+    await fetch(`${BASE}/api/sessions${query}`),
   )
   return data.sessions
 }

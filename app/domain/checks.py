@@ -79,6 +79,12 @@ def run_member_list_checks(plan: QueryPlan, result: ResultSet,
         "filters": list(plan.filters),
         "range": [str(plan.time.start), str(plan.time.end)] if plan.time else None,
     }
+    if plan.degraded_reason:
+        facts["degraded_reason"] = plan.degraded_reason
+        issues.append(CheckIssue(
+            "SCOPE_TIME_DROPPED", "warn", "时间条件未应用",
+            plan.degraded_reason,
+        ))
     if result.row_count == 0:
         issues.append(CheckIssue("EMPTY_RESULT", "warn", "清单为空",
                                  "当前筛选与时间范围内没有成员；可能是筛选条件、时间范围或源数据缺失。"))
@@ -92,8 +98,12 @@ def run_member_list_checks(plan: QueryPlan, result: ResultSet,
         issues.append(CheckIssue("TRUNCATED", "warn", "结果被截断",
                                  f"仅返回前 {result.row_count} 行成员。"))
     scope = "清单来自维度表。"
-    if plan.time or plan.filters:
+    if plan.time and plan.filters:
         scope += "筛选条件与时间窗已应用到成员清单。"
+    elif plan.time:
+        scope += "时间窗已应用到成员清单。"
+    elif plan.filters:
+        scope += "筛选条件已应用到成员清单；时间条件未应用。"
     issues.append(CheckIssue("LOOKUP_SCOPE", "info", "统计范围", scope))
     quality_issue, quality_facts = _quality_notice(quality)
     if quality_issue:

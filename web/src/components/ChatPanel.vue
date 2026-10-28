@@ -27,9 +27,11 @@ function onKeydown(e: KeyboardEvent) {
   }
 }
 
-function onDatasetChange(e: Event) {
-  const value = (e.target as HTMLSelectElement).value
-  store.switchDataset(value)
+async function onDatasetChange(e: Event) {
+  const select = e.target as HTMLSelectElement
+  const value = select.value
+  await store.switchDataset(value)
+  select.value = store.datasetId
 }
 
 function resize() {
@@ -90,7 +92,7 @@ const slow = computed(() => elapsed.value >= 30)
           <select
             class="dataset-select"
             :value="store.datasetId"
-            :disabled="store.busy || store.datasets.length <= 1"
+            :disabled="store.busy || store.switching || store.datasets.length <= 1"
             title="切换数据源"
             @change="onDatasetChange"
           >
@@ -165,7 +167,7 @@ const slow = computed(() => elapsed.value >= 30)
       <div class="analysis-bar">
         <button
           class="analysis-btn"
-          :disabled="store.busy || !store.sessionId"
+          :disabled="store.busy || store.switching || !store.sessionId"
           @click="store.openAnalysisDialog()"
         >
           📊 生成经营分析
@@ -190,13 +192,13 @@ const slow = computed(() => elapsed.value >= 30)
           class="input"
           rows="1"
           :placeholder="store.datasetId ? '问一个经营问题…' : '请先导入数据源'"
-          :disabled="!store.datasetId"
+          :disabled="!store.datasetId || store.switching"
           @keydown="onKeydown"
           @input="resize"
         ></textarea>
         <button
           class="send"
-          :disabled="!store.datasetId || store.busy || !input.trim()"
+          :disabled="!store.datasetId || store.busy || store.switching || !input.trim()"
           @click="send()"
         >
           发送 ↵
