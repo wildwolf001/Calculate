@@ -78,6 +78,9 @@ def test_parser_uses_search_tool_to_rescue_unresolved(tmp_path):
         intent_type="query", tier="A", confidence=0.5,
         slots={"unresolved": ["退单数量"]},
     )
+    assert parser._has_semantic_hit("退单数量是多少") is True
+    assert parser._has_semantic_hit("今天天气怎么样") is False
+
     result = parser._apply_semantic_tools("退单数量是多少", result)
     assert result.slots["metric"] == "m_refund"
     assert result.slots["metric_source"] == "documented"

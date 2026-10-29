@@ -16,31 +16,45 @@ def _tokens(text: str) -> list[str]:
     return [part for part in re.split(r"[\s,，。；;:：/、()（）]+", text or "") if part]
 
 
-def _score(item: dict[str, Any], tokens: list[str]) -> int:
-    haystack = " ".join(
-        str(item.get(key) or "")
-        for key in ("name", "definition", "expr", "numerator", "denominator")
-    )
-    haystack += " " + " ".join(str(v) for v in item.get("synonyms") or [])
-    score = 0
-    for token in tokens:
-        if token and token in haystack:
+def _score(item: dict[str, Any], question: str) -> int:
+    """Chinese-aware retrieval: match names/synonyms/labels as substrings.
+
+    Splitting on whitespace used to give every item score 0 for a Chinese
+    question, so the brief always showed the alphabetically first metrics.
+    """
+    text = str(question or "")
+    name = str(item.get("name") or "")
+    score = 5 if name and name in text else 0
+    for synonym in item.get("synonyms") or []:
+        if synonym and str(synonym) in text:
+            score += 3
+    for label in (item.get("labels") or {}).values():
+        if label and str(label) in text:
+            score += 2
+    for key in ("definition", "expr", "numerator", "denominator"):
+        value = item.get(key)
+        if value and str(value) in text:
             score += 1
     return score
 
 
-def _metric_line(metric_id: str, metric: dict[str, Any]) -> str:
+def _metric_line(metric_id: str, metric: dict[str, Any],
+                 dim_names: dict[str, str]) -> str:
     expr = metric.get("expr") or (
         f'{metric.get("numerator") or ""} / {metric.get("denominator") or ""}'
     )
     scope = metric.get("scope") or {}
     dims = metric.get("supported_dimensions") or []
+    dim_text = [
+        f"{dim_id}({dim_names.get(dim_id, dim_id)})"
+        for dim_id in dims[:12]
+    ]
     return (
         f"- {metric_id}: {metric.get('name')}; "
         f"type={metric.get('type')}; expr={expr}; "
         f"fact={metric.get('fact')}; scope={scope}; "
         f"time_via={metric.get('time_via')}; unit={metric.get('unit')}; "
-        f"dims={dims[:12]}"
+        f"dims={dim_text}"
     )
 
 
@@ -59,23 +73,28 @@ def build_brief(index: dict[str, Any], question: str,
                 max_chars: int = MAX_CHARS) -> str:
     if not index:
         return ""
-    tokens = _tokens(question)
     metrics = index.get("metrics") or {}
     dimensions = index.get("dimensions") or {}
+    dim_names = {
+        dim_id: str(dim.get("name") or dim_id)
+        for dim_id, dim in dimensions.items()
+    }
 
     ranked_metrics = sorted(
         metrics.items(),
-        key=lambda item: (-_score(item[1], tokens), str(item[0])),
+        key=lambda item: (-_score(item[1], question), str(item[0])),
     )[:max_metrics]
     ranked_dims = sorted(
         dimensions.items(),
-        key=lambda item: (-_score(item[1], tokens), str(item[0])),
+        key=lambda item: (-_score(item[1], question), str(item[0])),
     )[:max_dimensions]
 
     lines: list[str] = []
     lines.append(f"dataset={index.get('dataset_id')} semantic_version={index.get('semantic_version')}")
     lines.append("指标:")
-    lines.extend(_metric_line(mid, metric) for mid, metric in ranked_metrics)
+    lines.extend(
+        _metric_line(mid, metric, dim_names) for mid, metric in ranked_metrics
+    )
     lines.append("维度:")
     lines.extend(_dimension_line(did, dim) for did, dim in ranked_dims)
 

@@ -199,6 +199,13 @@ def plan_from_slots(slots: Slots, sem: SemanticLayer) -> QueryPlan:
             order_by = []
 
     limit = max(1, min(int(slots.limit), MAX_ROW_LIMIT))
+    limit_per_group = slots.limit_per_group
+    if limit_per_group and len(dims) < 2:
+        # "哪个商家最高" is a global top-N, not a per-group top-N. Keeping
+        # limit_per_group with one dimension would force a needless LLM repair.
+        limit = max(1, min(int(limit_per_group), MAX_ROW_LIMIT))
+        limit_per_group = None
+        notes.append("只有一个分组维度，按整体排序取前 N。")
 
     plan = QueryPlan(
         plan_id=(
@@ -219,7 +226,7 @@ def plan_from_slots(slots: Slots, sem: SemanticLayer) -> QueryPlan:
         nested=slots.nested,
         order_by=order_by,
         limit=limit,
-        limit_per_group=slots.limit_per_group,
+        limit_per_group=limit_per_group,
         share=bool(slots.share),
         compare=slots.compare,
         comparison=slots.comparison,

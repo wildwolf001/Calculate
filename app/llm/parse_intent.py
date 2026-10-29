@@ -48,6 +48,22 @@ class LLMIntentParser:
     def _tool_context(self, text: str) -> ToolContext:
         return ToolContext(data={"index": self._index, "question": text})
 
+    def _has_semantic_hit(self, text: str) -> bool:
+        if not self._index:
+            return False
+        searched = SearchSemanticsTool().run(
+            {"query": text, "limit": 8}, self._tool_context(text),
+        )
+        if not searched.ok:
+            return False
+        for item in (searched.facts.get("metrics") or []):
+            if item.get("name") and str(item["name"]) in text:
+                return True
+        for item in (searched.facts.get("dimensions") or []):
+            if item.get("name") and str(item["name"]) in text:
+                return True
+        return False
+
     def _apply_semantic_tools(self, text: str, result: ParseResult) -> ParseResult:
         """Use chat-side tools to enrich or rescue a parsed query.
 
@@ -531,6 +547,11 @@ class LLMIntentParser:
                     data = self.client.complete_json(system, user, max_tokens=6000,
                                                      stage="parse_intent")
                     result = self._validate(data)
+                    if result.intent_type == "unsupported" and self._has_semantic_hit(text):
+                        raise IntentParseError(
+                            "语义索引中存在与问题相关的指标或维度，不要判 unsupported；"
+                            "请给出可执行的 slots，或明确说明缺少什么"
+                        )
                     result = self._postprocess_lookup(result, text)
                     result = self._apply_semantic_tools(text, result)
                     result.notes = list(dict.fromkeys(result.notes + ["由模型解析意图"]))

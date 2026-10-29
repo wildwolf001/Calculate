@@ -25,7 +25,7 @@
   - 关系、文档口径、时间轴。
 - DatasetContext 新增 index_path/index；加载 semantic_index.json。
 - publish 成功后生成 semantic_index.json（失败不阻断发布）。
-- 新增 app/llm/semantic_brief.py：按问题检索 top-k，生成紧凑 brief（<=4k 字符）。
+- 新增 app/llm/semantic_brief.py：按问题检索 top-k，生成紧凑 brief（<=4k 字符）；中文按 name/synonym/label 子串打分，避免按字母序截断。
 - LLMIntentParser 支持 index/use_brief；USE_SEMANTIC_BRIEF 默认开启（有 index 时用 brief，无 index 回退 schema card）。
 - Chat 工具接入 parser：metric.describe 丰富口径，schema.search 兜底 unresolved 指标。
 - 新增 GET /datasets/{id}/index。
@@ -99,7 +99,7 @@
   - tests/integration/test_derived_metric_turn.py（1）
   - tests/integration/test_agent_api.py（1）
   - tests/unit/test_ingest_decider.py（4）
-- 全量：261 passed / 0 failed / 92 skipped。
+- 全量：263 passed / 0 failed / 92 skipped。
 - 未使用电商数据集；测试数据为临时生成的 CSV/DataFrame。
 
 ## 尚未接线
@@ -110,8 +110,8 @@
    - semantic_brief 已默认开启（无 index 时回退 schema card）；
    - 还没有拆成 app/chat/turn/*。
 2. Ingest Agent 生产化：
-   - job/SSE、review API、review/apply、ManageApp 审核面板已接；
-   - 还没有生成物理 warehouse/binding，所以 semantic_draft 只是候选；
+   - job/SSE、review API、review/apply、materialize、ManageApp 审核面板已接；
+   - materialize 已能生成 draft warehouse/binding/semantic；
    - 还没有替换 generic_pipeline（目前是审计/画像旁路）。
 3. 发布链路：
    - semantic_index 已写、已加载，但 publish 的索引生成还没有专门集成测试。
@@ -122,11 +122,11 @@
 
 ## 下一步
 
-1. 把 semantic_brief 接进 LLMIntentParser（feature flag）。
-2. 把 chat/agent 工具接进 controller，删 6 个 salvage。
-3. 给 ingest agent 加 LLMDecider + api job/SSE。
-4. 补 publish -> index -> context 的集成测试。
-5. 前端 provenance/alternatives/review queue。
+1. 补 publish -> index -> context 的集成测试。
+2. 拆 chat/controller 为 app/chat/turn/*，逐步删 6 个 salvage。
+3. 前端 alternatives 展示。
+4. Ingest Agent 多表关系/joins。
+5. 把 Agent materialize 接入正式发布链路。
 
 ## 运行
 
