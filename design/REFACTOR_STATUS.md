@@ -26,7 +26,8 @@
 - DatasetContext 新增 index_path/index；加载 semantic_index.json。
 - publish 成功后生成 semantic_index.json（失败不阻断发布）。
 - 新增 app/llm/semantic_brief.py：按问题检索 top-k，生成紧凑 brief（<=4k 字符）。
-- LLMIntentParser 支持 index/use_brief（env USE_SEMANTIC_BRIEF=1），默认关闭。
+- LLMIntentParser 支持 index/use_brief；USE_SEMANTIC_BRIEF 默认开启（有 index 时用 brief，无 index 回退 schema card）。
+- Chat 工具接入 parser：metric.describe 丰富口径，schema.search 兜底 unresolved 指标。
 - 新增 GET /datasets/{id}/index。
 
 ### Phase 2：派生指标
@@ -37,6 +38,7 @@
 - 支持 AVG(review_score)、COUNT(DISTINCT ...) 这类未发布指标，不需要改 semantic.yaml。
 - LLMIntentParser 接受 metric_expr；capability/planner/compiler/validator/pipeline/insights/presentation 都能解析 synthetic metric。
 - 全链路 controller 测试：派生 AVG 指标可走完 parse→capability→plan→compile→execute→compose。
+- QueryIR 成为 planner 入口：controller 用 plan_from_ir(QueryIR.from_slots(slots))，IR 含 metric_expr/metric_source。
 
 ### Agent 内核
 
@@ -97,15 +99,16 @@
   - tests/integration/test_derived_metric_turn.py（1）
   - tests/integration/test_agent_api.py（1）
   - tests/unit/test_ingest_decider.py（4）
-- 全量：258 passed / 0 failed / 92 skipped（materialize 断言计入 test_agent_api）。
+- 全量：261 passed / 0 failed / 92 skipped。
 - 未使用电商数据集；测试数据为临时生成的 CSV/DataFrame。
 
 ## 尚未接线
 
 1. Chat controller 拆分：
-   - 仍保留 core/controller.py；
-   - app/chat/agent 工具还没有被 parser 调用；
-   - semantic_brief 还没替换 schema_card（已具备，未切换）。
+   - 仍保留 core/controller.py 作为状态机；
+   - app/chat/agent 工具已接入 parser；
+   - semantic_brief 已默认开启（无 index 时回退 schema card）；
+   - 还没有拆成 app/chat/turn/*。
 2. Ingest Agent 生产化：
    - job/SSE、review API、review/apply、ManageApp 审核面板已接；
    - 还没有生成物理 warehouse/binding，所以 semantic_draft 只是候选；
