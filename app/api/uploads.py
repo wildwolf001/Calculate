@@ -1,15 +1,20 @@
 """Upload, analyze (background job) and job status endpoints."""
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import re
 import shutil
+import time
 import uuid
+
+import yaml
 from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.config.settings import (
@@ -19,7 +24,8 @@ from app.config.settings import (
     RUNTIME_DIR,
     UPLOADS_DIR,
 )
-from app.core.jobs import JobManager
+from app.llm.client import LLMClient
+from app.core.jobs import TERMINAL, JobManager
 from app.datasets.registry import DATASET_ID_RE, DatasetError
 from app.ingest.documentation import (
     MAX_DOC_BYTES,
@@ -52,6 +58,16 @@ class RebuildRequest(BaseModel):
     pii_policy: str = "mask"
     include_files: list[str] | None = None
     include_suspected: bool = False
+
+
+class ReviewDecision(BaseModel):
+    item_id: str
+    action: str = "accept"          # accept | reject | waive
+    note: str | None = None
+
+
+class MaterializeRequest(BaseModel):
+    name: str | None = Field(default=None, max_length=80)
 
 
 def _ingest_options(body: AnalyzeRequest | RebuildRequest | None) -> IngestOptions:
@@ -220,6 +236,180 @@ def analyze_upload(upload_id: str, body: AnalyzeRequest | None,
     return {"job_id": job_id, "dataset_id": dataset_id, "name": name}
 
 
+@router.post("/uploads/{upload_id}/agent-profile")
+def agent_profile(upload_id: str, request: Request):
+    """Run the ingest agent as an audit/profile job (does not publish)."""
+    meta = _read_meta(upload_id)
+    files = [Path(f["path"]) for f in meta.get("files", [])]
+    supported = [
+        path for path in files
+        if path.suffix.lower() in {".csv", ".tsv", ".xlsx", ".xlsm"}
+    ]
+    if not supported:
+        raise HTTPException(status_code=400, detail="没有可供 agent 解析的表格文件")
+    client = getattr(request.app.state, "agent_client", None) or LLMClient()
+    if not client.available:
+        raise HTTPException(status_code=503, detail="未配置模型，无法运行解析 agent")
+
+    out_dir = Path(RUNTIME_DIR) / "ingest_agent" / (
+        f"{upload_id}-{uuid.uuid4().hex[:6]}"
+    )
+    manager = _jobs(request)
+
+    def run(*, progress):
+        from app.ingest.agent.service import run_ingest_agent, summarize_state
+
+        progress("agent", 10, "启动解析 agent")
+        state = run_ingest_agent(supported[0].parent, out_dir, client)
+        progress("agent", 100, "解析完成")
+        return summarize_state(state, out_dir)
+
+    job_id = manager.submit("ingest_agent", run, params={
+        "upload_id": upload_id,
+        "out_dir": str(out_dir),
+    })
+    return {"job_id": job_id, "upload_id": upload_id, "out_dir": str(out_dir)}
+
+
+@router.get("/jobs/{job_id}/events")
+async def job_events(job_id: str, request: Request):
+    manager = _jobs(request)
+    record = manager.get(job_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="任务不存在")
+    out_dir = (record.get("params") or {}).get("out_dir")
+    if not out_dir:
+        raise HTTPException(status_code=404, detail="任务没有事件目录")
+    path = Path(out_dir) / "ingest" / "events.jsonl"
+
+    async def generate():
+        sent = 0
+        started = time.monotonic()
+        while True:
+            lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+            for line in lines[sent:]:
+                if line.strip():
+                    yield f"data: {line}\n\n"
+            sent = len(lines)
+            current = manager.get(job_id)
+            terminal = bool(current and current.get("status") in TERMINAL)
+            if terminal and sent >= len(lines):
+                yield "event: done\ndata: {}\n\n"
+                break
+            if time.monotonic() - started > 300:
+                yield "event: timeout\ndata: {}\n\n"
+                break
+            await asyncio.sleep(0.2)
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+def _review_path(job_id: str, request: Request) -> tuple[Path, dict]:
+    manager = _jobs(request)
+    record = manager.get(job_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="任务不存在")
+    out_dir = (record.get("params") or {}).get("out_dir")
+    if not out_dir:
+        raise HTTPException(status_code=404, detail="任务没有输出目录")
+    return Path(out_dir) / "ingest", record
+
+
+@router.get("/jobs/{job_id}/review")
+def get_job_review(job_id: str, request: Request):
+    ingest_dir, record = _review_path(job_id, request)
+    draft = {}
+    path = ingest_dir / "draft.json"
+    if path.exists():
+        try:
+            draft = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            draft = {}
+    review = {}
+    review_path = ingest_dir / "review.json"
+    if review_path.exists():
+        try:
+            review = json.loads(review_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            review = {}
+    return {
+        "job_id": job_id,
+        "status": record.get("status"),
+        "draft": draft,
+        "review": review,
+    }
+
+
+@router.post("/jobs/{job_id}/review")
+def submit_job_review(job_id: str, decisions: list[ReviewDecision],
+                      request: Request):
+    ingest_dir, _ = _review_path(job_id, request)
+    ingest_dir.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "job_id": job_id,
+        "decisions": [decision.model_dump() for decision in decisions],
+        "updated_at": datetime.now().isoformat(timespec="seconds"),
+    }
+    (ingest_dir / "review.json").write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8",
+    )
+    return payload
+
+
+@router.post("/jobs/{job_id}/review/apply")
+def apply_job_review(job_id: str, request: Request):
+    ingest_dir, _ = _review_path(job_id, request)
+    from app.ingest.agent.review import apply_review
+
+    try:
+        return apply_review(ingest_dir)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=400, detail=f"应用审核结果失败: {type(exc).__name__}: {exc}"
+        ) from exc
+
+
+@router.post("/jobs/{job_id}/materialize")
+def materialize_job(job_id: str, request: Request,
+                    body: MaterializeRequest | None = None):
+    manager = _jobs(request)
+    record = manager.get(job_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="任务不存在")
+    params = record.get("params") or {}
+    upload_id = params.get("upload_id")
+    out_dir = params.get("out_dir")
+    if not upload_id or not out_dir:
+        raise HTTPException(status_code=400, detail="任务缺少上传记录或输出目录")
+    dataset_id = "ds_" + uuid.uuid4().hex[:12]
+    root = Path(DATASETS_DIR) / dataset_id
+    if root.exists():
+        raise HTTPException(status_code=409, detail="数据集已存在")
+    name = (body.name if body and body.name else upload_id)[:80]
+    try:
+        from app.ingest.agent.materialize import materialize
+
+        result = materialize(
+            _upload_dir(upload_id) / "original",
+            Path(out_dir) / "ingest",
+            root,
+            dataset_id,
+            name,
+        )
+    except Exception as exc:
+        shutil.rmtree(root, ignore_errors=True)
+        raise HTTPException(
+            status_code=400,
+            detail=f"生成数据集失败: {type(exc).__name__}: {exc}",
+        ) from exc
+
+    service = getattr(request.app.state, "service", None)
+    registry = getattr(service, "registry", None)
+    if registry is not None:
+        registry.refresh()
+    return {**result, "name": name}
+
+
 @router.post("/datasets/{dataset_id}/rebuild")
 def rebuild_dataset(dataset_id: str, request: Request,
                     body: RebuildRequest | None = None):
@@ -255,10 +445,40 @@ def rebuild_dataset(dataset_id: str, request: Request,
         if service is not None:
             service.invalidate_dataset(dataset_id)
 
+    old_semantic: dict = {}
+    try:
+        old_semantic = yaml.safe_load(ctx.semantic_path.read_text(encoding="utf-8")) or {}
+    except Exception:
+        old_semantic = {}
+
     def run(*, progress):
         try:
-            return analyze_files(files, ctx.root, dataset_id, ctx.name,
-                                 progress=progress, options=options)
+            result = analyze_files(files, ctx.root, dataset_id, ctx.name,
+                                   progress=progress, options=options)
+            if old_semantic:
+                try:
+                    from app.datasets.merge import merge_semantics
+
+                    semantic_path = ctx.root / "semantic.yaml"
+                    new_semantic = yaml.safe_load(
+                        semantic_path.read_text(encoding="utf-8")
+                    ) or {}
+                    catalog = json.loads(
+                        (ctx.root / "catalog.json").read_text(encoding="utf-8")
+                    )
+                    merged, merge_warnings = merge_semantics(
+                        new_semantic, old_semantic, catalog,
+                    )
+                    semantic_path.write_text(
+                        yaml.safe_dump(merged, allow_unicode=True, sort_keys=False),
+                        encoding="utf-8",
+                    )
+                    result.warnings.extend(merge_warnings)
+                except Exception as exc:
+                    result.warnings.append(
+                        f"口径保留失败: {type(exc).__name__}: {exc}"
+                    )
+            return result
         except Exception:
             # Restore the previous dataset so a failed rebuild is not visible.
             shutil.rmtree(ctx.root, ignore_errors=True)

@@ -37,7 +37,15 @@ def extract_json(text: str) -> dict:
         start, end = text.find("{"), text.rfind("}")
         if start < 0 or end <= start:
             raise LLMError(f"LLM 输出不含 JSON: {text[:200]}")
-        candidate = text[start:end + 1]
+        try:
+            value, _ = json.JSONDecoder().raw_decode(text, start)
+            if isinstance(value, dict):
+                return value
+            raise LLMError("LLM JSON top level must be an object")
+        except json.JSONDecodeError:
+            # Preserve the existing parser error when the first object is
+            # genuinely incomplete or malformed.
+            candidate = text[start:end + 1]
     try:
         return json.loads(candidate)
     except json.JSONDecodeError as exc:

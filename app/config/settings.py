@@ -15,6 +15,26 @@ if load_dotenv:
     # project .env is authoritative for this app (overrides a shell-wide default)
     load_dotenv(BASE_DIR / ".env", override=True)
 
+
+def _sanitize_no_proxy() -> None:
+    """Drop bracketed IPv6 entries from NO_PROXY.
+
+    Some httpx builds turn `[::1]` into an invalid proxy mount
+    (`all://[::1]`) and every outbound request fails with
+    "Invalid URL: Invalid port". IPv4/host entries keep working.
+    """
+    for name in ("NO_PROXY", "no_proxy"):
+        value = os.environ.get(name)
+        if not value:
+            continue
+        parts = [part.strip() for part in value.split(",") if part.strip()]
+        cleaned = [part for part in parts if "[" not in part and "]" not in part]
+        if cleaned != parts:
+            os.environ[name] = ",".join(cleaned)
+
+
+_sanitize_no_proxy()
+
 DATA_DIR = BASE_DIR / "data"
 
 # One folder per raw dataset: the source workbook plus every artifact derived
@@ -60,6 +80,9 @@ LLM_ENABLED = bool(LLM_API_KEY) and os.getenv("LLM_DISABLED", "").lower() not in
 # Ingest-time semantic drafting shares the same key/gateway but needs a larger
 # budget: reasoning models can spend thousands of tokens before any JSON text.
 LLM_SEMANTIC_DRAFT = os.getenv("LLM_SEMANTIC_DRAFT", "1").lower() not in {"0", "false", "no"}
+# Use the compact semantic brief instead of the full schema card. Off by
+# default until the chat agent switch is complete.
+USE_SEMANTIC_BRIEF = os.getenv("USE_SEMANTIC_BRIEF", "0").lower() in {"1", "true", "yes"}
 LLM_SEMANTIC_TIMEOUT_SECONDS = float(os.getenv("LLM_SEMANTIC_TIMEOUT_SECONDS", "120"))
 
 # ---- Controller ----

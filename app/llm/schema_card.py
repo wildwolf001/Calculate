@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 
 from app.config.settings import DIM_VALUES_PATH
+from app.domain.semantic.graph import build_capabilities
 from app.domain.semantic.loader import SemanticLayer
 
 
@@ -25,10 +26,20 @@ def build_schema_card(sem: SemanticLayer, max_values: int = 12,
     lines: list[str] = []
     lines.append(f"数据时间范围: {sem.time_range[0]} ~ {sem.time_range[1]}（右开）")
     lines.append("\n指标（metric_id: 中文名; 同义词; 支持维度; 口径）:")
+    capabilities = build_capabilities(sem)
     for m in metrics:
-        grains = [g for g in m.raw.get("supported_grain", []) if g != "none"]
+        capability = capabilities.get(m.id)
+        grains = (
+            sorted(capability.allowed_dimensions - {"none", "month"})
+            if capability is not None
+            else [g for g in m.raw.get("supported_grain", []) if g != "none"]
+        )
+        axis = (
+            f"; 时间轴={capability.time_axis}"
+            if capability is not None and capability.time_axis else ""
+        )
         lines.append(
-            f"- {m.id}: {m.name}; 同义词={m.synonyms}; 支持维度={grains}; "
+            f"- {m.id}: {m.name}; 同义词={m.synonyms}; 支持维度={grains}{axis}; "
             f"口径={m.raw.get('definition', '')}"
         )
     lines.append("\n维度（dimension_id: 中文名; 同义词）:")
@@ -36,6 +47,12 @@ def build_schema_card(sem: SemanticLayer, max_values: int = 12,
         lines.append(
             f"- {d.id}: {d.raw.get('name_zh', d.id)}; {d.raw.get('synonyms', [])}"
         )
+    if getattr(sem, "time_axes", None):
+        lines.append("\n时间轴（time_axis: ref = 含义）:")
+        for axis in sem.time_axes[:12]:
+            lines.append(
+                f"- {axis.get('ref')}: {axis.get('name_zh')}（{axis.get('label')}）"
+            )
 
     try:
         data = json.loads(dim_values_path.read_text(encoding="utf-8"))

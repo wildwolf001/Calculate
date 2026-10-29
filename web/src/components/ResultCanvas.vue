@@ -18,6 +18,12 @@ const compare = computed(() => !!(store.activePlan?.compare || (store.activePlan
 const columns = computed(() => store.result?.columns || [])
 const rows = computed(() => store.result?.rows || [])
 const display = computed(() => (store.result as any)?.display || null)
+const provenance = computed(() => (display.value as any)?.provenance || 'documented')
+const provenanceLabel = computed(() => {
+  if (provenance.value === 'inferred') return '推断口径'
+  if (provenance.value === 'user') return '用户口径'
+  return '已确认口径'
+})
 const isLookup = computed(() => !!store.result?.meta?.lookup)
 
 const title = computed(() => {
@@ -289,7 +295,10 @@ const metricCrumb = computed(() =>
     <div class="canvas-title">
       <div style="min-width: 0">
         <div class="eyebrow">{{ isAnalysisView ? '02 · BUSINESS REVIEW' : '02 · QUERY RESULT' }}</div>
-        <h1>{{ isAnalysisView ? '经营分析' : title }}</h1>
+        <h1>
+          {{ isAnalysisView ? '经营分析' : title }}
+          <span v-if="provenance !== 'documented'" class="prov-badge">{{ provenanceLabel }}</span>
+        </h1>
       </div>
       <div class="tabs">
         <button :class="{ active: store.tab === 'table' }" @click="store.setTab('table')">表格</button>

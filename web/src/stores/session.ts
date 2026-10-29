@@ -64,6 +64,10 @@ const STAGE_LABELS: Record<string, string> = {
   'analysis.section': '分析板块',
   'analysis.completed': '分析完成',
   'answer.composed': '生成回答',
+  'execution.failed': '自愈修复',
+  'repair.applied': '自愈修复',
+  'refusal.decided': '生成结论',
+  'diagnosis.completed': '诊断空结果',
   'llm.retry': '模型重试',
 }
 
@@ -110,6 +114,10 @@ interface State {
   messageSeq: number
   sessions: SessionSummary[]
   drawerOpen: boolean
+  repairs: any[]
+  refusals: any[]
+  diagnoses: any[]
+  failures: any[]
 }
 
 export const useSessionStore = defineStore('session', {
@@ -156,6 +164,10 @@ export const useSessionStore = defineStore('session', {
     messageSeq: 0,
     sessions: [],
     drawerOpen: false,
+    repairs: [],
+    refusals: [],
+    diagnoses: [],
+    failures: [],
   }),
   getters: {
     suggestions: (s) => {
@@ -463,6 +475,10 @@ export const useSessionStore = defineStore('session', {
           this.sql = ''
           this.checks = []
           this.facts = {}
+          this.repairs = []
+          this.refusals = []
+          this.diagnoses = []
+          this.failures = []
           break
         case 'subquestions.planned':
           this.hasSubquestions = (p.items || p.questions || []).length > 1
@@ -514,9 +530,29 @@ export const useSessionStore = defineStore('session', {
           }
           break
         }
+        case 'execution.failed':
+          this.failures.push(p)
+          break
+        case 'repair.applied':
+          this.repairs.push(p)
+          break
+        case 'refusal.decided':
+          this.refusals.push(p)
+          break
+        case 'diagnosis.completed':
+          this.diagnoses.push(p)
+          break
         case 'answer.composed': {
           const message = this.addAssistant(p.text || '', 'normal', p.options || undefined)
           if (p.semantic_status === 'draft') message.semanticStatus = 'draft'
+          if (this.repairs.length) message.repairs = [...this.repairs]
+          if (this.refusals.length) message.refusals = [...this.refusals]
+          if (this.diagnoses.length) message.diagnoses = [...this.diagnoses]
+          const warnings = this.checks
+            .filter((c) => ['DATA_HEALTH', 'EMPTY_DIAGNOSIS', 'DEGRADED_DIMENSION', 'DATA_QUALITY'].includes(c.id))
+            .map((c) => c.detail || c.title)
+            .filter(Boolean)
+          if (warnings.length) message.dataWarnings = warnings
           break
         }
         case 'ambiguity.detected':

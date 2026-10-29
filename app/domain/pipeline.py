@@ -66,11 +66,15 @@ def check(plan: QueryPlan, sem: SemanticLayer, result: ResultSet,
           db_path=WAREHOUSE_PATH, quality: dict | None = None):
     if plan.kind == "member_list":
         return run_member_list_checks(plan, result, quality=quality)
+    if plan.metric_spec:
+        from app.domain.semantic.loader import Metric
+
+        metric = Metric(plan.metric, plan.metric_spec)
+    else:
+        metric = sem.metric(plan.metric)
     if plan.kind == "coverage":
-        return run_coverage_checks(
-            plan, sem.metric(plan.metric), result, quality=quality
-        )
-    return run_checks(plan, sem.metric(plan.metric), result, sem,
+        return run_coverage_checks(plan, metric, result, quality=quality)
+    return run_checks(plan, metric, result, sem,
                       db_path=db_path, quality=quality)
 
 

@@ -74,6 +74,22 @@ const elapsed = computed(() =>
     : 0,
 )
 const slow = computed(() => elapsed.value >= 30)
+
+const ACTION_LABELS: Record<string, string> = {
+  drop_having: '取消分组筛选',
+  drop_comparison: '取消比较口径',
+  drop_dimension: '移除无法执行的维度',
+  drop_all_dimensions: '退化为整体口径',
+  widen_time: '放宽时间范围',
+}
+
+function actionLabel(action: string) {
+  return ACTION_LABELS[action] || action
+}
+
+function hasDiagnostics(m: any) {
+  return !!(m.repairs?.length || m.refusals?.length || m.diagnoses?.length || m.dataWarnings?.length)
+}
 </script>
 
 <template>
@@ -149,6 +165,50 @@ const slow = computed(() => elapsed.value >= 30)
             {{ opt }}
           </button>
         </div>
+        <details v-if="hasDiagnostics(m)" class="diag">
+          <summary>处理过程与数据说明</summary>
+          <div v-if="m.refusals?.length" class="diag-block">
+            <b>无法回答</b>
+            <template v-for="(r, ri) in m.refusals" :key="`ref-${m.id}-${ri}`">
+              <ul>
+                <li v-for="(item, ii) in (r.missing || [])" :key="`miss-${ri}-${ii}`">
+                  {{ item.name }}：{{ item.reason }}
+                </li>
+              </ul>
+              <div v-if="r.alternatives?.length" class="diag-alt">
+                可以这样问：
+                <button
+                  v-for="(alt, ai) in r.alternatives"
+                  :key="`alt-${ri}-${ai}`"
+                  class="chip"
+                  @click="store.submitClarification(alt.question)"
+                >
+                  {{ alt.question }}
+                </button>
+              </div>
+            </template>
+          </div>
+          <div v-if="m.repairs?.length" class="diag-block">
+            <b>已尝试的自愈</b>
+            <ul>
+              <li v-for="(r, i) in m.repairs" :key="`rep-${m.id}-${i}`">
+                {{ actionLabel(r.action) }}<span v-if="r.detail?.reason">：{{ r.detail.reason }}</span>
+              </li>
+            </ul>
+          </div>
+          <div v-if="m.diagnoses?.length" class="diag-block">
+            <b>空结果诊断</b>
+            <ul>
+              <li v-for="(d, i) in m.diagnoses" :key="`diag-${m.id}-${i}`">{{ d.message }}</li>
+            </ul>
+          </div>
+          <div v-if="m.dataWarnings?.length" class="diag-block">
+            <b>数据提示</b>
+            <ul>
+              <li v-for="(w, i) in m.dataWarnings" :key="`warn-${m.id}-${i}`">{{ w }}</li>
+            </ul>
+          </div>
+        </details>
         <div v-if="m.trace && m.trace.length" class="trace">
           <span v-for="(t, i) in m.trace.slice(-7)" :key="`${m.id}-${i}`">{{ t }}</span>
         </div>

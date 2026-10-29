@@ -5,6 +5,7 @@ iteration (`reduce`), so an in-memory object can never drift from history.
 """
 from __future__ import annotations
 
+import re
 import traceback
 from typing import AsyncIterator
 
@@ -27,6 +28,16 @@ from app.core.interfaces import AnswerComposer, IntentParser, ValueGrounder
 from app.core.logging import log_event, logger
 from app.core.state import SessionState, Slots, Status
 from app.core.trace import Tracer, new_trace_id
+from app.domain.capability import (
+    CapabilityRefusal,
+    CapabilityReport,
+    apply_degradations,
+    assess_slots,
+    render_refusal,
+)
+from app.domain.checks import CheckIssue
+from app.domain.diagnosis import diagnose_empty
+from app.domain.recovery import candidates_for_failure, classify_error
 from app.domain.pipeline import (
     PipelineError,
     check,
@@ -44,14 +55,17 @@ from app.domain.planner import (
     member_list_plan,
     plan_from_slots,
 )
-from app.domain.plan import FilterSpec, QueryPlan
+from app.domain.plan import FilterSpec, HavingSpec, QueryPlan
+from app.domain.policy import PolicySet
+from app.domain.query.ir import QueryIR
 from app.domain import lookup as lookup_mod
-from app.domain.presentation import display_spec
+from app.domain.presentation import display_spec, summarize_rows
 from app.domain.repair import build_repair, repair_text
 from app.domain.rewrite import rewrite
 from app.domain.semantic.loader import SemanticLayer, SemanticError
 from app.llm.rule_parser import RuleParser
 from app.llm.analyze import LLMAnalysisWriter
+from app.tools.harness import ToolHarness, ToolResult
 
 SMALLTALK_TEXT = (
     "你好，我是明账。直接问经营问题就行，比如「4月销售额最高的品类」、"
@@ -77,7 +91,8 @@ class Controller:
     def __init__(self, store: EventStore, sem: SemanticLayer,
                  parser: IntentParser, grounder: ValueGrounder,
                  composer: AnswerComposer, tracer: Tracer | None = None,
-                 ctx=None, analysis_writer: LLMAnalysisWriter | None = None):
+                 ctx=None, analysis_writer: LLMAnalysisWriter | None = None,
+                 policy: PolicySet | None = None):
         self.store = store
         self.sem = ctx.sem if ctx is not None else sem
         self.parser = parser
@@ -92,6 +107,8 @@ class Controller:
         )
         self.quality = ctx.quality if ctx is not None else None
         self.analysis_writer = analysis_writer or LLMAnalysisWriter()
+        self.policy = policy or PolicySet()
+        self.tools = ToolHarness(self.sem, self.warehouse)
         self._results: dict[tuple[str, int], object] = {}
 
     # ---------- public ----------
@@ -283,6 +300,71 @@ class Controller:
                 return fn()
             raise
 
+    @staticmethod
+    def _normalize_slots_payload(payload: dict) -> dict:
+        defaults = Slots().model_dump()
+        return {
+            key: value
+            for key, value in payload.items()
+            if not (value is None and defaults.get(key) is not None)
+        }
+
+    @staticmethod
+    def _tool_events(name: str, arguments: dict, result) -> list[tuple[str, dict]]:
+        return [
+            ("tool.called", {"name": name, "arguments": arguments}),
+            ("tool.result", result.as_dict()),
+        ]
+
+    def _enrich_count_members(self, plan: QueryPlan, artifact,
+                              facts: dict) -> list[tuple[str, dict]]:
+        """Attach low-cardinality members to a count result from the database."""
+        if (
+            plan.dimensions
+            or plan.filters
+            or plan.compare
+            or plan.comparison
+            or artifact.row_count != 1
+            or "value" not in artifact.columns
+        ):
+            return []
+        dimension_id = self.tools.infer_count_member_dimension(plan.metric)
+        if not dimension_id:
+            return []
+        idx = artifact.columns.index("value")
+        raw_value = artifact.rows[0][idx]
+        try:
+            count = int(raw_value)
+        except (TypeError, ValueError):
+            return []
+        if count < 0 or count > 2000:
+            return []
+        result = self.tools.lookup_members(dimension_id, limit=self.tools.max_members)
+        if not result.ok:
+            return self._tool_events(
+                "members.lookup",
+                {"dimension_id": dimension_id, "purpose": "expand_count"},
+                result,
+            )
+        members = list((result.data or {}).get("matches") or [])
+        facts["member_dimension"] = dimension_id
+        facts["member_dimension_name"] = self.sem.dimension(
+            dimension_id
+        ).raw.get("name_zh", dimension_id)
+        facts["member_values"] = members
+        facts["member_values_truncated"] = bool(
+            (result.data or {}).get("truncated")
+        )
+        facts["member_values_source"] = "database"
+        return self._tool_events(
+            "members.lookup",
+            {
+                "dimension_id": dimension_id,
+                "purpose": "expand_count",
+            },
+            result,
+        )
+
     # ---------- handlers ----------
     def _handle_parsing(self, state: SessionState) -> list[tuple[str, dict]]:
         original = self._last_user_text(state)
@@ -340,6 +422,12 @@ class Controller:
             return events
 
         apply_context_action(result, conversation_context)
+        self._salvage_derived_filter(original, result.slots)
+        self._salvage_time_axis(original, result.slots)
+        self._salvage_share(original, result.slots)
+        self._salvage_ratio_expression(original, result.slots)
+        self._drop_implicit_dims_for_comparison(original, result.slots)
+        result.unresolved = list(result.slots.get("unresolved") or [])
 
         events.append(("intent.classified", {
             "intent_type": result.intent_type, "tier": result.tier,
@@ -380,6 +468,7 @@ class Controller:
                         "question": q.get("question", ""),
                         "intent_type": q.get("intent_type", "query"),
                         "context_action": q.get("context_action", "new"),
+                        "error": q.get("error"),
                     }
                     for idx, q in enumerate(result.subquestions, 1)
                 ],
@@ -419,16 +508,55 @@ class Controller:
             return events
 
         if result.intent_type == "unsupported":
+            partial = result.slots or {}
+            if partial:
+                try:
+                    partial_slots = Slots.model_validate(
+                        self._normalize_slots_payload(dict(partial))
+                    )
+                except Exception:
+                    partial_slots = None
+                if partial_slots is not None and (
+                    partial_slots.metric or partial_slots.dimensions
+                ):
+                    report = assess_slots(
+                        partial_slots, self.sem, policy=self.policy,
+                        model=getattr(self.ctx, "model", None),
+                    )
+                    if report.refused:
+                        events.append(("capability.assessed", report.as_dict()))
+                        events.append(("refusal.decided", report.refusal_payload()))
+                        events.append(("answer.composed", {
+                            "text": render_refusal(report, self.sem),
+                            "result_id": None,
+                            "status": "refused",
+                        }))
+                        events.append(("result.presented", {"result_id": None}))
+                        return events
             message = result.explanation or "这个问题暂时不支持。"
+            metrics = [
+                self.sem.metric(mid).name for mid in list(self.sem.metrics)[:6]
+            ]
+            dims = [
+                str(d.raw.get("name_zh") or did)
+                for did, d in list(self.sem.dimensions.items())[:6]
+            ]
+            extra = []
+            if metrics:
+                extra.append("可用指标：" + "、".join(metrics))
+            if dims:
+                extra.append("可用维度：" + "、".join(dims))
+            lo, hi = self.sem.time_range
+            if lo and hi:
+                extra.append(f"数据时间范围：{lo} ~ {hi}")
+            if extra:
+                message = f"{message}\n\n" + "\n".join(extra)
             repair = build_repair(self.sem, self._repair_slots(state, result.slots))
             if repair["options"]:
-                extra = []
-                if repair["clarification"]:
-                    extra.append(repair["clarification"])
-                extra.append("可以这样问：\n" + "\n".join(f"- {q}" for q in repair["options"]))
-                message = f"{message}\n\n" + "\n\n".join(extra)
-            elif self._suggestions() not in message:
-                message = f"{message}\n\n{self._suggestions()}"
+                message += (
+                    "\n\n可以这样问：\n"
+                    + "\n".join(f"- {q}" for q in repair["options"][:3])
+                )
             events.append(("answer.composed", {
                 "text": message, "result_id": None, "options": repair["options"],
             }))
@@ -481,6 +609,10 @@ class Controller:
             }))
             return events + self._multi_interpretation_events(state, result)
 
+        try:
+            events.append(("query.ir.created", QueryIR.from_slots(slots).as_dict()))
+        except Exception:
+            pass
         events.append(("intent.parsed", {"slots": slots, "notes": result.notes}))
         return events
 
@@ -663,9 +795,9 @@ class Controller:
 
     def _multi_question_events(self, state: SessionState,
                                result) -> list[tuple[str, dict]]:
-        """Execute independent sub-questions in order with failure isolation."""
+        """Execute sub-questions, then compose all outcomes together."""
         events: list[tuple[str, dict]] = []
-        blocks: list[str] = []
+        presentation_items: list[dict] = []
         executed: list[dict] = []
         non_sql: list[dict] = []
         failures: list[dict] = []
@@ -682,15 +814,45 @@ class Controller:
                 "question": question,
                 "intent_type": intent_type,
             }))
+
+            if sub.get("error"):
+                reason = f"子问题槽位非法：{sub['error']}"
+                failures.append({"id": sid, "question": question, "reason": reason})
+                events.append(("subquestion.rejected", {
+                    "subquestion_id": sid,
+                    "status": "failed",
+                    "reason": reason,
+                }))
+                presentation_items.append({
+                    "id": sid,
+                    "index": index,
+                    "question": question,
+                    "status": "failed",
+                    "text": self._safe_subquestion_failure(reason),
+                })
+                continue
+
             if intent_type == "explain":
                 text = sub.get("explanation") or "这是一个口径解释问题。"
                 non_sql.append({"id": sid, "question": question, "text": text})
-                blocks.append(f"**{index}. {question}**\n\n{text}")
+                presentation_items.append({
+                    "id": sid,
+                    "index": index,
+                    "question": question,
+                    "status": "explain",
+                    "text": text,
+                })
                 continue
             if intent_type in {"unsupported", "smalltalk", "analysis"}:
                 text = sub.get("explanation") or "这个问题暂时无法生成可执行查询。"
                 non_sql.append({"id": sid, "question": question, "text": text})
-                blocks.append(f"**{index}. {question}**\n\n{text}")
+                presentation_items.append({
+                    "id": sid,
+                    "index": index,
+                    "question": question,
+                    "status": "unsupported",
+                    "text": text,
+                })
                 continue
 
             slots_payload = dict(sub.get("slots") or {})
@@ -698,10 +860,7 @@ class Controller:
                 dim = sub.get("lookup_dimension") or sub.get("list_dim")
                 slots_payload["intent"] = "lookup"
                 slots_payload["dimensions"] = [dim] if dim else []
-            if (
-                previous_slots
-                and sub.get("context_action") in {"inherit", "refine"}
-            ):
+            if previous_slots and sub.get("context_action") in {"inherit", "refine"}:
                 inherited = dict(previous_slots)
                 inherited.update({
                     key: value
@@ -719,6 +878,29 @@ class Controller:
                     state, sid, question, slots_payload,
                     preferred=not executed,
                 )
+            except CapabilityRefusal as exc:
+                payload = exc.report.refusal_payload()
+                failures.append({
+                    "id": sid, "question": question,
+                    "reason": payload["code"], "capability": payload,
+                })
+                events.append(("refusal.decided", {
+                    **payload, "subquestion_id": sid,
+                }))
+                events.append(("subquestion.rejected", {
+                    "subquestion_id": sid,
+                    "status": "refused",
+                    "reason": payload["code"],
+                    "capability": payload,
+                }))
+                presentation_items.append({
+                    "id": sid,
+                    "index": index,
+                    "question": question,
+                    "status": "unsupported",
+                    "text": render_refusal(exc.report, self.sem),
+                })
+                continue
             except Exception as exc:
                 reason = str(exc)
                 failures.append({"id": sid, "question": question, "reason": reason})
@@ -727,16 +909,42 @@ class Controller:
                     "status": "failed",
                     "reason": reason,
                 }))
-                blocks.append(f"**{index}. {question}**\n\n这个问题暂时无法回答：{reason}")
+                presentation_items.append({
+                    "id": sid,
+                    "index": index,
+                    "question": question,
+                    "status": "failed",
+                    "text": self._safe_subquestion_failure(reason),
+                })
                 continue
 
             events.extend(sub_events)
             previous_slots = dict(slots_payload)
             executed.append(entry)
             context = self._entry_context(entry)
-            from app.llm.compose_answer import TemplateComposer
-            text = TemplateComposer().compose(context)
-            blocks.append(f"**{index}. {question}**\n\n{text}")
+            context["insights"] = build_insights(
+                entry["plan"],
+                context["columns"],
+                context["rows"],
+                context["row_count"],
+                context["truncated"],
+                context["checks"],
+                self.sem,
+                max_items=5,
+            )
+            context.update(summarize_rows(
+                context.get("rows") or [],
+                context.get("columns") or [],
+                entry["plan"].dimensions,
+                50,
+            ))
+            presentation_items.append({
+                "id": sid,
+                "index": index,
+                "question": question,
+                "status": "query",
+                "context": context,
+            })
 
         if not executed and not non_sql:
             return events + [("error.raised", {
@@ -745,10 +953,27 @@ class Controller:
                 "recoverable": False,
             })]
 
-        header = f"你这次一共问了 {len(questions)} 个问题，结果如下："
-        if len(result.subquestions) > MAX_SUBQUESTIONS:
-            header += f"（单次最多处理 {MAX_SUBQUESTIONS} 个）"
-        text = self._with_draft_notice(header + "\n\n" + "\n\n".join(blocks))
+        context = {
+            "kind": "subquestions",
+            "question_count": len(questions),
+            "subquestions": presentation_items,
+        }
+        try:
+            text = self._call_with_retry(
+                "compose_subquestions",
+                lambda: self.composer.compose(context),
+                state,
+                events,
+            )
+        except Exception as exc:
+            log_event(
+                logger,
+                "subquestion.composer.fallback",
+                error=f"{type(exc).__name__}: {exc}",
+            )
+            from app.llm.compose_answer import TemplateComposer
+            text = TemplateComposer().compose(context)
+        text = self._with_draft_notice(text)
         result_id = executed[0]["artifact"].result_id if executed else None
         events.append(("answer.composed", {
             "text": text,
@@ -772,12 +997,41 @@ class Controller:
         events.append(("result.presented", {"result_id": result_id}))
         return events
 
+    @staticmethod
+    def _safe_subquestion_failure(reason: str) -> str:
+        """Translate internal failures into bounded user-facing guidance."""
+        if "成员清单" in reason and "时间" in reason:
+            return (
+                "当前数据源没有可为成员清单应用的时间字段，"
+                "因此只能在不限时间或改用时间范围内聚合指标的方式回答。"
+            )
+        if "没有识别出" in reason or "槽位非法" in reason:
+            return (
+                "这个子问题没有形成可验证的指标或维度。"
+                "可以补充明确的指标名称、时间范围和统计维度后重试。"
+            )
+        if "查询执行失败" in reason:
+            return (
+                "这个子问题的查询没有成功执行。"
+                "可以缩小时间或维度范围后重试。"
+            )
+        return (
+            "这个子问题暂时无法完成。系统已记录本次问题；"
+            "可以补充明确的指标、时间和统计维度后重试。"
+        )
+
     def _run_subquestion(self, state: SessionState, ident: str, question: str,
                          slots_payload: dict, *, preferred: bool,
                          analysis_section: str | None = None,
                          analysis_item: str | None = None
                          ) -> tuple[list[tuple[str, dict]], dict]:
         events: list[tuple[str, dict]] = []
+        slots_payload = self._normalize_slots_payload(slots_payload)
+        self._salvage_derived_filter(question, slots_payload)
+        self._salvage_time_axis(question, slots_payload)
+        self._salvage_share(question, slots_payload)
+        self._salvage_ratio_expression(question, slots_payload)
+        self._drop_implicit_dims_for_comparison(question, slots_payload)
         try:
             slots = Slots.model_validate(slots_payload)
         except Exception as exc:
@@ -788,9 +1042,32 @@ class Controller:
         parser_context = project_for_parser(
             state, dim_values_path=self.dim_values_path
         )
+        ground_args = {
+            "filters": slots_payload.get("filters") or {},
+            "unresolved": list(slots.unresolved),
+        }
         grounded = self.grounder.ground(
             slots.model_dump(mode="json"), slots.unresolved, parser_context
         )
+        events.extend(self._tool_events(
+            "members.ground",
+            ground_args,
+            ToolResult(
+                "members.ground",
+                not bool(grounded.ambiguity),
+                {
+                    "bindings": grounded.bindings,
+                    "notes": grounded.notes,
+                    "ambiguity": grounded.ambiguity,
+                },
+                error_code="AMBIGUOUS_MEMBER" if grounded.ambiguity else None,
+                message=(
+                    grounded.ambiguity.get("message", "")
+                    if grounded.ambiguity else ""
+                ),
+                repairable=bool(grounded.ambiguity),
+            ),
+        ))
         if grounded.ambiguity:
             raise SemanticError(grounded.ambiguity.get("message") or "值绑定失败")
         bindings = []
@@ -807,15 +1084,36 @@ class Controller:
             "notes": grounded.notes,
         }))
 
+        self._infer_limit_per_group(question, slots)
+        report = assess_slots(
+            slots, self.sem, policy=self.policy,
+            model=getattr(self.ctx, "model", None),
+        )
+        events.append(("capability.assessed", {
+            **report.as_dict(), "subquestion_id": ident,
+        }))
+        if report.refused:
+            raise CapabilityRefusal(report)
+
         try:
             if slots.intent == "lookup":
                 dim = slots.dimensions[0] if slots.dimensions else None
                 plan = member_list_plan(dim, slots, self.sem)
             else:
+                slots = apply_degradations(slots, report)
                 plan = plan_from_slots(slots, self.sem)
+                if report.degradations:
+                    reasons = [
+                        str(d.get("reason")) for d in report.degradations
+                        if d.get("reason")
+                    ]
+                    plan.degraded_reason = "；".join(dict.fromkeys(reasons)) or None
+                    plan.degraded_kind = self._degraded_kind(report.degradations)
             plan.interpretation_id = ident
             plan.interpretation_label = question[:32]
             plan.preferred = preferred
+        except CapabilityRefusal:
+            raise
         except Exception as exc:
             raise SemanticError(str(exc)) from exc
         events.append(("plan.compiled", {"plan": plan.model_dump(mode="json")}))
@@ -881,6 +1179,7 @@ class Controller:
             plan, self.sem, artifact,
             db_path=self.warehouse, quality=self.quality,
         )
+        events.extend(self._enrich_count_members(plan, artifact, facts))
         issue_payload = [issue.as_dict() for issue in issues_checked]
         events.append(("checks.completed", {
             "result_id": artifact.result_id,
@@ -900,9 +1199,20 @@ class Controller:
             "facts": facts,
         }
 
+    def _metric_for_plan(self, plan):
+        if plan is None:
+            return None
+        if getattr(plan, "metric_spec", None):
+            from app.domain.semantic.loader import Metric
+
+            return Metric(plan.metric, plan.metric_spec)
+        if plan.metric and plan.metric in self.sem.metrics:
+            return self.sem.metrics[plan.metric]
+        return None
+
     def _entry_context(self, entry: dict) -> dict:
         plan, artifact = entry["plan"], entry["artifact"]
-        metric = self.sem.metric(plan.metric) if plan.metric else None
+        metric = self._metric_for_plan(plan)
         comparison = (
             plan.comparison.model_dump(mode="json")
             if plan.comparison else None
@@ -917,6 +1227,7 @@ class Controller:
             "metric_name": metric.name if metric else "结果",
             "metric_unit": metric.raw.get("unit") if metric else None,
             "metric_type": metric.type if metric else "aggregate",
+            "time_axis": metric.raw.get("time_axis") if metric else None,
             "dimension_labels": [
                 self.sem.dimension(dim).raw.get("name_zh", dim)
                 for dim in plan.dimensions
@@ -1251,7 +1562,7 @@ class Controller:
             for entry in section_entries:
                 plan = entry["plan"]
                 artifact = entry["artifact"]
-                metric = self.sem.metric(plan.metric) if plan.metric else None
+                metric = self._metric_for_plan(plan)
                 unit = metric.raw.get("unit") if metric else None
                 lines.extend([f"### {entry['title']}", ""])
                 if commentary.get(entry["id"]):
@@ -1342,7 +1653,15 @@ class Controller:
             iid = interp["id"]
             is_pref = iid == preferred_id
             try:
-                slots = Slots.model_validate(interp["slots"])
+                interp_slots = dict(interp.get("slots") or {})
+                self._salvage_derived_filter(question, interp_slots)
+                self._salvage_time_axis(question, interp_slots)
+                self._salvage_share(question, interp_slots)
+                self._salvage_ratio_expression(question, interp_slots)
+                self._drop_implicit_dims_for_comparison(question, interp_slots)
+                slots = Slots.model_validate(
+                    self._normalize_slots_payload(interp_slots)
+                )
                 if not slots.visualization and result.visualization:
                     slots.visualization = result.visualization
                 if slots.unresolved:
@@ -1350,12 +1669,35 @@ class Controller:
                 grounded = self.grounder.ground(
                     slots.model_dump(mode="json"), slots.unresolved, project_for_parser(state, dim_values_path=self.dim_values_path)
                 )
+                events.extend(self._tool_events(
+                    "members.ground",
+                    {
+                        "interpretation_id": iid,
+                        "filters": slots.model_dump(mode="json").get("filters") or {},
+                    },
+                    ToolResult(
+                        "members.ground",
+                        not bool(grounded.ambiguity),
+                        {
+                            "bindings": grounded.bindings,
+                            "notes": grounded.notes,
+                            "ambiguity": grounded.ambiguity,
+                        },
+                        error_code="AMBIGUOUS_MEMBER" if grounded.ambiguity else None,
+                        message=(
+                            grounded.ambiguity.get("message", "")
+                            if grounded.ambiguity else ""
+                        ),
+                        repairable=bool(grounded.ambiguity),
+                    ),
+                ))
                 if grounded.ambiguity:
                     raise SemanticError(grounded.ambiguity.get("message", "值绑定失败"))
                 for binding in grounded.bindings:
                     slots.filters[binding["dim"]] = FilterSpec(
                         op=binding.get("op", "in"), value=binding["ids"]
                     )
+                self._infer_limit_per_group(question, slots)
                 plan = plan_from_slots(slots, self.sem)
                 plan.interpretation_id = iid
                 plan.interpretation_label = interp.get("label")
@@ -1443,6 +1785,7 @@ class Controller:
             events.append(("sql.executed", payload))
             issues, facts = check(plan, self.sem, artifact,
                                   db_path=self.warehouse, quality=self.quality)
+            events.extend(self._enrich_count_members(plan, artifact, facts))
             events.append(("checks.completed", {
                 "result_id": artifact.result_id,
                 "issues": [i.as_dict() for i in issues],
@@ -1513,7 +1856,7 @@ class Controller:
         interps = []
         for e in executed:
             plan = e["plan"]
-            metric = self.sem.metric(plan.metric)
+            metric = self._metric_for_plan(plan)
             interps.append({
                 "id": e["id"],
                 "label": e["label"],
@@ -1562,39 +1905,301 @@ class Controller:
         grounded = self.grounder.ground(
             state.slots.model_dump(mode="json"), state.slots.unresolved, ctx
         )
+        events = self._tool_events(
+            "members.ground",
+            {
+                "filters": state.slots.model_dump(mode="json").get("filters") or {},
+                "unresolved": list(state.slots.unresolved),
+            },
+            ToolResult(
+                "members.ground",
+                not bool(grounded.ambiguity),
+                {
+                    "bindings": grounded.bindings,
+                    "notes": grounded.notes,
+                    "ambiguity": grounded.ambiguity,
+                },
+                error_code="AMBIGUOUS_MEMBER" if grounded.ambiguity else None,
+                message=(
+                    grounded.ambiguity.get("message", "")
+                    if grounded.ambiguity else ""
+                ),
+                repairable=bool(grounded.ambiguity),
+            ),
+        )
         if grounded.ambiguity:
             payload = dict(grounded.ambiguity)
             payload["partial_slots"] = state.slots.model_dump(mode="json")
-            return [("ambiguity.detected", payload)]
-        return [("values.grounded", {
+            return events + [("ambiguity.detected", payload)]
+        return events + [("values.grounded", {
             "bindings": grounded.bindings,
             "notes": grounded.notes,
         })]
 
+    def _salvage_derived_filter(self, text: str, slots: dict) -> None:
+        """Map label words (延迟/准时) onto a declared derived dimension.
+
+        Only when the label is a real constraint:
+        - never for a ratio metric whose numerator already encodes the predicate;
+        - never when the metric expression already contains the predicate;
+        - never when both labels appear (the user wants a split, not a filter).
+        """
+        metric_id = slots.get("metric")
+        metric = self.sem.metrics.get(metric_id) if metric_id else None
+        if metric is not None and metric.type == "ratio":
+            return
+        expr_text = ""
+        if metric is not None:
+            expr_text = " ".join(
+                str(metric.raw.get(key) or "")
+                for key in ("expr", "numerator", "grain_numerator")
+            )
+        compact_expr = re.sub(r"\s+", "", expr_text)
+        for dim_id, dim in self.sem.dimensions.items():
+            if dim.kind != "derived":
+                continue
+            labels = dim.raw.get("labels") or {}
+            values = [v for v in (labels.get("true"), labels.get("false")) if v]
+            present = [str(v) for v in values if str(v) in (text or "")]
+            if len(present) != 1:
+                continue
+            dim_expr = str(dim.raw.get("expr") or "")
+            if dim_expr and re.sub(r"\s+", "", dim_expr) in compact_expr:
+                continue
+            value = present[0]
+            filters = slots.setdefault("filters", {})
+            filters.setdefault(dim_id, {"op": "eq", "value": value})
+            slots["unresolved"] = [
+                term for term in (slots.get("unresolved") or [])
+                if str(value) not in str(term)
+            ]
+
+
+
+
+    @staticmethod
+    def _degraded_kind(degradations: list[dict]) -> str | None:
+        kinds = {str(item.get("kind")) for item in degradations if item.get("kind")}
+        if not kinds:
+            return None
+        return "time" if kinds == {"time"} else "dimension"
+
+
+
+    def _salvage_ratio_expression(self, text: str, slots: dict) -> None:
+        """Resolve explicit "A / B" syntax to two defined metrics."""
+        if slots.get("ratio_denominator"):
+            return
+        text = str(text or "").strip()
+        patterns = (
+            (r"(.+?)\s*(?:除以|/)\s*(.+)", False),
+            (r"(.+?)\s*占\s*(.+?)\s*的?比例", False),
+            (r"每\s*(.+?)\s*的\s*(.+)", True),
+        )
+        for pattern, swap in patterns:
+            match = re.search(pattern, text)
+            if not match:
+                continue
+            left, right = match.group(1), match.group(2)
+            if swap:
+                left, right = right, left
+            numerator = self._match_metric_text(left)
+            denominator = self._match_metric_text(right)
+            if numerator is None or denominator is None or numerator.id == denominator.id:
+                continue
+            slots["metric"] = numerator.id
+            slots["ratio_numerator"] = numerator.id
+            slots["ratio_denominator"] = denominator.id
+            slots["notes"] = list(slots.get("notes") or []) + [
+                f"按显式比率解析：{numerator.name} / {denominator.name}"
+            ]
+            return
+
+    def _match_metric_text(self, text: str):
+        text = str(text or "").strip()
+        hits: list[tuple[int, object]] = []
+        for metric in self.sem.metrics.values():
+            for term in [metric.name, *metric.synonyms]:
+                term = str(term or "")
+                if term and term in text:
+                    hits.append((len(term), metric))
+        if not hits:
+            return None
+        return max(hits, key=lambda item: item[0])[1]
+
+    def _drop_implicit_dims_for_comparison(self, text: str, slots: dict) -> None:
+        """A period comparison without an explicit breakdown compares totals."""
+        if not (slots.get("compare") or slots.get("comparison")):
+            return
+        dims = list(slots.get("dimensions") or [])
+        if not dims:
+            return
+        for dim_id in dims:
+            dim = self.sem.dimensions.get(dim_id)
+            if dim is None:
+                continue
+            terms = [str(dim.raw.get("name_zh") or "")]
+            terms += [str(term) for term in getattr(dim, "synonyms", []) or []]
+            if any(term and term in (text or "") for term in terms):
+                return
+        slots["dimensions"] = []
+        slots["limit_per_group"] = None
+        slots["order_by"] = []
+        slots["notes"] = list(slots.get("notes") or []) + [
+            "比较问题未指定分组，清空上一轮继承的维度"
+        ]
+
+    def _salvage_share(self, text: str, slots: dict) -> None:
+        """Map "占比/份额/比重" to the share algebra when it is applicable."""
+        if slots.get("share"):
+            return
+        if not re.search(r"占比|份额|比重", text or ""):
+            return
+        metric_id = slots.get("metric")
+        metric = self.sem.metrics.get(metric_id) if metric_id else None
+        if metric is None or metric.type != "aggregate" or not metric.raw.get("additive"):
+            return
+        if not (slots.get("dimensions") or []):
+            return
+        slots["share"] = True
+
+    def _salvage_time_axis(self, text: str, slots: dict) -> None:
+        """Map "按下单月/按送达月" wording to a declared time axis."""
+        if slots.get("time_axis"):
+            return
+        patterns = (
+            (r"(按下单|下单月|下单月份|下单时间)", "下单时间"),
+            (r"(按送达|送达月|送达月份|送达时间)", "送达时间"),
+            (r"(按评价|评价月|评价月份|评价时间)", "评价时间"),
+            (r"(按支付|支付月|支付月份|支付时间)", "支付时间"),
+            (r"(按发货|发货月|发货月份|发货时间)", "发货时间"),
+        )
+        for pattern, axis_name in patterns:
+            if not re.search(pattern, text or ""):
+                continue
+            for axis in self.sem.time_axes:
+                if axis.get("name_zh") != axis_name:
+                    continue
+                slots["time_axis"] = axis.get("ref")
+                slots["unresolved"] = [
+                    term for term in (slots.get("unresolved") or [])
+                    if not re.search(pattern, str(term))
+                ]
+                return
+
+    @staticmethod
+    def _infer_limit_per_group(question: str, slots: Slots) -> None:
+        """Offline fallback for \"每个X最好的Y\": one row per group, ranked."""
+        if slots.limit_per_group or len(slots.dimensions) < 2:
+            return
+        if re.search(
+            r"(每个|各|按).{0,16}(最好|最高|最大|第一|排名|top)",
+            question or "",
+            re.IGNORECASE,
+        ):
+            slots.limit_per_group = 1
+
     def _handle_planning(self, state: SessionState) -> list[tuple[str, dict]]:
+        slots = Slots.model_validate(state.slots.model_dump())
+        self._infer_limit_per_group(self._last_user_text(state), slots)
+        report = assess_slots(
+            slots, self.sem, policy=self.policy,
+            model=getattr(self.ctx, "model", None),
+        )
+        events: list[tuple[str, dict]] = [("capability.assessed", report.as_dict())]
+
+        if report.refused:
+            return events + [
+                ("refusal.decided", report.refusal_payload()),
+                ("answer.composed", {
+                    "text": render_refusal(report, self.sem),
+                    "result_id": None,
+                    "status": "refused",
+                }),
+                ("result.presented", {"result_id": None}),
+            ]
+
         try:
-            slots = Slots.model_validate(state.slots.model_dump())
             if slots.intent == "lookup":
                 plan = member_list_plan(
                     slots.dimensions[0] if slots.dimensions else None, slots, self.sem
                 )
             else:
+                slots = apply_degradations(slots, report)
                 plan = plan_from_slots(slots, self.sem)
+                if report.degradations:
+                    reasons = [
+                        str(d.get("reason")) for d in report.degradations
+                        if d.get("reason")
+                    ]
+                    plan.degraded_reason = "；".join(dict.fromkeys(reasons)) or None
+                    plan.degraded_kind = self._degraded_kind(report.degradations)
         except SemanticError as exc:
             message = f"{exc}\n\n{self._suggestions()}"
-            return [
+            return events + [
                 ("plan.rejected", {"reason": str(exc), "issues": [], "recoverable": False}),
                 ("error.raised", {
                     "code": "PLAN_UNSUPPORTED", "message": message, "recoverable": False,
                 }),
             ]
-        return [("plan.compiled", {"plan": plan.model_dump(mode="json")})]
+        return events + [("plan.compiled", {"plan": plan.model_dump(mode="json")})]
 
     def _handle_validating(self, state: SessionState) -> list[tuple[str, dict]]:
         plan = QueryPlan.model_validate(state.plan.model_dump())
+        events = self._tool_events(
+            "plan.validate",
+            {"plan": plan.model_dump(mode="json")},
+            ToolResult("plan.validate", True, {"issues": []}),
+        )
         try:
             compiled, issues = prepare(plan, self.sem)
         except PipelineError as exc:
+            issue_dicts = [issue.as_dict() for issue in exc.issues]
+            events[-1] = (
+                "tool.result",
+                ToolResult(
+                    "plan.validate",
+                    False,
+                    {"issues": issue_dicts},
+                    error_code=exc.issues[0].code if exc.issues else "PLAN_INVALID",
+                    message=str(exc),
+                    repairable=True,
+                ).as_dict(),
+            )
+            repaired_plan, repair_details = self.tools.repair_nested_plan(
+                plan, issue_dicts
+            )
+            if repaired_plan is not None:
+                repair_events = self._tool_events(
+                    "plan.repair",
+                    {"plan": plan.model_dump(mode="json"), "issues": issue_dicts},
+                    ToolResult("plan.repair", True, repair_details),
+                )
+                try:
+                    repaired_compiled, repaired_issues = prepare(
+                        repaired_plan, self.sem
+                    )
+                except PipelineError as repaired_exc:
+                    log_event(
+                        logger,
+                        "plan.repair.failed",
+                        error=str(repaired_exc),
+                    )
+                else:
+                    return (
+                        events
+                        + repair_events
+                        + [
+                            ("plan.repaired", repair_details),
+                            ("plan.compiled", {
+                                "plan": repaired_plan.model_dump(mode="json"),
+                                "repaired": True,
+                            }),
+                            ("sql.compiled", self._compiled_payload(
+                                repaired_compiled, repaired_issues
+                            )),
+                        ]
+                    )
             filter_issue = next(
                 (i for i in exc.issues if i.code == "UNSUPPORTED_FILTER"), None
             )
@@ -1603,7 +2208,7 @@ class Controller:
                     self.sem, self._repair_slots(state, state.slots.model_dump(mode="json"))
                 )
                 message = f"{filter_issue.message}\n\n{repair_text(repair)}"
-                return [
+                return events + [
                     ("plan.rejected", {
                         "reason": str(exc),
                         "issues": [i.as_dict() for i in exc.issues],
@@ -1626,7 +2231,7 @@ class Controller:
                 except PipelineError:
                     pass
                 else:
-                    return [
+                    return events + [
                         ("plan.degraded", {
                             "reason": new_plan.degraded_reason,
                             "removed_dimensions": removed,
@@ -1638,7 +2243,76 @@ class Controller:
                         }),
                         ("sql.compiled", self._compiled_payload(compiled, issues)),
                     ]
-            return [
+            repair_method = getattr(self.parser, "repair", None)
+            if callable(repair_method) and state.policy.can_retry("plan_repair"):
+                observations = []
+                search = self.tools.schema_search(
+                    f"{plan.metric or ''} {' '.join(plan.dimensions)}".strip()
+                )
+                observations.extend(self._tool_events(
+                    "schema.search",
+                    {"query": plan.metric or "", "context": "plan_repair"},
+                    search,
+                ))
+                metric_result = self.tools.get_metric(plan.metric)
+                observations.extend(self._tool_events(
+                    "schema.get_metric", {"metric_id": plan.metric}, metric_result,
+                ))
+                dim_results = []
+                for dim_id in plan.dimensions:
+                    dim_result = self.tools.get_dimension(dim_id)
+                    dim_results.append(dim_result)
+                    observations.extend(self._tool_events(
+                        "schema.get_dimension", {"dimension_id": dim_id}, dim_result,
+                    ))
+                tool_results = [
+                    search.as_dict(), metric_result.as_dict(),
+                    *[result.as_dict() for result in dim_results],
+                ]
+                try:
+                    repaired = repair_method(
+                        self._last_user_text(state),
+                        project_for_parser(
+                            state,
+                            dim_values_path=self.dim_values_path,
+                            conversation_context=build_conversation_context(
+                                state, self.sem
+                            ),
+                        ),
+                        plan=plan.model_dump(mode="json"),
+                        issues=issue_dicts,
+                        tool_results=tool_results,
+                    )
+                except Exception as exc:
+                    log_event(
+                        logger,
+                        "plan.repair.llm_failed",
+                        error=f"{type(exc).__name__}: {exc}",
+                    )
+                else:
+                    if repaired is not None:
+                        repaired_slots = self._normalize_slots_payload(
+                            dict(repaired.slots or {})
+                        )
+                        return events + observations + [
+                            ("llm.retry", {
+                                "stage": "plan_repair",
+                                "attempt": 1,
+                                "reason": str(exc),
+                            }),
+                            ("plan.repair_requested", {
+                                "repairer": "llm",
+                                "issues": issue_dicts,
+                                "tool_results": tool_results,
+                            }),
+                            ("intent.repaired", {
+                                "slots": repaired_slots,
+                                "notes": list(repaired.notes or []) + [
+                                    "计划校验失败后已由工具辅助修复"
+                                ],
+                            }),
+                        ]
+            return events + [
                 ("plan.rejected", {
                     "reason": str(exc),
                     "issues": [i.as_dict() for i in exc.issues],
@@ -1648,7 +2322,15 @@ class Controller:
                     "code": "PLAN_INVALID", "message": str(exc), "recoverable": False,
                 }),
             ]
-        return [("sql.compiled", self._compiled_payload(compiled, issues))]
+        events[-1] = (
+            "tool.result",
+            ToolResult(
+                "plan.validate",
+                True,
+                {"issues": [issue.as_dict() for issue in issues]},
+            ).as_dict(),
+        )
+        return events + [("sql.compiled", self._compiled_payload(compiled, issues))]
 
     def _compiled_payload(self, compiled, issues) -> dict:
         return {
@@ -1667,17 +2349,12 @@ class Controller:
             compiled, _ = prepare(plan, self.sem)
             result = execute_prepared(compiled, db_path=self.warehouse)
         except PipelineError as exc:
-            return [("error.raised", {"code": "PLAN_REJECTED", "message": str(exc),
-                                      "recoverable": False})]
+            return self._recover_or_refuse(state, plan, exc, "PLAN_REJECTED", "计划未通过校验")
         except Exception as exc:
             log_event(logger, "execution.error", error=f"{type(exc).__name__}: {exc}",
                       detail=traceback.format_exc()[:4000])
-            return [("error.raised", {
-                "code": "EXECUTION_FAILED",
-                "message": "查询执行失败。可以缩小时间范围或减少维度后重试。",
-                "recoverable": False,
-                "hint": "可以缩小时间范围或减少维度后重试。",
-            })]
+            code, friendly = classify_error(exc)
+            return self._recover_or_refuse(state, plan, exc, code, friendly)
         result.fingerprint = compiled.fingerprint(
             int(self.sem.raw.get("compiler_version", 1)),
             self.sem.version,
@@ -1689,6 +2366,109 @@ class Controller:
         payload["display"] = display_spec(plan, self.sem, result)
         payload["plan"] = plan.model_dump(mode="json")
         return [("sql.executed", payload)]
+
+    def _recover_or_refuse(self, state: SessionState, plan: QueryPlan,
+                           exc: BaseException, code: str, friendly: str
+                           ) -> list[tuple[str, dict]]:
+        """Bounded, deterministic self-correction. SQL is never regenerated by a model."""
+        events: list[tuple[str, dict]] = [("execution.failed", {
+            "code": code,
+            "message": friendly,
+            "attempt": state.policy.attempts + 1,
+            "detail": f"{type(exc).__name__}: {exc}"[:300],
+        })]
+        if state.policy.can_attempt():
+            for candidate in candidates_for_failure(plan, self.sem):
+                try:
+                    prepare(candidate.plan, self.sem)
+                except PipelineError:
+                    continue
+                events.append(("repair.applied", {
+                    "action": candidate.action,
+                    "attempt": state.policy.attempts + 1,
+                    "detail": candidate.detail,
+                }))
+                events.append(("plan.compiled", {
+                    "plan": candidate.plan.model_dump(mode="json"),
+                    "repaired": True,
+                }))
+                return events
+
+        labels = {
+            "drop_having": "取消分组筛选",
+            "drop_comparison": "取消比较口径",
+            "drop_dimension": "移除无法执行的维度",
+            "drop_all_dimensions": "退化为整体口径",
+            "widen_time": "放宽时间范围",
+        }
+        tried = [str(item.get("action")) for item in state.repairs]
+        tried_labels = [labels.get(action, action) for action in tried]
+        refusal = {
+            "code": code,
+            "missing": [{
+                "kind": "data", "name": "可执行口径", "reason": friendly,
+            }],
+            "tried": tried,
+            "alternatives": [],
+        }
+        text = f"这个问题的查询没能成功执行（{friendly}）。"
+        if tried_labels:
+            text += (
+                f"已尝试 {len(tried_labels)} 次调整"
+                f"（{'、'.join(tried_labels)}），仍未得到可用结果。"
+            )
+        if code == "SCHEMA_MISMATCH":
+            text += (
+                "\n\n这通常意味着语义层和数据库不一致：数据可能被重新导入或列被删除。"
+                "建议在数据管理页重建或重新发布数据集。"
+            )
+        elif code == "TIMEOUT":
+            text += "\n\n查询超时，可以缩小时间范围或减少维度后重试。"
+        else:
+            text += "\n\n可以缩小时间范围、减少维度，或换一个指标再试。"
+        events.extend([
+            ("refusal.decided", refusal),
+            ("answer.composed", {
+                "text": text, "result_id": None, "status": "refused",
+            }),
+            ("result.presented", {"result_id": None}),
+        ])
+        return events
+
+
+    def _filtered_row_count(self, plan: QueryPlan, metric) -> int | None:
+        """Rows matching the same filters/time as an aggregate query.
+
+        Used to expose the real sample size (e.g. 2,323 reviewed late orders)
+        instead of letting the model reuse a dataset-level quality count.
+        """
+        try:
+            from dataclasses import replace
+
+            from app.domain.semantic.loader import Metric
+
+            raw = dict(metric.raw)
+            raw["expr"] = "COUNT(*)"
+            raw["type"] = "aggregate"
+            raw["supported_grain"] = ["none"]
+            metrics = dict(self.sem.metrics)
+            metrics["__count"] = Metric("__count", raw)
+            sem = replace(self.sem, metrics=metrics)
+            count_plan = plan.model_copy(deep=True)
+            count_plan.metric = "__count"
+            count_plan.dimensions = []
+            count_plan.having = []
+            count_plan.compare = None
+            count_plan.comparison = None
+            count_plan.order_by = []
+            count_plan.limit = 1
+            compiled, _ = prepare(count_plan, sem)
+            result = execute_prepared(compiled, db_path=self.warehouse)
+            if result.rows and result.rows[0]:
+                return int(result.rows[0][0])
+        except Exception:
+            return None
+        return None
 
     def _handle_checking(self, state: SessionState) -> list[tuple[str, dict]]:
         plan = QueryPlan.model_validate(state.plan.model_dump())
@@ -1705,13 +2485,43 @@ class Controller:
             self._results[(state.session_id, state.turn)] = result
         issues, facts = check(plan, self.sem, result,
                               db_path=self.warehouse, quality=self.quality)
+        if plan.filters and plan.metric and plan.metric in self.sem.metrics:
+            filtered_metric = self.sem.metric(plan.metric)
+            if filtered_metric.type == "aggregate":
+                sample_size = self._filtered_row_count(plan, filtered_metric)
+                if sample_size is not None:
+                    facts["contributing_rows"] = sample_size
+                    issues.append(CheckIssue(
+                        "SAMPLE_SIZE", "info", "样本量",
+                        f"满足当前筛选条件的记录数：{sample_size}。",
+                    ))
+        if plan.metric and plan.metric in self.sem.metrics:
+            health = self.sem.metric(plan.metric).raw.get("data_health") or {}
+            rate = health.get("measure_null_rate")
+            if isinstance(rate, (int, float)) and rate >= 0.2:
+                issues.append(CheckIssue(
+                    "DATA_HEALTH", "warn", "数据完整性",
+                    f"该指标依赖的度量列缺失 {rate:.1%}，结果按可用记录计算。",
+                ))
+        diagnosis_events: list[tuple[str, dict]] = []
+        if result.row_count == 0:
+            diagnosis = diagnose_empty(plan, self.sem, self.warehouse)
+            if diagnosis:
+                facts["empty_diagnosis"] = diagnosis
+                issues.append(CheckIssue(
+                    "EMPTY_DIAGNOSIS", "warn", "空结果诊断", diagnosis["message"],
+                ))
+                diagnosis_events.append(("diagnosis.completed", diagnosis))
+        tool_events = self._enrich_count_members(plan, result, facts)
         payload = {
             "result_id": result.result_id,
             "issues": [i.as_dict() for i in issues],
             "facts": facts,
             "blocked": any(i.severity == "error" for i in issues),
         }
-        events: list[tuple[str, dict]] = [("checks.completed", payload)]
+        events: list[tuple[str, dict]] = diagnosis_events + tool_events + [
+            ("checks.completed", payload)
+        ]
         if payload["blocked"]:
             events.append(("error.raised", {
                 "code": "CHECKS_FAILED",
@@ -1780,12 +2590,13 @@ class Controller:
 
     def _composer_context(self, state: SessionState) -> dict:
         plan = state.plan
-        metric = self.sem.metric(plan.metric) if plan else None
+        metric = self._metric_for_plan(plan)
         ctx = project_for_composer(state)
         ctx.update({
             "metric_name": metric.name if metric else plan.metric,
             "metric_unit": metric.raw.get("unit") if metric else None,
             "metric_type": metric.type if metric else "aggregate",
+            "time_axis": metric.raw.get("time_axis") if metric else None,
             "definition": metric.raw.get("definition") if metric else None,
             "dimension_labels": [self.sem.dimension(d).raw.get("name_zh", d)
                                  for d in (plan.dimensions if plan else [])],

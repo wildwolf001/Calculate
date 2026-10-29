@@ -76,6 +76,7 @@ class SemanticLayer:
     capabilities: dict[str, Any] = field(default_factory=dict)
     parser: str = "generic"
     raw: dict[str, Any] = field(repr=False, default_factory=dict)
+    time_axes: list[dict[str, Any]] = field(default_factory=list)
 
     # ---- lookup helpers ----
     def metric(self, mid: str) -> Metric:
@@ -232,6 +233,7 @@ def load_semantic(
         capabilities=sem.get("capabilities", {}),
         parser=str(sem.get("parser", "generic")),
         raw=sem,
+        time_axes=list(sem.get("time_axes") or []),
     )
 
 

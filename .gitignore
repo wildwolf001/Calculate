@@ -19,3 +19,5 @@ web/dist/
 .pytest_cache/
 backup_*.zip
 *.duckdb.tmp
+data/tmp_*/
+pytest-of-*/

@@ -13,6 +13,7 @@ from datetime import date, timedelta
 
 from app.config.settings import DIM_VALUES_PATH
 from app.core.interfaces import ParseResult
+from app.domain.semantic.graph import allowed_dimensions
 from app.domain.semantic.loader import SemanticLayer
 
 CN_DIGITS = {"一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5,
@@ -165,6 +166,22 @@ class RuleParser:
                 pass
         return 2025, 12
 
+    def _fit_end(self, start: date, end: date) -> date:
+        """Clamp an end only when the window overlaps the data.
+
+        A window completely outside the data must stay intact so the
+        capability layer can explain "no data in this period" instead of
+        producing an invalid start>end range.
+        """
+        try:
+            lo = date.fromisoformat(str(self.sem.time_range[0]))
+            hi = date.fromisoformat(str(self.sem.time_range[1]))
+        except (TypeError, ValueError):
+            return end
+        if start >= hi or start < lo:
+            return end
+        return min(end, hi)
+
     def _parse_time(self, text: str):
         latest_y, latest_m = self._latest_month()
 
@@ -216,7 +233,7 @@ class RuleParser:
         if m:
             y, mo = int(m.group(1)), int(m.group(2))
             s, e = _month_bounds(y, mo)
-            return (s, _clamp(e, self.sem)), f"{y}年{mo}月"
+            return (s, self._fit_end(s, e)), f"{y}年{mo}月"
         # year only
         m = re.search(r"(20\d{2})\s*年(?!\s*\d)", text)
         if m:
@@ -227,9 +244,20 @@ class RuleParser:
         if m:
             mo = int(m.group(1))
             if 1 <= mo <= 12:
+                try:
+                    lo = date.fromisoformat(str(self.sem.time_range[0]))
+                    hi = date.fromisoformat(str(self.sem.time_range[1]))
+                except (TypeError, ValueError):
+                    lo, hi = date(latest_y, 1, 1), date(latest_y, 12, 31)
                 y = latest_y
-                s, e = _month_bounds(y, mo)
-                return (s, _clamp(e, self.sem)), f"未指定年份，按数据中最近一次出现取 {y}年{mo}月"
+                for _ in range(24):
+                    s, e = _month_bounds(y, mo)
+                    if s < hi and e > lo:
+                        break
+                    y -= 1
+                else:
+                    s, e = _month_bounds(latest_y, mo)
+                return (s, self._fit_end(s, e)), f"未指定年份，按数据中最近一次出现取 {y}年{mo}月"
         # quarter
         m = re.search(r"(?:第\s*([1-4])\s*季度|q([1-4]))", text.lower())
         if m:
@@ -707,16 +735,27 @@ class RuleParser:
             )
 
         top_len = max(len(t) for _, t in hits)
-        top = [mid for mid, t in hits if len(t) == top_len]
+        top_pairs = [(mid, t) for mid, t in hits if len(t) == top_len]
+        top = [mid for mid, _ in top_pairs]
         if len(set(top)) > 1:
-            return ParseResult(
-                intent_type="query", tier="A", confidence=0.4,
-                unresolved=[text],
-                notes=["指标不唯一：" + "、".join(sorted(set(top)))],
-            )
+            # Prefer an exact metric-name match over a synonym match
+            # (e.g. 商品销售额 beats 已送达商品销售额).
+            exact = [
+                mid for mid, term in top_pairs
+                if str(self.sem.metric(mid).name).strip().lower()
+                == str(term).strip().lower()
+            ]
+            if len(set(exact)) == 1:
+                top = exact
+            else:
+                return ParseResult(
+                    intent_type="query", tier="A", confidence=0.4,
+                    unresolved=[text],
+                    notes=["指标不唯一：" + "、".join(sorted(set(top)))],
+                )
         chosen = top[0]
         metric = self.sem.metric(chosen)
-        allowed = set(metric.supported_grain)
+        allowed = allowed_dimensions(self.sem, metric.id)
         kept_dims = self._generic_dims(masked, allowed)
         if not kept_dims:
             kept_dims = [d for d in dims if d in allowed]

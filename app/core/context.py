@@ -12,6 +12,7 @@ import json
 
 from app.config.settings import DIM_VALUES_PATH, KEEP_RECENT_TURNS
 from app.core.state import SessionState, slots_has_content
+from app.domain.presentation import summarize_rows
 from app.domain.semantic.loader import SemanticLayer
 
 _ID_REVERSE_CACHE: dict[str, dict[str, dict]] = {}
@@ -271,15 +272,16 @@ def project_for_parser(state: SessionState, keep_turns: int = KEEP_RECENT_TURNS,
 def project_for_composer(state: SessionState, max_rows: int = 50) -> dict:
     artifact = state.artifacts.get(state.last_result_id or "", {})
     rows = artifact.get("rows") or []
-    return {
+    columns = artifact.get("columns", [])
+    dimensions = state.plan.dimensions if state.plan else []
+    ctx = {
         "session_id": state.session_id,
         "question": artifact.get("question") or _last_user_text(state),
         "metric": (state.plan.metric if state.plan else None),
-        "dimensions": state.plan.dimensions if state.plan else [],
+        "dimensions": dimensions,
         "time": state.plan.time.model_dump(mode="json") if state.plan and state.plan.time else None,
         "filters": {k: v.model_dump(mode="json") for k, v in state.slots.filters.items()},
-        "columns": artifact.get("columns", []),
-        "rows": rows[:max_rows],
+        "columns": columns,
         "row_count": artifact.get("row_count", 0),
         "truncated": artifact.get("truncated", False),
         "sql": artifact.get("sql"),
@@ -287,6 +289,8 @@ def project_for_composer(state: SessionState, max_rows: int = 50) -> dict:
         "facts": state.facts,
         "notes": state.slots.notes,
     }
+    ctx.update(summarize_rows(rows, columns, dimensions, max_rows))
+    return ctx
 
 
 def project_for_ui(state: SessionState) -> dict:

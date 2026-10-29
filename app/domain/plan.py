@@ -57,21 +57,29 @@ class QueryPlan(BaseModel):
     kind: Literal["aggregate", "member_list", "coverage"] = "aggregate"
     plan_id: str = "p"
     metric: str | None = None
+    metric_spec: dict | None = None
+    metric_source: str | None = None
     list_dim: str | None = None
     dimensions: list[str] = Field(default_factory=list)
     time: TimeRange | None = None
+    time_axis: str | None = None
     filters: dict[str, FilterSpec] = Field(default_factory=dict)
     having: list[HavingSpec] = Field(default_factory=list)
     ratio_grain: str | None = None
+    ratio_numerator: str | None = None
+    ratio_denominator: str | None = None
     nested: NestedSpec | None = None
     order_by: list[OrderSpec] = Field(default_factory=list)
     limit: int = 100
+    limit_per_group: int | None = None
+    share: bool = False
     compare: CompareSpec | None = None
     comparison: ComparisonSpec | None = None
     notes: list[str] = Field(default_factory=list)
     visualization: dict | None = None
     coverage_period: Literal["month"] = "month"
     degraded_reason: str | None = None
+    degraded_kind: str | None = None
     interpretation_id: str | None = None
     interpretation_label: str | None = None
     preferred: bool = False

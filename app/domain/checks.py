@@ -7,12 +7,13 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from datetime import date
 
 import duckdb
 
 from app.config.settings import QUALITY_PATH, WAREHOUSE_PATH
 from app.domain.executor import ResultSet
-from app.domain.plan import QueryPlan
+from app.domain.plan import QueryPlan, TimeRange
 from app.domain.semantic.loader import SemanticLayer
 
 SHARE_TOLERANCE = 0.005  # 0.5%
@@ -46,7 +47,9 @@ def _quality_notice(quality: dict | None) -> tuple[CheckIssue | None, list[dict]
     if not notable:
         return None, []
     summary = "；".join(
-        f"{check.get('title', check.get('id'))}（{check.get('count')}）"
+        f"{check.get('title', check.get('id'))}"
+        f"（{check.get('count')} "
+        f"{'个空值' if check.get('id') == 'missing_values' else '项'}）"
         for check in notable[:4]
     )
     return (
@@ -190,12 +193,21 @@ def run_checks(plan: QueryPlan, metric, result: ResultSet, sem: SemanticLayer,
                db_path=WAREHOUSE_PATH, quality: dict | None = None) -> tuple[list[CheckIssue], dict]:
     """Return (issues, facts). `facts` is machine-readable context for the composer."""
     issues: list[CheckIssue] = []
-    facts: dict = {"metric": plan.metric, "dimensions": plan.dimensions}
+    facts: dict = {
+        "metric": plan.metric,
+        "dimensions": plan.dimensions,
+        "fanout_used": bool(result.meta.get("fanout_used")),
+    }
     if plan.degraded_reason:
         facts["degraded_reason"] = plan.degraded_reason
-        issues.append(CheckIssue(
-            "DEGRADED_DIMENSION", "warn", "已退化为整体口径", plan.degraded_reason,
-        ))
+        if plan.degraded_kind == "time":
+            issues.append(CheckIssue(
+                "TIME_CLAMPED", "info", "时间范围已裁剪", plan.degraded_reason,
+            ))
+        else:
+            issues.append(CheckIssue(
+                "DEGRADED_DIMENSION", "warn", "已退化为整体口径", plan.degraded_reason,
+            ))
 
     if result.row_count == 0:
         issues.append(CheckIssue("EMPTY_RESULT", "warn", "查询结果为空",
@@ -221,8 +233,30 @@ def run_checks(plan: QueryPlan, metric, result: ResultSet, sem: SemanticLayer,
                                  f"返回 {result.row_count} 行，等于计划的 limit={plan.limit}；"
                                  f"可能还有更多分组。"))
 
+    if "share" in result.columns and metric.raw.get("additive"):
+        share_idx = result.columns.index("share")
+        share_values = [
+            float(row[share_idx]) for row in result.rows
+            if row[share_idx] is not None
+        ]
+        if share_values:
+            total_share = sum(share_values)
+            facts["share_sum"] = round(total_share, 6)
+            if not result.truncated and abs(total_share - 1.0) > SHARE_TOLERANCE:
+                issues.append(CheckIssue(
+                    "SHARE_SUM_MISMATCH", "warn", "占比合计不为 1",
+                    f"当前分组占比合计为 {total_share:.4f}，"
+                    "可能因为结果被截断或存在未归组记录。",
+                ))
+
     # ---- additive share check ----
-    additive = bool(metric.raw.get("additive")) and not plan.filters and not plan.compare
+    additive_metric = bool(metric.raw.get("additive"))
+    can_validate_share = additive_metric and not plan.filters
+    additive = (
+        can_validate_share
+        and not (plan.compare or plan.comparison)
+        and not plan.limit_per_group
+    )
     if additive and plan.dimensions and not possibly_truncated:
         try:
             idx = result.columns.index("value")
@@ -243,8 +277,145 @@ def run_checks(plan: QueryPlan, metric, result: ResultSet, sem: SemanticLayer,
         except (ValueError, ZeroDivisionError, duckdb.Error) as exc:
             issues.append(CheckIssue("SHARE_CHECK_FAILED", "warn", "份额校验未完成", str(exc)))
 
-    # ---- compare baseline ----
-    if plan.compare:
+    # ---- period comparison ----
+    ranges = _comparison_ranges(plan, result)
+    delta_desc_top_n = bool(plan.order_by) and (
+        plan.order_by[0].field == "delta"
+        and plan.order_by[0].direction == "desc"
+    )
+    ranked_top_n = intentional_top_n and delta_desc_top_n
+    if ranges and additive_metric and plan.dimensions and (
+        not possibly_truncated or ranked_top_n
+    ):
+        current_range, baseline_range = ranges
+        try:
+            ci = result.columns.index("current")
+            bi = result.columns.index("baseline")
+            di = result.columns.index("delta")
+            gi = (
+                result.columns.index("growth_rate")
+                if "growth_rate" in result.columns else None
+            )
+            current_sum = sum(
+                float(row[ci]) for row in result.rows if row[ci] is not None
+            )
+            baseline_sum = sum(
+                float(row[bi]) for row in result.rows if row[bi] is not None
+            )
+            delta_sum = sum(
+                float(row[di]) for row in result.rows if row[di] is not None
+            )
+            current_total = baseline_total = None
+            if can_validate_share:
+                current_total = _metric_total(
+                    plan, metric, sem, db_path, time=current_range
+                )
+                baseline_total = _metric_total(
+                    plan, metric, sem, db_path, time=baseline_range
+                )
+                facts["comparison_current_total"] = current_total
+                facts["comparison_baseline_total"] = baseline_total
+                if current_total:
+                    facts["current_share_of_total"] = round(
+                        current_sum / current_total, 4
+                    )
+                if baseline_total:
+                    facts["baseline_share_of_total"] = round(
+                        baseline_sum / baseline_total, 4
+                    )
+                total_delta = current_total - baseline_total
+            elif not possibly_truncated:
+                total_delta = delta_sum
+            else:
+                total_delta = None
+            if total_delta is not None:
+                facts["comparison_delta_total"] = total_delta
+
+            dims = plan.dimensions
+            dimension_names = [
+                sem.dimension(dim).raw.get("name_zh", dim) for dim in dims
+            ]
+
+            def member_label(row: list) -> str:
+                return " / ".join(str(value) for value in row[:len(dims)])
+
+            positive = [
+                row for row in result.rows
+                if row[di] is not None and float(row[di]) > 0
+            ]
+            negative = [
+                row for row in result.rows
+                if row[di] is not None and float(row[di]) < 0
+            ]
+            if positive:
+                top = max(positive, key=lambda row: float(row[di]))
+                facts["top_delta_member"] = {
+                    "dimension_id": dims[0] if len(dims) == 1 else dims,
+                    "dimension_name": (
+                        dimension_names[0]
+                        if len(dimension_names) == 1 else dimension_names
+                    ),
+                    "value": member_label(top),
+                    "delta": float(top[di]),
+                    "growth_rate": (
+                        float(top[gi]) if gi is not None and top[gi] is not None
+                        else None
+                    ),
+                }
+            if negative and not possibly_truncated:
+                worst = min(negative, key=lambda row: float(row[di]))
+                facts["largest_negative_contributor"] = {
+                    "dimension_id": dims[0] if len(dims) == 1 else dims,
+                    "dimension_name": (
+                        dimension_names[0]
+                        if len(dimension_names) == 1 else dimension_names
+                    ),
+                    "value": member_label(worst),
+                    "delta": float(worst[di]),
+                    "growth_rate": (
+                        float(worst[gi]) if gi is not None and worst[gi] is not None
+                        else None
+                    ),
+                }
+                facts["negative_contributors"] = [
+                    {
+                        "value": member_label(row),
+                        "delta": float(row[di]),
+                    }
+                    for row in sorted(negative, key=lambda row: float(row[di]))
+                ]
+            if (
+                positive
+                and total_delta is not None
+                and abs(total_delta) > 1e-9
+            ):
+                top_delta = facts["top_delta_member"]["delta"]
+                facts["top_contribution_share"] = round(
+                    top_delta / total_delta, 4
+                )
+
+            if can_validate_share and not possibly_truncated:
+                for label, actual, expected in (
+                    ("本期", current_sum, current_total),
+                    ("基期", baseline_sum, baseline_total),
+                ):
+                    if not expected:
+                        continue
+                    share = actual / expected
+                    if abs(share - 1.0) > SHARE_TOLERANCE:
+                        issues.append(CheckIssue(
+                            "COMPARISON_SHARE_MISMATCH",
+                            "error",
+                            f"{label}分组合计与总体不一致",
+                            f"分组合计 {actual:.2f}，总体 {expected:.2f}，"
+                            f"份额 {share:.2%}；可能是粒度或 join 放大导致。",
+                        ))
+        except (ValueError, ZeroDivisionError, duckdb.Error) as exc:
+            issues.append(CheckIssue(
+                "COMPARISON_CHECK_FAILED", "warn", "比较口径校验未完成", str(exc)
+            ))
+
+    if plan.compare or plan.comparison:
         baseline_idx = result.columns.index("baseline") if "baseline" in result.columns else None
         if baseline_idx is not None:
             baselines = [r[baseline_idx] for r in result.rows]
@@ -262,14 +433,29 @@ def run_checks(plan: QueryPlan, metric, result: ResultSet, sem: SemanticLayer,
     if quality_issue:
         issues.append(quality_issue)
         facts["data_quality"] = quality_facts
-    business_checks = set(sem.capabilities.get("business_checks") or [])
-
     # ---- metric-level caveats ----
     for caveat in metric.raw.get("caveats", []) or []:
         issues.append(CheckIssue("METRIC_CAVEAT", "info", "口径提示", caveat))
     if metric.raw.get("coverage_note"):
         issues.append(CheckIssue("COVERAGE", "info", "覆盖范围",
                                  metric.raw["coverage_note"]))
+
+    health = metric.raw.get("data_health") or {}
+    duplicate_ratio = health.get("duplicate_key_ratio")
+    expression = str(
+        metric.raw.get("expr") or metric.raw.get("numerator") or ""
+    ).upper()
+    if (
+        isinstance(duplicate_ratio, (int, float))
+        and duplicate_ratio > 1.05
+        and "AVG(" in expression
+    ):
+        facts["avg_grain_ratio"] = duplicate_ratio
+        issues.append(CheckIssue(
+            "AVG_GRAIN", "warn", "平均值按记录加权",
+            f"同一订单平均有 {duplicate_ratio:.2f} 条记录，"
+            "AVG 会按记录数加权，不是按订单平均。",
+        ))
 
     if metric.type == "ratio":
         facts["ratio_grain"] = plan.ratio_grain or metric.raw.get("ratio_grain")
@@ -278,76 +464,51 @@ def run_checks(plan: QueryPlan, metric, result: ResultSet, sem: SemanticLayer,
             f"比率已先聚合到 {plan.ratio_grain or metric.raw.get('ratio_grain')} 粒度再相除，"
             f"不是对明细行求平均。",
         ))
-        if "category" in plan.dimensions and q.get("multi_category_orders"):
+        if facts.get("fanout_used") and plan.dimensions:
             issues.append(CheckIssue(
-                "RATIO_CROSS_CATEGORY", "warn", "跨品类订单在分组内重复计入分母",
-                f"有 {q['multi_category_orders']['count']} 笔订单跨多个品类；"
-                f"分组比率之和与整体比率不相等，这是分组口径的正常结果。",
-            ))
-        if "seller" in plan.dimensions and q.get("multi_seller_orders"):
-            issues.append(CheckIssue(
-                "RATIO_CROSS_SELLER", "warn", "跨商家订单在分组内重复计入分母",
-                f"有 {q['multi_seller_orders']['count']} 笔订单跨多个商家；"
-                f"各商家比率不能简单加总。",
+                "RATIO_FANOUT", "warn", "比率分组存在重复分母",
+                "该比率按一对多维度分组，同一实体可能进入多个组；"
+                "各组比率不能简单加总。",
             ))
 
-    # ---- multi-* order duplication ----
-    if plan.metric == "order_count":
-        if "category" in plan.dimensions and q.get("multi_category_orders"):
-            n = q["multi_category_orders"]["count"]
-            issues.append(CheckIssue(
-                "CROSS_CATEGORY_ORDER", "warn", "跨品类订单会重复计数",
-                f"有 {n} 笔订单包含多个品类，按品类统计订单数时会被计入多次；"
-                f"各品类订单数之和会大于总订单数。",
-            ))
-        if "seller" in plan.dimensions and q.get("multi_seller_orders"):
-            n = q["multi_seller_orders"]["count"]
-            issues.append(CheckIssue(
-                "CROSS_SELLER_ORDER", "warn", "跨商家订单会重复计数",
-                f"有 {n} 笔订单包含多个商家，按商家统计订单数时会被计入多次。",
-            ))
-
-    if ("split_payment" in business_checks
-            and plan.metric == "paid_amount" and "payment_type" in plan.dimensions):
-        n = q.get("multi_payment_orders", {}).get("count", 0)
+    # ---- multi-valued dimension (generic) ----
+    expression = str(metric.raw.get("expr") or "").upper()
+    if (
+        facts.get("fanout_used")
+        and plan.dimensions
+        and "DISTINCT" in expression
+    ):
         issues.append(CheckIssue(
-            "SPLIT_PAYMENT", "info", "拆分支付",
-            f"有 {n} 笔订单使用多笔支付，按支付方式拆分时同一订单可能出现在多行；"
-            f"支付金额按支付记录归属，合计仍等于总额。",
+            "MULTI_VALUED_DIMENSION", "warn", "维度可多值",
+            "同一实体可能属于多个分组，分组计数之和可能大于总体；"
+            "这是多值维度的正常结果。",
         ))
-
-    # ---- payment reconciliation (only for paid_amount) ----
-    if plan.metric == "paid_amount" and "payment_reconciliation" in business_checks:
-        try:
-            con = duckdb.connect(str(db_path), read_only=True)
-            try:
-                diff = con.execute("""
-                    WITH items AS (
-                      SELECT i.order_id, SUM(i.price) + SUM(i.freight_value) AS expected
-                      FROM order_items i JOIN orders o USING(order_id)
-                      WHERE o.order_status='delivered' GROUP BY 1
-                    ), pays AS (
-                      SELECT p.order_id, SUM(p.payment_value) AS paid
-                      FROM order_payments p JOIN orders o USING(order_id)
-                      WHERE o.order_status='delivered' GROUP BY 1
-                    )
-                    SELECT COUNT(*) FROM items i JOIN pays p USING(order_id)
-                    WHERE ABS(i.expected - p.paid) > 0.01
-                """).fetchone()[0]
-            finally:
-                con.close()
-            facts["payment_mismatch_orders"] = int(diff)
-            issues.append(CheckIssue(
-                "PAYMENT_RECONCILIATION", "info" if diff == 0 else "warn", "支付勾稽",
-                f"已送达订单中，支付金额与商品金额+运费差异超过 0.01 元的订单数：{diff}。",
-            ))
-        except duckdb.Error as exc:
-            issues.append(CheckIssue("PAYMENT_CHECK_FAILED", "warn", "支付勾稽未完成", str(exc)))
 
     return issues, facts
 
 
-def _metric_total(plan: QueryPlan, metric, sem: SemanticLayer, db_path) -> float:
+def _comparison_ranges(plan: QueryPlan, result: ResultSet):
+    if plan.comparison:
+        return plan.comparison.current, plan.comparison.baseline
+    current = result.meta.get("current_range")
+    baseline = result.meta.get("baseline_range")
+    if not current or not baseline:
+        return None
+    try:
+        if plan.time is None:
+            return None
+        return (
+            TimeRange(start=date.fromisoformat(current[0]),
+                      end=date.fromisoformat(current[1])),
+            TimeRange(start=date.fromisoformat(baseline[0]),
+                      end=date.fromisoformat(baseline[1])),
+        )
+    except (TypeError, ValueError, IndexError):
+        return None
+
+
+def _metric_total(plan: QueryPlan, metric, sem: SemanticLayer, db_path,
+                  time=None) -> float:
     """Total for additive share checks: same metric/scope/time, no dimensions."""
     from app.domain.compiler import compile_plan
 
@@ -358,6 +519,9 @@ def _metric_total(plan: QueryPlan, metric, sem: SemanticLayer, db_path) -> float
     total_plan.having = []
     total_plan.limit = 1
     total_plan.compare = None
+    total_plan.comparison = None
+    if time is not None:
+        total_plan.time = time
     compiled = compile_plan(total_plan, sem)
     con = duckdb.connect(str(db_path), read_only=True)
     try:
@@ -367,3 +531,4 @@ def _metric_total(plan: QueryPlan, metric, sem: SemanticLayer, db_path) -> float
     if not row or row[0] is None:
         return 0.0
     return float(row[0])
+

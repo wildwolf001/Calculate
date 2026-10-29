@@ -54,14 +54,27 @@ class SessionService:
             self._locks[session_id] = asyncio.Lock()
         return self._locks[session_id]
 
+    def current_dataset_id(self) -> str:
+        """Resolve the default at call time, not at process start.
+
+        Datasets can be deleted or created while the server is running; a
+        default captured at startup would point at a dataset that no longer
+        exists (the chat then looks like it has no data source).
+        """
+        if self.registry is not None:
+            # An empty registry means "no datasets yet"; do not fall back to a
+            # startup id that may point at a deleted dataset.
+            return getattr(self.registry, "default_id", "") or ""
+        return self.default_dataset_id
+
     def controller_for(self, dataset_id: str | None = None) -> Controller:
-        ds = dataset_id or self.default_dataset_id
+        ds = dataset_id or self.current_dataset_id()
         if not ds:
             raise DatasetError("尚未导入数据源")
         return self._resolve(ds)
 
     def context(self, dataset_id: str | None = None):
-        dataset_id = dataset_id or self.default_dataset_id
+        dataset_id = dataset_id or self.current_dataset_id()
         if not dataset_id:
             raise DatasetError("尚未导入数据源")
         if self._context_resolver is not None:
@@ -72,7 +85,7 @@ class SessionService:
     async def create(self, session_id: str | None = None,
                      dataset_id: str | None = None) -> str:
         sid = session_id or f"s-{uuid.uuid4().hex[:12]}"
-        ds = dataset_id or self.default_dataset_id
+        ds = dataset_id or self.current_dataset_id()
         if not ds:
             raise DatasetError("尚未导入数据源，请先在数据管理页上传数据")
         # Fail before writing an event if the dataset cannot be loaded.

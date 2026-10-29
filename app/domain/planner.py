@@ -8,7 +8,8 @@ from __future__ import annotations
 from app.config.settings import MAX_ROW_LIMIT
 from app.core.state import Slots
 from app.domain.plan import OrderSpec, QueryPlan, TimeRange
-from app.domain.semantic.loader import SemanticLayer, SemanticError
+from app.domain.semantic.graph import allowed_dimensions
+from app.domain.semantic.loader import Metric, SemanticLayer, SemanticError
 
 
 def degrade_unsupported_dimensions(
@@ -21,11 +22,17 @@ def degrade_unsupported_dimensions(
     """
     if plan.kind != "aggregate" or not plan.metric:
         return None
-    metric = sem.metric(plan.metric)
-    removed = [d for d in plan.dimensions if d not in metric.supported_grain]
+    if plan.metric_spec:
+        metric = Metric(plan.metric, plan.metric_spec)
+    else:
+        metric = sem.metric(plan.metric)
+    allowed = allowed_dimensions(sem, metric.id) if not plan.metric_spec else set(
+        metric.raw.get("supported_grain") or ["none"]
+    )
+    removed = [d for d in plan.dimensions if d not in allowed]
     if not removed:
         return None
-    kept = [d for d in plan.dimensions if d in metric.supported_grain]
+    kept = [d for d in plan.dimensions if d in allowed]
     names = "、".join(
         sem.dimension(d).raw.get("name_zh", d) for d in removed
     )
@@ -33,6 +40,7 @@ def degrade_unsupported_dimensions(
     degraded = plan.model_copy(deep=True)
     degraded.dimensions = kept
     degraded.degraded_reason = reason
+    degraded.degraded_kind = "dimension"
     degraded.notes = list(degraded.notes) + [reason]
     return degraded, removed
 
@@ -138,9 +146,19 @@ def coverage_plan(slots: Slots, sem: SemanticLayer) -> QueryPlan:
 def plan_from_slots(slots: Slots, sem: SemanticLayer) -> QueryPlan:
     if slots.intent == "coverage":
         return coverage_plan(slots, sem)
-    if not slots.metric:
-        raise SemanticError("没有识别出可查询的指标")
-    metric = sem.metric(slots.metric)
+    derived_spec: dict | None = None
+    if slots.metric_expr:
+        from app.domain.query.metric import build_metric_spec
+
+        derived_spec = build_metric_spec(
+            slots.metric_expr, sem, label=slots.metric_expr.get("label")
+        )
+        metric = Metric(derived_spec["id"], derived_spec)
+    else:
+        metric_id = slots.ratio_numerator or slots.metric
+        if not metric_id:
+            raise SemanticError("没有识别出可查询的指标")
+        metric = sem.metric(metric_id)
 
     time = slots.time
     notes = list(slots.notes)
@@ -169,21 +187,34 @@ def plan_from_slots(slots: Slots, sem: SemanticLayer) -> QueryPlan:
     if not order_by and dims:
         # deterministic default: sort by the value for ranking-style metrics,
         # otherwise keep dimension order (stable, explainable)
-        order_by = [OrderSpec(field="value", direction="desc")] if metric.type in {"ratio"} else []
+        if metric.type in {"ratio"} or slots.ratio_denominator:
+            order_by = [OrderSpec(field="value", direction="desc")]
+        else:
+            order_by = []
 
     limit = max(1, min(int(slots.limit), MAX_ROW_LIMIT))
 
     plan = QueryPlan(
-        plan_id=f"p_{metric.id}",
+        plan_id=(
+            f"p_{metric.id}_over_{slots.ratio_denominator}"
+            if slots.ratio_denominator else f"p_{metric.id}"
+        ),
         metric=metric.id,
+        metric_spec=derived_spec,
+        metric_source=slots.metric_source or ("inferred" if derived_spec else None),
+        ratio_numerator=slots.ratio_numerator,
+        ratio_denominator=slots.ratio_denominator,
         dimensions=dims,
         time=time,
+        time_axis=slots.time_axis,
         filters=slots.filters,
         having=slots.having,
         ratio_grain=metric.raw.get("ratio_grain") if metric.type == "ratio" else None,
         nested=slots.nested,
         order_by=order_by,
         limit=limit,
+        limit_per_group=slots.limit_per_group,
+        share=bool(slots.share),
         compare=slots.compare,
         comparison=slots.comparison,
         notes=notes,

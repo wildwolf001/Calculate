@@ -13,6 +13,8 @@ from typing import Any, Literal
 
 import yaml
 
+from app.datasets.index import load_index
+from app.domain.model.model import SemanticModel
 from app.domain.semantic.loader import SemanticLayer, load_semantic
 
 
@@ -58,8 +60,11 @@ class DatasetContext:
     documentation: dict[str, Any] = field(repr=False, default_factory=dict)
     readiness: dict[str, Any] = field(repr=False, default_factory=dict)
     capabilities: dict[str, Any] = field(repr=False, default_factory=dict)
+    model: SemanticModel | None = field(default=None, repr=False)
     status: str = "draft"
     engine: str = "duckdb"
+    index_path: Path | None = None
+    index: dict[str, Any] = field(default_factory=dict, repr=False)
 
     @property
     def coverage(self) -> dict[str, Any] | None:
@@ -72,6 +77,10 @@ class DatasetContext:
     @property
     def is_published(self) -> bool:
         return self.mode == "published"
+
+    @property
+    def model_version(self) -> str | None:
+        return self.model.version if self.model is not None else None
 
 
 def load_context(
@@ -102,10 +111,15 @@ def load_context(
     source_path = source_path or root / "source.yaml"
     documentation_path = documentation_path or root / "documentation.json"
     readiness_path = readiness_path or root / "readiness.json"
+    index_path = root / "semantic_index.json"
 
     sem = load_semantic(semantic_path, binding_path, catalog_path=catalog_path)
     merged_caps = dict(sem.capabilities or {})
     merged_caps.update(capabilities or {})
+    try:
+        model = SemanticModel.from_layer(sem)
+    except Exception:
+        model = None
     return DatasetContext(
         dataset_id=dataset_id,
         name=name,
@@ -128,6 +142,9 @@ def load_context(
         documentation=_read_json(documentation_path),
         readiness=_read_json(readiness_path),
         capabilities=merged_caps,
+        model=model,
         status=status,
         engine=engine,
+        index_path=index_path,
+        index=load_index(index_path),
     )

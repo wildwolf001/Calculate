@@ -13,6 +13,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+import duckdb
 import yaml
 
 from app.datasets.manifest import read_manifest, write_manifest
@@ -20,6 +21,7 @@ from app.datasets.registry import DatasetContext, DatasetError, DatasetRegistry
 from app.domain.pipeline import execute_prepared, prepare
 from app.domain.plan import QueryPlan
 from app.domain.semantic.loader import load_semantic
+from app.domain.semantic.timeaxis import infer_time_axis
 
 
 class PublishError(DatasetError):
@@ -87,6 +89,15 @@ def publish_dataset(registry: DatasetRegistry, dataset_id: str,
     unknown_dims = [d for d in keep_dims if d not in dimensions]
     if unknown_dims:
         raise PublishError(f"未知维度: {unknown_dims}")
+    # A metric's supported_grain is a contract: publishing must not silently
+    # drop a dimension the metric declares it can be split by.
+    referenced_dims = {
+        grain
+        for metric_id in keep_metrics
+        for grain in (metrics[metric_id].get("supported_grain") or [])
+        if grain not in {"none", "month"} and grain in dimensions
+    }
+    keep_dims = list(dict.fromkeys([*keep_dims, *sorted(referenced_dims)]))
     if "month" in dimensions and any(
         "month" in (metrics[m].get("supported_grain") or []) for m in keep_metrics
     ) and "month" not in keep_dims:
@@ -104,6 +115,35 @@ def publish_dataset(registry: DatasetRegistry, dataset_id: str,
         if definition:
             raw["definition"] = definition
         new_metrics[metric_id] = raw
+
+    def _axis_for(ref: str) -> str | None:
+        table, _, column = str(ref).partition(".")
+        columns = (
+            ((ctx.catalog.get("tables") or {}).get(table) or {}).get("columns")
+        ) or []
+        for col in columns:
+            if str(col.get("name")) == column:
+                return infer_time_axis(col.get("label") or column)
+        return None
+
+    for raw in new_metrics.values():
+        time_via = raw.get("time_via")
+        if isinstance(time_via, str) and time_via:
+            raw["time_axis"] = _axis_for(time_via) or raw.get("time_axis")
+
+    try:
+        from app.datasets.health import build_metric_health
+
+        health = build_metric_health(
+            ctx.sem, list(new_metrics), ctx.warehouse, catalog=ctx.catalog,
+        )
+        for metric_id, item in health.items():
+            if metric_id in new_metrics:
+                new_metrics[metric_id]["data_health"] = item
+    except Exception:
+        # Health is advisory; never block a publish because of it.
+        pass
+
     new_dimensions: dict[str, Any] = {}
     for dim_id in keep_dims:
         raw = json.loads(json.dumps(dimensions[dim_id]))
@@ -113,11 +153,53 @@ def publish_dataset(registry: DatasetRegistry, dataset_id: str,
 
     version = int(semantic.get("version", 1)) + 1
     semantic["version"] = version
+    semantic["dataset"] = ctx.name
+    semantic["dataset_id"] = dataset_id
     semantic["status"] = "published"
     semantic["provenance"] = "human"
     semantic["published_at"] = datetime.now().isoformat(timespec="seconds")
     semantic["metrics"] = new_metrics
     semantic["dimensions"] = new_dimensions
+
+    reverse_binding = {
+        tid: {str(phys): str(logical) for logical, phys in (cols or {}).items()}
+        for tid, cols in (binding.get("tables") or {}).items()
+    }
+    time_axes: list[dict[str, Any]] = []
+    coverage_con = None
+    try:
+        coverage_con = duckdb.connect(str(ctx.warehouse), read_only=True)
+    except Exception:
+        coverage_con = None
+    try:
+        for tid, table in (ctx.catalog.get("tables") or {}).items():
+            for col in table.get("columns") or []:
+                if str(col.get("type")) not in {"datetime", "date"}:
+                    continue
+                physical = str(col.get("name"))
+                logical = reverse_binding.get(tid, {}).get(physical, physical)
+                label = col.get("label") or physical
+                coverage = None
+                if coverage_con is not None:
+                    try:
+                        lo, hi = coverage_con.execute(
+                            f'SELECT MIN("{physical}"), MAX("{physical}") '
+                            f'FROM "{tid}"'
+                        ).fetchone()
+                        if lo is not None and hi is not None:
+                            coverage = [str(lo)[:10], str(hi)[:10]]
+                    except Exception:
+                        coverage = None
+                time_axes.append({
+                    "ref": f"{tid}.{logical}",
+                    "label": str(label),
+                    "name_zh": infer_time_axis(str(label)) or str(label),
+                    "coverage": coverage,
+                })
+    finally:
+        if coverage_con is not None:
+            coverage_con.close()
+    semantic["time_axes"] = time_axes
 
     history = ctx.root / "history"
     history.mkdir(exist_ok=True)
@@ -155,6 +237,66 @@ def publish_dataset(registry: DatasetRegistry, dataset_id: str,
     except Exception as exc:
         _write_atomic(semantic_path, old_text)
         raise PublishError(f"就绪检查失败，已回滚: {type(exc).__name__}: {exc}") from exc
+
+    try:
+        from dataclasses import replace
+
+        from app.domain.model.model import SemanticModel
+        from app.domain.model.validate import validate_semantics
+        from app.domain.semantic.graph import build_capabilities
+        from app.domain.semantic.loader import Dimension, Metric
+
+        cap_sem = replace(
+            ctx.sem,
+            metrics={
+                mid: Metric(mid, raw) for mid, raw in new_metrics.items()
+            },
+            dimensions={
+                did: Dimension(did, raw) for did, raw in new_dimensions.items()
+            },
+        )
+        capabilities = build_capabilities(cap_sem)
+        semantic_issues = [
+            issue.as_dict()
+            for issue in validate_semantics(SemanticModel.from_layer(cap_sem))
+        ]
+        capability_payload = {
+            mid: capability.as_dict()
+            for mid, capability in capabilities.items()
+        }
+        try:
+            from app.datasets.index import build_index, write_index
+
+            index = build_index(
+                dataset_id=dataset_id,
+                data_version=ctx.data_version,
+                semantic_version=version,
+                sem=cap_sem,
+                catalog=ctx.catalog,
+                dim_values=ctx.dim_values,
+                documentation=ctx.documentation,
+                capabilities=capability_payload,
+            )
+            write_index(ctx.root / "semantic_index.json", index)
+        except Exception:
+            # The index is rebuildable; never fail a publish on it.
+            pass
+        _write_atomic(
+            ctx.root / "capabilities.json",
+            json.dumps({
+                "dataset_id": dataset_id,
+                "semantic_version": version,
+                "generated_at": semantic["published_at"],
+                "metrics": {
+                    mid: capability.as_dict()
+                    for mid, capability in capabilities.items()
+                },
+                "semantic_issues": semantic_issues,
+            }, ensure_ascii=False, indent=2),
+        )
+    except Exception:
+        # Capability metadata is advisory; never fail a publish on it.
+        pass
 
     descriptor_path = ctx.root / "dataset.json"
     descriptor = {}

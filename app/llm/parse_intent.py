@@ -15,6 +15,7 @@ from app.domain.semantic.loader import SemanticLayer
 from app.llm.client import LLMClient, LLMError, LLMUnavailable
 from app.llm.rule_parser import RuleParser
 from app.llm.schema_card import build_schema_card
+from app.llm.semantic_brief import build_brief
 
 PROMPT_DIR = Path(__file__).resolve().parent / "prompts"
 
@@ -30,19 +31,32 @@ def _template(name: str) -> Template:
 class LLMIntentParser:
     def __init__(self, sem: SemanticLayer, client: LLMClient | None = None,
                  fallback: RuleParser | None = None,
-                 dim_values_path=DIM_VALUES_PATH):
+                 dim_values_path=DIM_VALUES_PATH,
+                 index: dict | None = None,
+                 use_brief: bool = False):
         self.sem = sem
         self.client = client or LLMClient()
         self.fallback = fallback or RuleParser(sem, dim_values_path)
         self._system = _template("parse_intent_system.txt")
         self._user = _template("parse_intent_user.txt")
         self._schema_card = build_schema_card(sem, dim_values_path=dim_values_path)
+        self._index = index or {}
+        self._use_brief = bool(use_brief and self._index)
+
+    def _system_for(self, text: str):
+        card = self._schema_card
+        if self._use_brief:
+            brief = build_brief(self._index, text)
+            if brief:
+                card = brief
+        return self._system.substitute(schema_card=card)
 
     # ---------- validation ----------
     ALLOWED_SLOT_KEYS = {
         "metric", "dimensions", "time", "filters", "having", "compare",
         "comparison", "order_by", "limit", "nested", "intent", "unresolved", "notes",
-        "coverage_period",
+        "coverage_period", "ratio_numerator", "ratio_denominator", "time_axis",
+        "share", "limit_per_group", "metric_expr", "metric_source",
     }
 
     def _range(self, value: dict, name: str) -> dict:
@@ -75,14 +89,39 @@ class LLMIntentParser:
         if unknown:
             raise IntentParseError(f"未知槽位字段: {sorted(unknown)}")
 
+        metric_expr = raw_slots.get("metric_expr") or None
         metric = raw_slots.get("metric")
-        if metric is not None:
+        if metric_expr is not None:
+            if not isinstance(metric_expr, dict):
+                raise IntentParseError("metric_expr 必须是对象")
+            from app.domain.query.metric import build_metric_spec
+
+            try:
+                metric_expr = build_metric_spec(
+                    metric_expr, self.sem, label=metric_expr.get("label")
+                )
+            except Exception as exc:
+                raise IntentParseError(f"metric_expr 非法: {exc}") from exc
+            metric = metric_expr["id"]
+        elif metric is not None:
             if metric not in self.sem.metrics:
                 by_name = [m.id for m in self.sem.metrics.values() if m.name == metric]
                 if by_name:
                     metric = by_name[0]
                 else:
                     raise IntentParseError(f"未知指标: {metric}")
+
+        ratio_numerator = raw_slots.get("ratio_numerator") or None
+        ratio_denominator = raw_slots.get("ratio_denominator") or None
+        if bool(ratio_numerator) != bool(ratio_denominator):
+            raise IntentParseError("ratio_numerator 和 ratio_denominator 必须同时提供")
+        if ratio_numerator is not None:
+            ratio_numerator = str(ratio_numerator)
+            ratio_denominator = str(ratio_denominator)
+            for rid in (ratio_numerator, ratio_denominator):
+                if rid not in self.sem.metrics:
+                    raise IntentParseError(f"未知指标: {rid}")
+            metric = ratio_numerator
 
         dims = raw_slots.get("dimensions") or []
         if not isinstance(dims, list):
@@ -96,6 +135,10 @@ class LLMIntentParser:
                 filters[dim] = {"op": spec.get("op", "eq"), "value": spec.get("value")}
             else:
                 filters[dim] = {"op": "eq", "value": spec}
+
+        time_axis = raw_slots.get("time_axis") or None
+        if time_axis is not None and not isinstance(time_axis, str):
+            raise IntentParseError("time_axis 必须是字符串或 null")
 
         time = None
         if raw_slots.get("time"):
@@ -117,16 +160,45 @@ class LLMIntentParser:
             except Exception as exc:
                 raise IntentParseError(f"comparison 非法: {exc}") from exc
 
+        compare = raw_slots.get("compare") or None
+        if isinstance(compare, str):
+            if compare not in {"prev_period", "prev_year"}:
+                raise IntentParseError(f"未知比较类型: {compare}")
+            compare = {"type": compare}
+        elif compare is not None and not isinstance(compare, dict):
+            raise IntentParseError("compare 必须是对象、prev_period、prev_year 或 null")
+
+        share = bool(raw_slots.get("share", False))
+
+        raw_limit_per_group = raw_slots.get("limit_per_group")
+        limit_per_group = None
+        if raw_limit_per_group is not None:
+            try:
+                limit_per_group = int(raw_limit_per_group)
+            except (TypeError, ValueError) as exc:
+                raise IntentParseError("limit_per_group 必须是整数") from exc
+            if not 1 <= limit_per_group <= 50:
+                raise IntentParseError("limit_per_group 必须在 1..50")
+
         return {
             "metric": metric,
+            "metric_expr": metric_expr,
+            "metric_source": raw_slots.get("metric_source") or (
+                "inferred" if metric_expr else None
+            ),
+            "ratio_numerator": ratio_numerator,
+            "ratio_denominator": ratio_denominator,
             "dimensions": dims,
             "time": time,
+            "time_axis": time_axis,
             "filters": filters,
             "having": raw_slots.get("having") or [],
-            "compare": raw_slots.get("compare") or None,
+            "compare": compare,
             "comparison": comparison,
             "order_by": raw_slots.get("order_by") or [],
             "limit": int(raw_slots.get("limit", 100)),
+            "limit_per_group": limit_per_group,
+            "share": share,
             "nested": raw_slots.get("nested") or None,
             "intent": raw_slots.get("intent", "query"),
             "unresolved": raw_slots.get("unresolved") or [],
@@ -173,7 +245,11 @@ class LLMIntentParser:
                 try:
                     entry["slots"] = self._validate_slots(item.get("slots") or {})
                 except IntentParseError as exc:
-                    entry["intent_type"] = "explain"
+                    # Do not silently turn a malformed query into "explain":
+                    # that hides the failure and produces a definition essay.
+                    # Keep it a query and surface the error to the controller.
+                    entry["intent_type"] = "query"
+                    entry["slots"] = {}
                     entry["error"] = str(exc)
             if intent == "lookup" and entry["intent_type"] == "lookup":
                 try:
@@ -334,19 +410,53 @@ class LLMIntentParser:
         return result
 
     # ---------- main ----------
+    def _render_user(self, text: str, context: dict) -> str:
+        return self._user.substitute(
+            prev_slots=json.dumps(
+                context.get("slots") or {}, ensure_ascii=False
+            ),
+            recent_messages=json.dumps(
+                context.get("recent_messages") or [], ensure_ascii=False
+            ),
+            conversation_context=json.dumps(
+                context.get("conversation_context") or {},
+                ensure_ascii=False,
+                default=str,
+            ),
+            question=text,
+        )
+
+    def repair(self, text: str, context: dict, *, plan: dict,
+               issues: list[dict], tool_results: list[dict]) -> ParseResult | None:
+        """Re-plan after deterministic validation rejects the first plan."""
+        if not self.client.available:
+            return None
+        system = self._system_for(text)
+        user = self._render_user(text, context) + (
+            "\n\n<failed_plan>\n"
+            + json.dumps(plan, ensure_ascii=False, default=str)
+            + "\n</failed_plan>\n<validation_issues>\n"
+            + json.dumps(issues, ensure_ascii=False, default=str)
+            + "\n</validation_issues>\n<tool_results>\n"
+            + json.dumps(tool_results, ensure_ascii=False, default=str)
+            + "\n</tool_results>\n"
+            "请根据上述确定性工具结果修正计划。只能使用 schema 中存在的指标、"
+            "维度和数据库成员值；不要重复原错误，只输出一个完整 JSON。"
+        )
+        data = self.client.complete_json(
+            system, user, max_tokens=4000, stage="repair_plan"
+        )
+        result = self._validate(data)
+        result = self._postprocess_lookup(result, text)
+        result.notes = list(dict.fromkeys(
+            result.notes + ["由工具辅助重新规划"]
+        ))
+        return result
+
     def parse(self, text: str, context: dict) -> ParseResult:
         if self.client.available:
-            base_user = self._user.substitute(
-                prev_slots=json.dumps(context.get("slots") or {}, ensure_ascii=False),
-                recent_messages=json.dumps(context.get("recent_messages") or [], ensure_ascii=False),
-                conversation_context=json.dumps(
-                    context.get("conversation_context") or {},
-                    ensure_ascii=False,
-                    default=str,
-                ),
-                question=text,
-            )
-            system = self._system.substitute(schema_card=self._schema_card)
+            base_user = self._render_user(text, context)
+            system = self._system_for(text)
             last_error = ""
             # One self-correction attempt: invalid JSON / invalid slots are the
             # usual transient failures, and falling straight to the rule parser
@@ -359,7 +469,7 @@ class LLMIntentParser:
                         f"{last_error}\n请严格按 <output_schema> 重新输出一个合法 JSON。"
                     )
                 try:
-                    data = self.client.complete_json(system, user, max_tokens=3600,
+                    data = self.client.complete_json(system, user, max_tokens=6000,
                                                      stage="parse_intent")
                     result = self._validate(data)
                     result = self._postprocess_lookup(result, text)

@@ -70,7 +70,8 @@ def meta(request: Request, dataset_id: str | None = None):
         "tables": {t: c.get("rows") for t, c in catalog.get("tables", {}).items()},
         "metrics": [
             {"id": m.id, "name": m.name, "definition": m.raw.get("definition"),
-             "unit": m.raw.get("unit"), "supported_grain": m.raw.get("supported_grain", [])}
+             "unit": m.raw.get("unit"), "time_axis": m.raw.get("time_axis"),
+             "supported_grain": m.raw.get("supported_grain", [])}
             for m in sem.metrics.values()
         ],
         "dimensions": [
@@ -95,10 +96,10 @@ def meta(request: Request, dataset_id: str | None = None):
 def list_datasets(request: Request):
     service = get_service(request)
     if service.registry is None:
-        return {"datasets": [], "default": service.default_dataset_id}
+        return {"datasets": [], "default": service.current_dataset_id()}
     return {
         "datasets": [info.as_dict() for info in service.registry.list()],
-        "default": service.default_dataset_id,
+        "default": service.current_dataset_id(),
     }
 
 
@@ -142,6 +143,20 @@ def get_dataset(dataset_id: str, request: Request):
             for c in (ctx.quality.get("checks") or [])
         ],
     }
+
+
+@router.get("/datasets/{dataset_id}/index")
+def get_dataset_index(dataset_id: str, request: Request):
+    service = get_service(request)
+    try:
+        ctx = service.context(dataset_id)
+    except DatasetError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    if ctx.index:
+        return ctx.index
+    from app.datasets.index import build_index_for_context
+
+    return build_index_for_context(ctx)
 
 
 @router.patch("/datasets/{dataset_id}/draft")
@@ -419,7 +434,7 @@ async def create_session(request: Request, body: CreateSessionRequest | None = N
         raise HTTPException(status_code=404, detail=str(exc))
     return CreateSessionResponse(
         session_id=sid,
-        dataset_id=dataset_id or service.default_dataset_id,
+        dataset_id=dataset_id or service.current_dataset_id(),
     )
 
 

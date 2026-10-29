@@ -21,10 +21,15 @@ $schema_card
   "lookup_dimension": "dimension_id（仅 lookup，必须是 schema 中的维度）",
   "slots": {
     "metric": "metric_id 或 null",
+    "metric_expr": {"aggregation": "AVG|SUM|COUNT|COUNT_DISTINCT", "operand": "table.column", "fact": "table", "scope": {}, "time_via": null, "label": "派生指标名"} 或 null,
+    "metric_source": "documented | user | inferred",
+    "ratio_numerator": "metric_id 或 null（仅 A/B 比率）",
+    "ratio_denominator": "metric_id 或 null（仅 A/B 比率）",
     "dimensions": ["dimension_id"],
     "time": {"start": "YYYY-MM-DD", "end": "YYYY-MM-DD"} 或 null,
+    "time_axis": "t_xxx.cNN（时间轴 ref，默认 null）",
     "filters": {"dimension_id": {"op": "eq|in|gte|lte", "value": "值或数组"}},
-    "having": [{"metric": "计数指标的 metric_id", "op": "gte", "value": 10}],
+    "having": [{"metric": "order_count", "op": "gte", "value": 10}],
     "compare": {"type": "prev_period|prev_year"} 或 null,
     "comparison": {
       "label": "给用户看的比较说明",
@@ -32,8 +37,10 @@ $schema_card
       "current": {"start": "YYYY-MM-DD", "end": "YYYY-MM-DD"},
       "baseline": {"start": "YYYY-MM-DD", "end": "YYYY-MM-DD"}
     } 或 null,
-    "order_by": [{"field": "value|growth_rate|dimension_id", "direction": "asc|desc"}],
+    "order_by": [{"field": "value|delta|growth_rate|dimension_id", "direction": "asc|desc"}],
     "limit": 100,
+    "limit_per_group": 1 或 null,
+    "share": false,
     "coverage_period": "month（仅 coverage）",
     "nested": {"min_orders": 2} 或 null,
     "intent": "query",
@@ -76,6 +83,8 @@ $schema_card
    - context.confidence 低于 0.65 时不要猜，给 clarification 或 unsupported。
 1. 只使用 schema 里的 metric_id / dimension_id；值必须来自维度取值样例，没把握就放进 unresolved。
 2. 时间区间右开：5月 -> 2025-05-01 ~ 2025-06-01。未写年份时按数据中最近一次出现理解；时间范围必须以 schema 给出的数据覆盖为准，不要编造。
+   2.1 用户明确给出的时间即使超出 schema 的数据覆盖，也原样写入 time，不要因此判 unsupported；系统会据此提示“该时间段没有数据”。
+   2.2 用户说“按下单月/按送达月/按评价月/按支付月”时，time_axis 填 schema 中对应时间轴的 ref（如 t_005.c04）；没有指定则 null。不要自己推断新时间轴。
 3. 比较问题必须用 comparison 明确写出 current 和 baseline 两段期间；比较问题不要再加 month 维度。
 4. 口径冲突时给多个解释，不要丢掉其中一种；从措辞判断 preferred 和 confidence，并在 ambiguity_note 说明。
 5. 是否继承上下文只由 context 字段表达，不由某个固定关键词决定。reference_result 应保留 active_scope 中的筛选和时间，并只补充回答当前指代所需的指标或维度。
@@ -84,8 +93,13 @@ $schema_card
 6. 继承上下文时使用显示名称，禁止把内部 ID 写进 filters。
 7. “多少种 / 几种 / 多少个 / 多少款”是去重计数问题：优先选择计数/去重计数指标，不要用 lookup。
    “有哪些 / 列出 / 清单 / 列表”才是 lookup；lookup_dimension 必须是 schema 中的 dimension_id。若数据源不支持成员清单，请改为计数或分组查询。
-8. “最高/最多/排名” -> order_by value desc；“增长最多” -> growth_rate desc；“不少于N笔/至少N笔” -> having 中对应的计数指标 gte N。
+8. “最高/最多/排名/规模最大” -> order_by value desc；“增长最快/增幅最大/增速最高” -> growth_rate desc；“对增长贡献最大/拉动增长最多/带动增量最多” -> delta desc；比较问题中的 value 表示本期规模，不等同于增量贡献。“不少于N笔/至少N笔” -> having=[{"metric":"order_count","op":"gte","value":N}]，不要使用 nested；nested 仅用于复购客户等实体计数。
+8.2 “占比/份额/比重”用 share=true，并且必须同时给出分组维度；比率指标不要用 share。
+8.3 “A 除以 B / A 占 B 的比例 / 每 B 的 A”时，metric=A，ratio_numerator=A，ratio_denominator=B；两者必须都是 schema 中已定义的指标，否则留 null 并写入 unresolved。不要臆造未定义指标。
+8.1 “每个X最好的Y/每组前N/各城市排名第一”这类问题：dimensions 同时给出分组维度和排名维度，order_by=value desc，limit_per_group=1（或 N），limit 设为 200；不要只给一个维度。
+8.4 没有已发布指标、但列明显支持聚合时（例如“平均评分”），用 metric_expr 组合：operand 必须是 schema 中真实存在的 table.column；有文档口径时优先用已定义指标，不要用 metric_expr 覆盖它。
 9. 口径类问题（为什么/口径/定义/怎么算）intent_type=explain；问候/寒暄 intent_type=smalltalk；枚举维度值 intent_type=lookup。
+   9.1 问题里用括号给出公式（如“延迟订单（delivered_at > estimated_delivery_at）”）只是口径说明，不是 explain；仍要输出可执行 slots。若 schema 中有“是否延迟”这类派生维度，用 filters 表达“延迟/准时”，不要放进 unresolved。
    用户要求整体经营分析/经营诊断，且没有指定具体指标和期间时，intent_type=analysis，slots 留空。
    用户询问“数据是否完整/有没有缺失月份/哪段时间断档”时，intent_type=coverage；
    metric 选择当前业务最有解释力的聚合指标，coverage_period=month，dimensions 留空。

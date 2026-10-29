@@ -253,4 +253,8 @@ export interface ChatMessage {
   options?: string[]
   trace?: string[]
   semanticStatus?: 'draft' | 'published'
+  repairs?: { action: string; attempt?: number; detail?: any }[]
+  refusals?: any[]
+  diagnoses?: any[]
+  dataWarnings?: string[]
 }

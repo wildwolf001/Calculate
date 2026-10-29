@@ -12,11 +12,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 
 from app.domain.plan import ComparisonSpec, QueryPlan, TimeRange
-from app.domain.semantic.loader import SemanticLayer, SemanticError
+from app.domain.semantic.loader import Metric, SemanticLayer, SemanticError
 
 
 def _q(ident: str) -> str:
@@ -45,10 +46,14 @@ class _Builder:
     def __init__(self, plan: QueryPlan, sem: SemanticLayer):
         self.plan = plan
         self.sem = sem
-        self.metric = sem.metric(plan.metric)
+        if plan.metric_spec:
+            self.metric = Metric(plan.metric, plan.metric_spec)
+        else:
+            self.metric = sem.metric(plan.metric)
         self.params: list = []
         self.tables_used: set[str] = set()
         self.applied_time = False
+        self.fanout_used = False
         self.notes: list[str] = list(plan.notes)
         if plan.metric == "avg_order_value":
             self.notes.append("客单价 = 商品销售额 / 已送达订单数；按订单粒度计算。")
@@ -72,27 +77,52 @@ class _Builder:
     def _dim_column(self, dim_id: str) -> str:
         dim = self.sem.dimension(dim_id)
         if dim.kind == "time":
-            time_col = self.metric.raw.get("time_via")
+            time_col = self.plan.time_axis or self.metric.raw.get("time_via")
             fmt = dim.raw.get("format", "%Y-%m")
             return f"strftime({self.phys(time_col)}, '{fmt}')"
         if dim.kind == "derived":
             labels = dim.raw.get("labels", {})
-            t = labels.get("true", "true")
-            f = labels.get("false", "false")
-            return f"CASE WHEN {dim.raw['expr']} THEN '{t}' ELSE '{f}' END"
+            t = str(labels.get("true", "true")).replace("'", "''")
+            f = str(labels.get("false", "false")).replace("'", "''")
+            expr = self._derived_expr(dim)
+            return (
+                f"CASE WHEN {expr} THEN '{t}' "
+                f"WHEN NOT ({expr}) THEN '{f}' "
+                f"ELSE NULL END"
+            )
         return self.phys(dim.raw["column"])
+
+    def _derived_expr(self, dim) -> str:
+        """Translate table.column references in a derived expression."""
+        expr = str(dim.raw.get("expr") or "")
+        return re.sub(
+            r"\b(t_[A-Za-z0-9_]+)\.([A-Za-z0-9_]+)\b",
+            lambda match: self.phys(f"{match.group(1)}.{match.group(2)}"),
+            expr,
+        )
 
     def _filter_condition(self, dim_id: str, op: str, value) -> str:
         dim = self.sem.dimension(dim_id)
         if dim.kind == "derived":
-            cond = dim.raw["expr"]
-            if isinstance(value, str):
-                v = value.strip().lower() in {"true", "1", "是", "延迟", "低分"}
+            labels = dim.raw.get("labels") or {}
+            true_label = str(labels.get("true", "true"))
+            false_label = str(labels.get("false", "false"))
+            values = value if isinstance(value, (list, tuple, set)) else [value]
+            texts = [str(item).strip() for item in values]
+            true_hit = true_label in texts
+            false_hit = false_label in texts
+            if true_hit and false_hit:
+                return "TRUE"
+            if true_hit or false_hit:
+                truth = true_hit
             else:
-                v = bool(value)
-            if not v:
-                cond = f"NOT ({cond})"
-            return f"({cond})"
+                truth = any(
+                    item.lower() in {"true", "1", "是", "yes"} for item in texts
+                )
+            if op in {"neq", "not_in"}:
+                truth = not truth
+            cond = self._derived_expr(dim)
+            return f"({cond})" if truth else f"NOT ({cond})"
         if dim.kind == "time":
             col = self._dim_column(dim_id)
         else:
@@ -135,7 +165,7 @@ class _Builder:
             expr = self.metric.raw.get(expr_key)
             if isinstance(expr, str):
                 needed |= self._expr_tables(expr)
-        time_via = self.metric.raw.get("time_via")
+        time_via = self.plan.time_axis or self.metric.raw.get("time_via")
         if isinstance(time_via, str):
             needed |= self._expr_tables(time_via)
         for ref in self.metric.raw.get("scope", {}):
@@ -191,6 +221,7 @@ class _Builder:
         # intermediate tables are joined too (e.g. order_items -> products ->
         # categories for COUNT(DISTINCT categories.id)).
         edges: dict[frozenset, tuple[int, str]] = {}
+        reverse_used = False
         for target in needed:
             if target == fact:
                 continue
@@ -207,13 +238,33 @@ class _Builder:
                         cond = f"{_q(node)}.{_q(node_col)} = {_q(cur)}.{_q(dst_col)}"
                     else:
                         cond = f"{_q(cur)}.{_q(dst_col)} = {_q(node)}.{_q(node_col)}"
+                        reverse_used = True
                     edges[key] = (node_depth, f"JOIN {_q(cur)} ON {cond}")
                 cur = node
 
+        if reverse_used:
+            self.fanout_used = True
+            if not self._fanout_safe():
+                raise SemanticError(
+                    f"指标「{self.metric.name}」不能按所请求的维度拆分："
+                    "该维度需要经过一对多连接，会放大行数。"
+                    "请改用 DISTINCT 计数、比率指标，或先聚合到事实粒度。"
+                )
+
         for line in [line for _d, line in sorted(edges.values(), key=lambda x: x[0])]:
             clause += "\n  " + line
-        self.tables_used |= seen
+        joined = {fact} | set(needed)
+        for key in edges:
+            joined |= set(key)
+        self.tables_used |= joined
         return clause
+
+    def _fanout_safe(self) -> bool:
+        """Distinct counts and ratio/entity metrics aggregate at grain, so a
+        1:N join cannot silently double-count them."""
+        from app.domain.semantic.graph import fanout_safe
+
+        return fanout_safe(self.metric)
 
     def _fact_source(self) -> str:
         fact = self.metric.fact
@@ -236,9 +287,12 @@ class _Builder:
 
     def _where_clause(self, time_start: date | None = None, time_end: date | None = None) -> str:
         parts: list[str] = []
+        applied: set[tuple[str, str]] = set()
         for ref, value in self.metric.raw.get("scope", {}).items():
-            parts.append(f"{self.phys(ref)} = {self.p(value)}")
-        time_via = self.metric.raw.get("time_via")
+            column = self.phys(ref)
+            parts.append(f"{column} = {self.p(value)}")
+            applied.add((column, str(value)))
+        time_via = self.plan.time_axis or self.metric.raw.get("time_via")
         if time_via:
             start = time_start or (self.plan.time.start if self.plan.time else None)
             end = time_end or (self.plan.time.end if self.plan.time else None)
@@ -247,6 +301,19 @@ class _Builder:
                 parts.append(f"{self.phys(time_via)} < {self.p(end)}")
                 self.applied_time = True
         for dim_id, spec in self.plan.filters.items():
+            dim = self.sem.dimension(dim_id)
+            if dim.kind == "categorical" and spec.op in {"eq", "in"}:
+                ref = dim.raw.get("filter_column") or dim.raw.get("column")
+                if ref:
+                    column = self.phys(ref)
+                    values = (
+                        spec.value if isinstance(spec.value, (list, tuple, set))
+                        else [spec.value]
+                    )
+                    keys = {(column, str(value)) for value in values}
+                    if keys and keys <= applied:
+                        continue
+                    applied |= keys
             parts.append(self._filter_condition(dim_id, spec.op, spec.value))
         return ("WHERE " + " AND ".join(f"({p})" for p in parts)) if parts else ""
 
@@ -261,11 +328,11 @@ class _Builder:
                 field = "value"
             elif field not in allowed:
                 raise SemanticError(f"无法按 {field} 排序")
-            parts.append(f"{_q(field)} {spec.direction.upper()}")
+            parts.append(f"{_q(field)} {spec.direction.upper()} NULLS LAST")
         # stable tie-breakers: dimensions in declared order
         for d in self.plan.dimensions:
             if not any(s.field == d for s in self.plan.order_by):
-                parts.append(f"{_q(d)} ASC")
+                parts.append(f"{_q(d)} ASC NULLS LAST")
         return ("ORDER BY " + ", ".join(parts)) if parts else ""
 
     def _having_clause(self, alias_map: dict[str, str]) -> str:
@@ -280,8 +347,11 @@ class _Builder:
 
     # ---------- compile paths ----------
     def compile(self) -> Compiled:
+        self.fanout_used = False
         if self.plan.kind == "coverage":
             return self._compile_coverage()
+        if self.plan.ratio_denominator:
+            return self._compile_metric_ratio()
         if self.plan.comparison:
             return self._compile_explicit_comparison()
         if self.plan.compare:
@@ -299,14 +369,88 @@ class _Builder:
             columns=columns,
             applied_time_filter=self.applied_time,
             tables_used=sorted(self.tables_used),
-            meta={**(meta or {}), "notes": self.notes},
+            meta={
+                **(meta or {}),
+                "notes": self.notes,
+                "fanout_used": self.fanout_used,
+            },
         )
+
+    def _maybe_per_group(self, compiled: Compiled) -> Compiled:
+        """Wrap the query with a per-group ranking window when requested.
+
+        The inner query is built exactly as before (same joins, filters, time
+        predicate); only the final LIMIT moves outside the ranking.
+        """
+        limit_per_group = self.plan.limit_per_group
+        dims = self.plan.dimensions
+        if not limit_per_group or len(dims) < 2:
+            return compiled
+        partition = [d for d in dims[:-1] if d in compiled.columns]
+        if not partition:
+            return compiled
+        field = self.plan.order_by[0].field if self.plan.order_by else "value"
+        direction = self.plan.order_by[0].direction.upper() if self.plan.order_by else "DESC"
+        if field not in compiled.columns:
+            field = "value" if "value" in compiled.columns else compiled.columns[0]
+        part_sql = ", ".join(_q(d) for d in partition)
+        sql = (
+            "SELECT * FROM (\n"
+            + compiled.sql
+            + f"\n) AS {_q('_per_group')}\n"
+            + f"QUALIFY ROW_NUMBER() OVER (PARTITION BY {part_sql} "
+            + f"ORDER BY {_q(field)} {direction}) <= {int(limit_per_group)}\n"
+            + f"ORDER BY {_q(field)} {direction} NULLS LAST "
+            + f"LIMIT {int(self.plan.limit)}"
+        )
+        return self._finalize(sql, compiled.columns, compiled.meta)
 
     def _compile_aggregate(self) -> Compiled:
         if not self.metric.raw.get("expr"):
             raise SemanticError(f"指标 {self.metric.id} 缺少 expr")
         dims = self._dims_select()
-        expr = self.metric.raw["expr"]
+        expr = self._metric_expr_sql()
+        grain = (self.sem.tables.get(self.metric.fact) or {}).get("grain") or []
+        having_count = (
+            f"COUNT(DISTINCT {self.phys(f'{self.metric.fact}.{grain[0]}')})"
+            if grain else "COUNT(*)"
+        )
+        if self.plan.share:
+            inner = [
+                "SELECT " + ", ".join(dims + [f"{expr} AS {_q('value')}"]),
+                self._from_clause(),
+                self._where_clause(),
+            ]
+            if self.plan.dimensions:
+                inner.append(
+                    "GROUP BY "
+                    + ", ".join(str(i + 1) for i in range(len(self.plan.dimensions)))
+                )
+            inner.append(self._having_clause({"order_count": having_count}))
+            sql = [
+                "WITH grouped AS (",
+                "  " + "\n  ".join(x for x in inner if x),
+                ")",
+            ]
+            outer_dims = [f"{_q(d)}" for d in self.plan.dimensions]
+            sql.append(
+                "SELECT "
+                + ", ".join(outer_dims + [
+                    _q("value"),
+                    f"{_q('value')} / NULLIF(SUM({_q('value')}) OVER (), 0) "
+                    f"AS {_q('share')}",
+                ])
+            )
+            sql.append("FROM grouped")
+            order = self._order_clause(
+                set(self.plan.dimensions) | {"value", "share"}
+            )
+            if order:
+                sql.append(order)
+            sql.append(f"LIMIT {int(self.plan.limit)}")
+            columns = list(self.plan.dimensions) + ["value", "share"]
+            return self._finalize("\n".join(x for x in sql if x), columns)
+
         select = dims + [f"{expr} AS {_q('value')}"]
         sql = [
             "SELECT " + ", ".join(select),
@@ -315,18 +459,425 @@ class _Builder:
         ]
         if self.plan.dimensions:
             sql.append("GROUP BY " + ", ".join(str(i + 1) for i in range(len(self.plan.dimensions))))
-        grain = (self.sem.tables.get(self.metric.fact) or {}).get("grain") or []
-        having_count = (
-            f"COUNT(DISTINCT {self.phys(f'{self.metric.fact}.{grain[0]}')})"
-            if grain else "COUNT(*)"
-        )
         sql.append(self._having_clause({"order_count": having_count}))
+        order = self._order_clause(set(self.plan.dimensions) | {"value"})
+        if order:
+            sql.append(order)
+        if not self.plan.limit_per_group:
+            sql.append(f"LIMIT {int(self.plan.limit)}")
+        columns = list(self.plan.dimensions) + ["value"]
+        return self._maybe_per_group(
+            self._finalize("\n".join(x for x in sql if x), columns)
+        )
+
+
+
+    def _compile_metric_ratio(self) -> Compiled:
+        numerator_id = self.plan.ratio_numerator or self.plan.metric
+        denominator_id = self.plan.ratio_denominator
+        if not numerator_id or not denominator_id:
+            raise SemanticError("指标比率需要 numerator 和 denominator")
+        numerator = self.sem.metric(numerator_id)
+        denominator = self.sem.metric(denominator_id)
+        if numerator.fact != denominator.fact:
+            return self._compile_cross_fact_ratio(numerator, denominator)
+        if (numerator.raw.get("scope") or {}) != (denominator.raw.get("scope") or {}):
+            raise SemanticError("指标比率的分子和分母 scope 不一致")
+        if (numerator.raw.get("time_via") or "") != (denominator.raw.get("time_via") or ""):
+            raise SemanticError("指标比率的分子和分母时间轴不一致")
+        self.metric = numerator
+        dims = self._dims_select()
+        num_sql = self._metric_sql(numerator)
+        den_sql = self._metric_sql(denominator)
+        select = dims + [
+            f"({num_sql}) / NULLIF(({den_sql}), 0) AS {_q('value')}"
+        ]
+        sql = [
+            "SELECT " + ", ".join(select),
+            self._from_clause(),
+            self._where_clause(),
+        ]
+        if self.plan.dimensions:
+            sql.append(
+                "GROUP BY " + ", ".join(str(i + 1) for i in range(len(self.plan.dimensions)))
+            )
         order = self._order_clause(set(self.plan.dimensions) | {"value"})
         if order:
             sql.append(order)
         sql.append(f"LIMIT {int(self.plan.limit)}")
         columns = list(self.plan.dimensions) + ["value"]
-        return self._finalize("\n".join(x for x in sql if x), columns)
+        return self._finalize(
+            "\n".join(x for x in sql if x),
+            columns,
+            {"metric_ratio": [numerator_id, denominator_id]},
+        )
+
+
+    def _compile_cross_fact_ratio(self, numerator, denominator) -> Compiled:
+        from app.domain.semantic.graph import common_grain_table
+
+        if self.plan.compare or self.plan.comparison:
+            return self._compile_cross_fact_comparison(numerator, denominator)
+        if self.plan.share and not self.plan.dimensions:
+            raise SemanticError("占比需要分组维度")
+        if self.plan.share and self.plan.limit_per_group:
+            raise SemanticError("占比不能与每组 Top-N 同时使用")
+        common = common_grain_table(self.sem, numerator.fact, denominator.fact)
+        if not common:
+            raise SemanticError("跨事实表比率找不到共同的 grain")
+        grain = ((self.sem.tables.get(common) or {}).get("grain") or [])
+        if not grain:
+            raise SemanticError(f"共同表 {common} 没有声明 grain")
+        key = self.phys(f"{common}.{grain[0]}")
+        num_cte = self._grain_cte("num_grain", numerator, common, key, "_num")
+        den_cte = self._grain_cte("den_grain", denominator, common, key, "_den")
+        self.metric = numerator
+
+        dim_targets: set[str] = set()
+        for dim_id in list(self.plan.dimensions) + list(self.plan.filters):
+            dim = self.sem.dimension(dim_id)
+            table = (
+                str(dim.raw.get("requires") or "")
+                if dim.kind == "derived"
+                else str(dim.raw.get("column") or "").split(".", 1)[0]
+            )
+            if table and table != common:
+                dim_targets.add(table)
+        time_ref = self.plan.time_axis or numerator.raw.get("time_via")
+        if time_ref:
+            time_table = str(time_ref).split(".", 1)[0]
+            if time_table and time_table != common:
+                dim_targets.add(time_table)
+        dim_joins = self._join_tree(common, dim_targets)
+        dims = self._dims_select()
+        select = dims + [
+            "SUM(n._num) / NULLIF(SUM(d._den), 0) AS value"
+        ]
+        sql = [
+            f"WITH {num_cte}, {den_cte}",
+            "SELECT " + ", ".join(select),
+            f"FROM {_q(common)}",
+            f"JOIN num_grain n ON n._key = {key}",
+            f"JOIN den_grain d ON d._key = {key}",
+        ]
+        if dim_joins:
+            sql.append(dim_joins)
+        filter_parts = [
+            self._filter_condition(dim_id, spec.op, spec.value)
+            for dim_id, spec in self.plan.filters.items()
+        ]
+        if filter_parts:
+            sql.append("WHERE " + " AND ".join(f"({part})" for part in filter_parts))
+        if self.plan.dimensions:
+            sql.append(
+                "GROUP BY " + ", ".join(str(i + 1) for i in range(len(self.plan.dimensions)))
+            )
+        per_group = bool(self.plan.limit_per_group and len(self.plan.dimensions) >= 2)
+        if self.plan.share:
+            base = "base AS (\n  " + "\n  ".join(x for x in sql[1:] if x) + "\n)"
+            outer_dims = [f"{_q(d)}" for d in self.plan.dimensions]
+            share_sql = [
+                f"WITH {num_cte}, {den_cte}, {base}",
+                "SELECT " + ", ".join(outer_dims + [
+                    _q("value"),
+                    f"{_q('value')} / NULLIF(SUM({_q('value')}) OVER (), 0) "
+                    f"AS {_q('share')}",
+                ]),
+                "FROM base",
+            ]
+            order = self._order_clause(
+                set(self.plan.dimensions) | {"value", "share"}
+            )
+            if order:
+                share_sql.append(order)
+            share_sql.append(f"LIMIT {int(self.plan.limit)}")
+            return self._finalize(
+                "\n".join(share_sql),
+                list(self.plan.dimensions) + ["value", "share"],
+                {"metric_ratio": [numerator.id, denominator.id], "cross_fact": True},
+            )
+        order = self._order_clause(set(self.plan.dimensions) | {"value"})
+        if order:
+            sql.append(order)
+        if not per_group:
+            sql.append(f"LIMIT {int(self.plan.limit)}")
+        compiled = self._finalize(
+            "\n".join(x for x in sql if x),
+            list(self.plan.dimensions) + ["value"],
+            {"metric_ratio": [numerator.id, denominator.id], "cross_fact": True},
+        )
+        return self._maybe_per_group(compiled) if per_group else compiled
+
+
+    def _compile_cross_fact_comparison(self, numerator, denominator) -> Compiled:
+        from datetime import timedelta
+
+        from app.domain.plan import TimeRange
+        from app.domain.semantic.graph import common_grain_table
+
+        if self.plan.share or self.plan.limit_per_group:
+            raise SemanticError("跨事实比较暂不支持占比或每组 Top-N")
+        common = common_grain_table(self.sem, numerator.fact, denominator.fact)
+        if not common:
+            raise SemanticError("跨事实比较找不到共同的 grain")
+        grain = ((self.sem.tables.get(common) or {}).get("grain") or [])
+        if not grain:
+            raise SemanticError(f"共同表 {common} 没有声明 grain")
+        key = self.phys(f"{common}.{grain[0]}")
+
+        if self.plan.comparison:
+            current = self.plan.comparison.current
+            baseline = self.plan.comparison.baseline
+        else:
+            current = self.plan.time
+            if current is None:
+                lo, hi = self.sem.time_range
+                current = TimeRange(start=lo, end=hi)
+            if self.plan.compare and self.plan.compare.type == "prev_year":
+                baseline = TimeRange(
+                    start=current.start.replace(year=current.start.year - 1),
+                    end=current.end.replace(year=current.end.year - 1),
+                )
+            else:
+                days = (current.end - current.start).days
+                baseline = TimeRange(
+                    start=current.start - timedelta(days=days),
+                    end=current.start,
+                )
+
+        num_cur = self._grain_cte("num_cur", numerator, common, key, "_num", time=current)
+        den_cur = self._grain_cte("den_cur", denominator, common, key, "_den", time=current)
+        num_base = self._grain_cte("num_base", numerator, common, key, "_num", time=baseline)
+        den_base = self._grain_cte("den_base", denominator, common, key, "_den", time=baseline)
+        self.metric = numerator
+
+        dim_targets: set[str] = set()
+        for dim_id in list(self.plan.dimensions) + list(self.plan.filters):
+            dim = self.sem.dimension(dim_id)
+            if dim.kind == "time":
+                raise SemanticError("跨事实比较暂不支持时间维度分组")
+            table = (
+                str(dim.raw.get("requires") or "")
+                if dim.kind == "derived"
+                else str(dim.raw.get("column") or "").split(".", 1)[0]
+            )
+            if table and table != common:
+                dim_targets.add(table)
+        dim_joins = self._join_tree(common, dim_targets)
+        dims = self._dims_select()
+        filter_parts = [
+            self._filter_condition(dim_id, spec.op, spec.value)
+            for dim_id, spec in self.plan.filters.items()
+        ]
+
+        def period_agg(name: str, num: str, den: str, value_alias: str) -> str:
+            select = dims + [
+                f"SUM(n._num) / NULLIF(SUM(d._den), 0) AS {value_alias}"
+            ]
+            if self.plan.dimensions:
+                from_sql = (
+                    f"  FROM {_q(common)}"
+                    f"\n  JOIN {num} n ON n._key = {key}"
+                    f"\n  JOIN {den} d ON d._key = {key}"
+                )
+                if dim_joins:
+                    from_sql += "\n  " + dim_joins.replace("\n", "\n  ")
+                sql = [
+                    f"{name} AS (",
+                    "  SELECT " + ", ".join(select),
+                    from_sql,
+                    "  WHERE " + " AND ".join(f"({part})" for part in filter_parts)
+                    if filter_parts else "",
+                    "  GROUP BY " + ", ".join(str(i + 1) for i in range(len(self.plan.dimensions))),
+                    ")",
+                ]
+            else:
+                sql = [
+                    f"{name} AS (",
+                    "  SELECT " + ", ".join(select),
+                    f"  FROM {num} n",
+                    f"  JOIN {den} d ON d._key = n._key",
+                    ")",
+                ]
+            return "\n".join(x for x in sql if x)
+
+        cur_agg = period_agg("cur_agg", "num_cur", "den_cur", "value")
+        base_agg = period_agg("base_agg", "num_base", "den_base", "value")
+
+        if self.plan.dimensions:
+            on = " AND ".join(
+                f"c.{_q(d)} = b.{_q(d)}" for d in self.plan.dimensions
+            )
+            outer_dims = [
+                f"COALESCE(c.{_q(d)}, b.{_q(d)}) AS {_q(d)}"
+                for d in self.plan.dimensions
+            ]
+            from_sql = f"FROM cur_agg c FULL OUTER JOIN base_agg b ON {on}"
+        else:
+            outer_dims = []
+            from_sql = "FROM cur_agg c CROSS JOIN base_agg b"
+
+        growth = (
+            "CASE WHEN b.value IS NULL OR b.value = 0 THEN NULL "
+            "ELSE (c.value - b.value) / b.value END AS growth_rate"
+        )
+        final = [
+            f"WITH {num_cur}, {den_cur}, {num_base}, {den_base}, {cur_agg}, {base_agg}",
+            "SELECT " + ", ".join(
+                outer_dims + [
+                    "c.value AS current",
+                    "b.value AS baseline",
+                    "c.value - b.value AS delta",
+                    growth,
+                ]
+            ),
+            from_sql,
+        ]
+        order = self._order_clause(
+            set(self.plan.dimensions) | {"current", "baseline", "delta", "growth_rate"}
+        )
+        if order:
+            final.append(order)
+        final.append(f"LIMIT {int(self.plan.limit)}")
+        columns = list(self.plan.dimensions) + [
+            "current", "baseline", "delta", "growth_rate",
+        ]
+        return self._finalize(
+            "\n".join(final),
+            columns,
+            {
+                "metric_ratio": [numerator.id, denominator.id],
+                "cross_fact": True,
+                "current_range": [str(current.start), str(current.end)],
+                "baseline_range": [str(baseline.start), str(baseline.end)],
+            },
+        )
+
+    def _join_tree(self, start: str, targets: set[str]) -> str:
+        if not targets:
+            return ""
+        from collections import deque
+
+        adj: dict[str, list[tuple[str, str, str]]] = {}
+        for src, children in self.sem.joins.items():
+            for dst, spec in children.items():
+                left = spec.get("left") or spec.get("on")
+                right = spec.get("right") or spec.get("on")
+                if left and right:
+                    adj.setdefault(src, []).append((dst, left, right))
+        parent: dict[str, tuple[str, str, str] | None] = {start: None}
+        depth: dict[str, int] = {start: 0}
+        queue = deque([start])
+        while queue:
+            node = queue.popleft()
+            for dst, left, right in adj.get(node, []):
+                if dst in parent:
+                    continue
+                parent[dst] = (node, left, right)
+                depth[dst] = depth[node] + 1
+                queue.append(dst)
+        edges: dict[tuple[str, str], tuple[int, str]] = {}
+        for target in targets:
+            if target not in parent:
+                raise SemanticError(f"无法从 {start} 关联到维度表 {target}")
+            current = target
+            while parent[current] is not None:
+                node, left, right = parent[current]
+                condition = (
+                    f"{_q(node)}.{_q(self.sem.column(f'{node}.{left}'))} = "
+                    f"{_q(current)}.{_q(self.sem.column(f'{current}.{right}'))}"
+                )
+                edges[(node, current)] = (depth[node], f"JOIN {_q(current)} ON {condition}")
+                current = node
+        return "\n  ".join(
+            line for _depth, line in sorted(edges.values(), key=lambda item: item[0])
+        )
+
+    def _grain_cte(self, name: str, metric, common: str, key: str, alias: str,
+                   time=None) -> str:
+        joins, tables = self._join_path(metric.fact, common)
+        self.tables_used.add(metric.fact)
+        self.tables_used.update(tables)
+        conditions = self._metric_conditions(metric, time=time)
+        expression = self._metric_sql(metric)
+        return (
+            f"{name} AS (\n"
+            f"  SELECT {key} AS _key, {expression} AS {alias}\n"
+            f"  FROM {_q(metric.fact)}"
+            + ("\n  " + joins if joins else "")
+            + (f"\n  {conditions}" if conditions else "")
+            + "\n  GROUP BY 1\n)"
+        )
+
+    def _metric_conditions(self, metric, time=None) -> str:
+        parts = [
+            f"{self.phys(ref)} = {self.p(value)}"
+            for ref, value in (metric.raw.get("scope") or {}).items()
+        ]
+        time_ref = self.plan.time_axis or metric.raw.get("time_via")
+        window = time if time is not None else self.plan.time
+        if time_ref and window:
+            parts.append(f"{self.phys(time_ref)} >= {self.p(window.start)}")
+            parts.append(f"{self.phys(time_ref)} < {self.p(window.end)}")
+            self.applied_time = True
+        return ("WHERE " + " AND ".join(parts)) if parts else ""
+
+    def _join_path(self, start: str, target: str) -> tuple[str, list[str]]:
+        if start == target:
+            return "", [start]
+        from collections import deque
+
+        adj: dict[str, list[tuple[str, str, str]]] = {}
+        for src, targets in self.sem.joins.items():
+            for dst, spec in targets.items():
+                left = spec.get("left") or spec.get("on")
+                right = spec.get("right") or spec.get("on")
+                if left and right:
+                    adj.setdefault(src, []).append((dst, left, right))
+        parent: dict[str, tuple[str, str, str] | None] = {start: None}
+        queue = deque([start])
+        while queue and target not in parent:
+            node = queue.popleft()
+            for dst, left, right in adj.get(node, []):
+                if dst in parent:
+                    continue
+                parent[dst] = (node, left, right)
+                queue.append(dst)
+        if target not in parent:
+            raise SemanticError(f"无法从 {start} 关联到 {target}")
+        steps: list[tuple[str, str, str, str]] = []
+        current = target
+        while parent[current] is not None:
+            node, left, right = parent[current]
+            steps.append((node, current, left, right))
+            current = node
+        steps.reverse()
+        joins = []
+        tables = [start]
+        for node, dst, left, right in steps:
+            joins.append(
+                f"JOIN {_q(dst)} ON {_q(node)}.{_q(self.sem.column(f'{node}.{left}'))} "
+                f"= {_q(dst)}.{_q(self.sem.column(f'{dst}.{right}'))}"
+            )
+            tables.append(dst)
+        return "\n  ".join(joins), tables
+
+    def _metric_expr_sql(self) -> str:
+        return self._metric_sql(self.metric)
+
+    def _metric_sql(self, metric) -> str:
+        from app.domain.model.expr import AggExpr, CountDistinctExpr, from_metric_raw
+
+        expr = from_metric_raw(metric.raw)
+        if isinstance(expr, AggExpr) and self._simple_operand(expr.operand):
+            return f"{expr.aggregation}({expr.operand})"
+        if isinstance(expr, CountDistinctExpr) and self._simple_operand(expr.operand):
+            return f"COUNT(DISTINCT {expr.operand})"
+        return str(metric.raw.get("expr") or "")
+
+    @staticmethod
+    def _simple_operand(operand: str) -> bool:
+        return operand == "*" or bool(re.fullmatch(r"[A-Za-z_]\w*\.[A-Za-z_]\w*", operand))
 
     def _compile_coverage(self) -> Compiled:
         if self.metric.type != "aggregate":
@@ -409,10 +960,13 @@ class _Builder:
         order = self._order_clause(set(self.plan.dimensions) | {"value", "order_count", "numerator", "denominator"})
         if order:
             sql.append(order)
-        sql.append(f"LIMIT {int(self.plan.limit)}")
+        if not self.plan.limit_per_group:
+            sql.append(f"LIMIT {int(self.plan.limit)}")
         columns = list(self.plan.dimensions) + ["numerator", "denominator", "value", "order_count"]
-        return self._finalize("\n".join(x for x in sql if x), columns,
-                              {"ratio_grain": grain_key_name})
+        return self._maybe_per_group(
+            self._finalize("\n".join(x for x in sql if x), columns,
+                           {"ratio_grain": grain_key_name})
+        )
 
     def _ratio_parts(self) -> tuple[str, str, str, str]:
         grain_key_name = (
@@ -542,10 +1096,10 @@ class _Builder:
             f = "current" if f in {self.plan.metric, "value"} else f
             if f not in allowed:
                 raise SemanticError(f"无法按 {f} 排序")
-            order_parts.append(f"{_q(f)} {spec.direction.upper()}")
+            order_parts.append(f"{_q(f)} {spec.direction.upper()} NULLS LAST")
         for d in self.plan.dimensions:
             if not any(s.field == d for s in self.plan.order_by):
-                order_parts.append(f"{_q(d)} ASC")
+                order_parts.append(f"{_q(d)} ASC NULLS LAST")
         if order_parts:
             sql.append("ORDER BY " + ", ".join(order_parts))
         sql.append(f"LIMIT {int(self.plan.limit)}")
@@ -645,10 +1199,10 @@ class _Builder:
             field = "current" if spec.field in {self.plan.metric, "value"} else spec.field
             if field not in allowed:
                 raise SemanticError(f"无法按 {field} 排序")
-            order_parts.append(f"{_q(field)} {spec.direction.upper()}")
+            order_parts.append(f"{_q(field)} {spec.direction.upper()} NULLS LAST")
         for dim in self.plan.dimensions:
             if not any(spec.field == dim for spec in self.plan.order_by):
-                order_parts.append(f"{_q(dim)} ASC")
+                order_parts.append(f"{_q(dim)} ASC NULLS LAST")
         if order_parts:
             sql.append("ORDER BY " + ", ".join(order_parts))
         sql.append(f"LIMIT {int(self.plan.limit)}")
@@ -736,10 +1290,10 @@ class _Builder:
             f = "current" if f in {self.plan.metric, "value"} else f
             if f not in allowed:
                 raise SemanticError(f"无法按 {f} 排序")
-            order_parts.append(f"{_q(f)} {spec.direction.upper()}")
+            order_parts.append(f"{_q(f)} {spec.direction.upper()} NULLS LAST")
         for d in self.plan.dimensions:
             if not any(s.field == d for s in self.plan.order_by):
-                order_parts.append(f"{_q(d)} ASC")
+                order_parts.append(f"{_q(d)} ASC NULLS LAST")
         if order_parts:
             sql.append("ORDER BY " + ", ".join(order_parts))
         sql.append(f"LIMIT {int(self.plan.limit)}")

@@ -309,7 +309,9 @@ def analyze_files(files: list[Path], root: Path, dataset_id: str, name: str,
             name_l = unit.file.name.lower()
             sheet_l = (unit.sheet or "").lower()
             suspected = bool(SUSPECTED_DOC_RE.search(name_l) or SUSPECTED_DOC_RE.search(sheet_l))
-            explicitly = (unit.file.name in explicit_files or unit.label in explicit_files)
+            explicitly = unit.label in explicit_files or (
+                unit.sheet is None and unit.file.name in explicit_files
+            )
             if suspected and not options.include_suspected and not explicitly:
                 skipped_sources.append(unit.label)
                 continue
@@ -484,6 +486,24 @@ def analyze_files(files: list[Path], root: Path, dataset_id: str, name: str,
         except Exception as exc:
             dataset_warnings.append(
                 f"模型口径未完成：{type(exc).__name__}: {exc}"
+            )
+        try:
+            from app.ingest.documentation import derive_dimensions_from_metrics
+
+            created_dims = derive_dimensions_from_metrics(
+                semantic, draft, dataset_warnings
+            )
+            if created_dims:
+                dataset_warnings.append(
+                    "已从指标表达式生成派生维度："
+                    + "、".join(
+                        semantic["dimensions"][dim_id].get("name_zh", dim_id)
+                        for dim_id in created_dims
+                    )
+                )
+        except Exception as exc:
+            dataset_warnings.append(
+                f"派生维度未完成：{type(exc).__name__}: {exc}"
             )
         paths = write_draft(root, semantic, binding, draft)
 

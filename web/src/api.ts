@@ -164,6 +164,56 @@ export async function applyDocumentation(datasetId: string): Promise<any> {
   )
 }
 
+export async function startAgentProfile(
+  uploadId: string,
+): Promise<{ job_id: string; upload_id: string; out_dir: string }> {
+  return json(
+    await fetch(BASE + '/api/uploads/' + encodeURIComponent(uploadId) + '/agent-profile', {
+      method: 'POST',
+    }),
+  )
+}
+
+export async function applyJobReview(jobId: string): Promise<any> {
+  return json<any>(
+    await fetch(BASE + '/api/jobs/' + encodeURIComponent(jobId) + '/review/apply', {
+      method: 'POST',
+    }),
+  )
+}
+
+export async function materializeAgentJob(
+  jobId: string,
+  name?: string,
+): Promise<any> {
+  return json<any>(
+    await fetch(BASE + '/api/jobs/' + encodeURIComponent(jobId) + '/materialize', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: name || null }),
+    }),
+  )
+}
+
+export async function getJobReview(jobId: string): Promise<any> {
+  return json<any>(
+    await fetch(BASE + '/api/jobs/' + encodeURIComponent(jobId) + '/review'),
+  )
+}
+
+export async function submitJobReview(
+  jobId: string,
+  decisions: { item_id: string; action: string; note?: string }[],
+): Promise<any> {
+  return json<any>(
+    await fetch(BASE + '/api/jobs/' + encodeURIComponent(jobId) + '/review', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(decisions),
+    }),
+  )
+}
+
 export async function getJob(jobId: string): Promise<JobStatus> {
   return json<JobStatus>(
     await fetch(`${BASE}/api/jobs/${encodeURIComponent(jobId)}`),

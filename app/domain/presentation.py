@@ -9,12 +9,18 @@ from __future__ import annotations
 
 from app.domain.executor import ResultSet
 from app.domain.plan import QueryPlan
-from app.domain.semantic.loader import SemanticLayer
+from app.domain.semantic.loader import Metric, SemanticLayer
+
+
+def _metric_for(plan: QueryPlan, sem: SemanticLayer):
+    if plan.metric_spec:
+        return Metric(plan.metric, plan.metric_spec)
+    return sem.metric(plan.metric) if plan.metric else None
 
 
 def display_spec(plan: QueryPlan, sem: SemanticLayer, result: ResultSet) -> dict:
     if plan.kind == "coverage":
-        metric = sem.metric(plan.metric)
+        metric = _metric_for(plan, sem)
         unit = metric.raw.get("unit")
         present = set(result.columns)
         columns = []
@@ -39,6 +45,7 @@ def display_spec(plan: QueryPlan, sem: SemanticLayer, result: ResultSet) -> dict
             "columns": columns,
             "metric_name": f"{metric.name}覆盖诊断",
             "unit": unit,
+            "provenance": plan.metric_source or "documented",
         }
     if plan.kind == "member_list":
         dim = sem.dimension(plan.list_dim or "")
@@ -56,9 +63,10 @@ def display_spec(plan: QueryPlan, sem: SemanticLayer, result: ResultSet) -> dict
             "columns": columns,
             "metric_name": f"{label}清单",
             "unit": None,
+            "provenance": plan.metric_source or "documented",
         }
 
-    metric = sem.metric(plan.metric)
+    metric = _metric_for(plan, sem)
     unit = metric.raw.get("unit")
     unit_suffix = f"（{unit}）" if unit else ""
     present = set(result.columns)
@@ -84,4 +92,51 @@ def display_spec(plan: QueryPlan, sem: SemanticLayer, result: ResultSet) -> dict
     else:
         add("value", metric.name + unit_suffix, "percent" if unit == "%" else "metric")
 
-    return {"columns": cols, "metric_name": metric.name, "unit": unit}
+    return {
+        "columns": cols,
+        "metric_name": metric.name,
+        "unit": unit,
+        "provenance": plan.metric_source or "documented",
+    }
+
+
+def summarize_rows(rows: list, columns: list, dimensions: list[str],
+                   max_rows: int = 50) -> dict:
+    """Bound what a composer sees, but keep it honest.
+
+    Long results used to be sliced silently, which made the model claim that
+    "these five cities are all cities". The summary now carries the true row
+    count plus a deterministic per-group top row, so the answer can cover every
+    group without shipping hundreds of rows to the model.
+    """
+    total = len(rows)
+    summary = {
+        "rows": list(rows[:max_rows]),
+        "rows_total": total,
+        "rows_truncated": total > max_rows,
+        "rows_note": (
+            f"结果共 {total} 行，下面只展示前 {min(total, max_rows)} 行；"
+            "不要假设未展示的行不存在。"
+        ) if total > max_rows else "",
+    }
+    if total and len(dimensions) >= 2 and columns:
+        value_idx = columns.index("value") if "value" in columns else None
+        best: dict = {}
+        for row in rows:
+            key = row[0]
+            score = row[value_idx] if value_idx is not None and isinstance(
+                row[value_idx], (int, float)
+            ) else 0.0
+            if key not in best or score > best[key][0]:
+                best[key] = (score, list(row))
+        top = [row for _score, row in best.values()]
+        top.sort(
+            key=lambda row: -(
+                row[value_idx]
+                if value_idx is not None and isinstance(row[value_idx], (int, float))
+                else 0.0
+            )
+        )
+        summary["per_group_top"] = top[:20]
+        summary["per_group_dimension"] = dimensions[0]
+    return summary

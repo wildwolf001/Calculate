@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import {
   analyzeUpload,
   applyDocumentation,
+  applyJobReview,
   cancelJob,
   createUpload,
   deleteDataset,
@@ -13,9 +14,13 @@ import {
   getDatasetReadiness,
   getDocumentation,
   getJob,
+  getJobReview,
+  materializeAgentJob,
   listDatasets,
   publishDataset,
   rebuildDataset,
+  startAgentProfile,
+  submitJobReview,
   uploadDocumentation,
 } from '../api'
 import type { DatasetSummary, JobStatus } from '../types'
@@ -45,6 +50,13 @@ const selectedFiles = ref<string[]>([])
 const docFile = ref<File | null>(null)
 const documentation = ref<any>(null)
 const docBusy = ref(false)
+const lastUploadId = ref('')
+const agentJob = ref<JobStatus | null>(null)
+const agentReview = ref<any>(null)
+const agentBusy = ref(false)
+const agentApplied = ref<any>(null)
+const agentDataset = ref<any>(null)
+let agentTimer: number | undefined
 const editMode = ref(false)
 const metricEdits = ref<Record<string, { name_zh: string; synonyms: string }>>({})
 const dimEdits = ref<Record<string, { name_zh: string; synonyms: string }>>({})
@@ -267,6 +279,7 @@ async function startUpload() {
   error.value = ''
   try {
     const uploaded = await createUpload(files.value)
+    lastUploadId.value = uploaded.upload_id
     const started = await analyzeUpload(
       uploaded.upload_id,
       datasetName.value || undefined,
@@ -311,6 +324,104 @@ async function startRebuild() {
     uploading.value = false
   }
 }
+
+async function runAgentProfile() {
+  if (!lastUploadId.value || agentBusy.value) return
+  agentBusy.value = true
+  error.value = ''
+  agentReview.value = null
+  try {
+    const started = await startAgentProfile(lastUploadId.value)
+    agentJob.value = {
+      job_id: started.job_id,
+      kind: 'ingest_agent',
+      status: 'queued',
+      stage: 'queued',
+      percent: 0,
+      message: '等待执行',
+      created_at: '',
+      updated_at: '',
+    }
+    pollAgent(started.job_id)
+  } catch (err: any) {
+    agentBusy.value = false
+    error.value = err.message || String(err)
+  }
+}
+
+function pollAgent(jobId: string) {
+  if (agentTimer) window.clearTimeout(agentTimer)
+  const tick = async () => {
+    try {
+      const status = await getJob(jobId)
+      agentJob.value = status
+      if (status.status === 'running' || status.status === 'queued') {
+        agentTimer = window.setTimeout(tick, 700)
+        return
+      }
+      agentBusy.value = false
+      if (status.status === 'succeeded') {
+        agentReview.value = await getJobReview(jobId)
+        notify('Agent 画像完成，可审核候选口径')
+      } else {
+        error.value = status.error || status.message || 'Agent 解析失败'
+      }
+    } catch (err: any) {
+      agentBusy.value = false
+      error.value = err.message || String(err)
+    }
+  }
+  agentTimer = window.setTimeout(tick, 500)
+}
+
+async function applyAgentReview() {
+  if (!agentJob.value?.job_id) return
+  try {
+    agentApplied.value = await applyJobReview(agentJob.value.job_id)
+    notify('已生成候选语义草稿（还需物理仓库/binding 才能发布）')
+  } catch (err: any) {
+    error.value = err.message || String(err)
+  }
+}
+
+async function materializeAgent() {
+  if (!agentJob.value?.job_id) return
+  try {
+    agentDataset.value = await materializeAgentJob(
+      agentJob.value.job_id,
+      datasetName.value || undefined,
+    )
+    notify('已生成数据集草稿，可在左侧数据源中查看')
+    await loadDatasets(agentDataset.value.dataset_id)
+  } catch (err: any) {
+    error.value = err.message || String(err)
+  }
+}
+
+async function decideAgent(itemId: string, action: string) {
+  if (!agentJob.value?.job_id) return
+  try {
+    await submitJobReview(agentJob.value.job_id, [{ item_id: itemId, action }])
+    agentReview.value = await getJobReview(agentJob.value.job_id)
+    notify(action === 'accept' ? '已接受该口径' : action === 'reject' ? '已拒绝该口径' : '已标记为暂缓')
+  } catch (err: any) {
+    error.value = err.message || String(err)
+  }
+}
+
+const agentMetrics = computed<any[]>(() =>
+  Object.entries(agentReview.value?.draft?.metrics || {}).map(([id, metric]: [string, any]) => ({
+    id,
+    ...metric,
+  })),
+)
+const agentTables = computed<any[]>(() =>
+  Object.entries(agentReview.value?.draft?.tables || {}).map(([id, table]: [string, any]) => ({
+    id,
+    ...table,
+  })),
+)
+const agentDecisions = computed<any[]>(() => agentReview.value?.review?.decisions || [])
 
 function pollJob(jobId: string, datasetId: string, rebuild: boolean) {
   if (pollTimer) window.clearTimeout(pollTimer)
@@ -479,6 +590,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   if (pollTimer) window.clearTimeout(pollTimer)
+  if (agentTimer) window.clearTimeout(agentTimer)
   if (dragMove) window.removeEventListener('mousemove', dragMove)
   if (dragUp) window.removeEventListener('mouseup', dragUp)
 })
@@ -559,6 +671,9 @@ onUnmounted(() => {
           <button class="primary" :disabled="!selectedFiles.length || uploading" @click="startUpload">
             {{ uploading ? '解析中…' : '上传并自动解析' }}
           </button>
+          <button class="ghost" :disabled="!lastUploadId || agentBusy" @click="runAgentProfile">
+            {{ agentBusy ? 'Agent 分析中…' : 'Agent 画像（审计）' }}
+          </button>
           <div v-if="job" class="job">
             <div class="job-line">
               <span>{{ job.stage }}</span>
@@ -632,6 +747,68 @@ onUnmounted(() => {
             <div class="stat">
               <small>时间范围</small>
               <b class="small">{{ (overview.time_range || detail.time_range || []).join(' → ') || '—' }}</b>
+            </div>
+          </section>
+
+          <section class="panel" v-if="agentJob || agentReview">
+            <div class="panel-head">
+              <h3>Agent 画像 / 审核</h3>
+              <span class="pill" :class="agentJob?.status === 'succeeded' ? 'live' : 'draft'">
+                {{ agentJob?.status || 'ready' }}
+              </span>
+              <button class="ghost sm" :disabled="!agentReview" @click="applyAgentReview">
+                应用审核结果
+              </button>
+              <button class="ghost sm" :disabled="!agentApplied" @click="materializeAgent">
+                生成数据集草稿
+              </button>
+            </div>
+            <div v-if="agentJob" class="job">
+              <div class="job-line">
+                <span>{{ agentJob.stage }}</span>
+                <span>{{ agentJob.percent }}%</span>
+              </div>
+              <div class="bar"><i :style="{ width: agentJob.percent + '%' }"></i></div>
+              <div class="job-msg">{{ agentJob.message }}</div>
+            </div>
+            <div v-if="agentTables.length" class="table-grid">
+              <div v-for="t in agentTables" :key="t.id" class="table-card">
+                <div class="table-top">
+                  <b>{{ t.name }}</b>
+                  <span>{{ t.rows }} 行</span>
+                </div>
+                <div class="table-sub">
+                  粒度 {{ (t.grain || []).join('、') || '未确认' }}
+                  <span v-if="t.grain_unique === false"> · 不唯一</span>
+                </div>
+              </div>
+            </div>
+            <div v-if="agentMetrics.length" class="quality-list">
+              <div v-for="m in agentMetrics" :key="m.id" class="quality">
+                <span class="sev">{{ m.provenance || 'inferred' }}</span>
+                <span class="q-title">{{ m.name }}</span>
+                <span class="q-count">{{ m.expr }}</span>
+                <span v-if="m.probe" class="muted">probe={{ m.probe.value }}</span>
+                <button class="ghost sm" @click="decideAgent(m.id, 'accept')">接受</button>
+                <button class="ghost sm" @click="decideAgent(m.id, 'reject')">拒绝</button>
+              </div>
+            </div>
+            <div v-else-if="agentReview" class="muted">没有候选指标。</div>
+            <div v-if="agentDecisions.length" class="doc-note">
+              已审核：
+              <span v-for="d in agentDecisions" :key="d.item_id">
+                {{ d.item_id }} · {{ d.action }}
+              </span>
+            </div>
+            <div v-if="agentApplied" class="doc-note">
+              已生成候选语义草稿：接受 {{ agentApplied.accepted?.length || 0 }} 项，
+              拒绝 {{ agentApplied.rejected?.length || 0 }} 项。
+              {{ agentApplied.message }}
+            </div>
+            <div v-if="agentDataset" class="doc-note">
+              已生成数据集草稿：{{ agentDataset.dataset_id }}
+              · {{ Object.keys(agentDataset.tables || {}).length }} 张表
+              · {{ agentDataset.metrics?.length || 0 }} 个指标
             </div>
           </section>
 

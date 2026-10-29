@@ -603,9 +603,13 @@ def _supported_grain(semantic: dict[str, Any], fact: str,
             if not table or table not in reachable:
                 continue
         else:
-            if join_path and join_path[0].split(" -> ")[0] != fact:
+            if kind == "derived":
+                table = str(dim.get("requires") or "")
+                if not table or not _n1_reachable(semantic, fact, table):
+                    continue
+            elif join_path and join_path[0].split(" -> ")[0] != fact:
                 continue
-            if not join_path and column and not column.startswith(f"{fact}."):
+            elif not join_path and column and not column.startswith(f"{fact}."):
                 continue
         grains.append(dim_id)
     if _time_via(semantic, fact):
@@ -770,6 +774,177 @@ def _find_columns_for_tokens(tokens: list[str], index: CatalogIndex,
     return out
 
 
+
+DERIVED_NAME_SUFFIXES = ("订单数", "订单量", "订单", "评价数", "评价", "交付率", "率", "数")
+DERIVED_COMPLEMENTS = {
+    "延迟": "准时",
+    "超期": "准时",
+    "迟到": "准时",
+    "低分": "正常",
+}
+
+
+def _dimension_subject(name: str) -> str:
+    """Turn a rule name into a dimension label: 延迟订单 -> 延迟."""
+    text = str(name or "").strip()
+    for suffix in DERIVED_NAME_SUFFIXES:
+        if text.endswith(suffix) and len(text) > len(suffix):
+            return text[: -len(suffix)].strip()
+    return text
+
+
+def _n1_reachable(semantic: dict[str, Any], start: str, target: str) -> bool:
+    """True when target is reachable from start through N:1 joins only."""
+    if not start or not target:
+        return False
+    if start == target:
+        return True
+    seen, stack = {start}, [start]
+    while stack:
+        node = stack.pop()
+        for parent in (semantic.get("joins") or {}).get(node, {}):
+            if parent == target:
+                return True
+            if parent not in seen:
+                seen.add(parent)
+                stack.append(parent)
+    return False
+
+
+CONDITION_RE = re.compile(
+    r"CASE WHEN\s+([A-Za-z0-9_]+)\.([A-Za-z0-9_]+)\s*(>=|<=|>|<)\s*"
+    r"([A-Za-z0-9_]+)\.([A-Za-z0-9_]+)"
+)
+
+
+def _conditions_from_metrics(semantic: dict[str, Any]) -> dict[tuple[str, str, str], dict[str, str]]:
+    """Read comparison predicates already encoded in metric expressions."""
+    found: dict[tuple[str, str, str], dict[str, str]] = {}
+    for mid, metric in (semantic.get("metrics") or {}).items():
+        name = str(metric.get("name_zh") or mid)
+        for field in ("numerator", "grain_numerator", "expr"):
+            text = metric.get(field)
+            if not isinstance(text, str):
+                continue
+            for match in CONDITION_RE.finditer(text):
+                left_table, left_col, op, right_table, right_col = match.groups()
+                if left_table != right_table or op not in {">", "<="}:
+                    continue
+                slot = "gt" if op == ">" else "le"
+                bucket = found.setdefault((left_table, left_col, right_col), {})
+                bucket.setdefault(slot, name)
+    return found
+
+
+def _expand_derived_grains(semantic: dict[str, Any], dim_ids: list[str]) -> None:
+    """Let aggregate/ratio metrics split by a derived dimension when the join
+    path is strictly N:1 (no fan-out, no double counting)."""
+    for dim_id in dim_ids:
+        dim = (semantic.get("dimensions") or {}).get(dim_id) or {}
+        fact = str(dim.get("requires") or "")
+        if not fact:
+            continue
+        for metric in (semantic.get("metrics") or {}).values():
+            if metric.get("type") not in {"aggregate", "ratio"}:
+                continue
+            if not _n1_reachable(semantic, str(metric.get("fact") or ""), fact):
+                continue
+            grains = metric.setdefault("supported_grain", ["none"])
+            if "none" not in grains:
+                grains.insert(0, "none")
+            if dim_id not in grains:
+                grains.append(dim_id)
+
+
+def _apply_derived_dimensions(semantic: dict[str, Any],
+                              rules: list[dict[str, Any]],
+                              index: CatalogIndex,
+                              warnings: list[str]) -> list[str]:
+    """Create boolean dimensions from complementary formulas.
+
+    A pair such as delivered_at > estimated_delivery_at (延迟订单) and
+    delivered_at <= estimated_delivery_at (准时交付率) defines a real
+    dimension (延迟 / 准时). Without it questions like "延迟订单的平均评分"
+    can never be answered even though the data supports them.
+    """
+    conditions: dict[tuple[str, str, str], dict[str, str]] = {}
+
+    def _add(key: tuple[str, str, str], slot: str, name: str) -> None:
+        if name and slot and slot not in conditions.setdefault(key, {}):
+            conditions[key][slot] = name
+
+    for rule in rules:
+        formula = str(rule.get("formula") or "").strip()
+        if not formula:
+            continue
+        match = FORMULA_RE.search(formula)
+        if not match:
+            continue
+        left, op, right = match.group(1), match.group(2), match.group(3)
+        if re.fullmatch(r"-?\d+(?:\.\d+)?", right):
+            continue
+        if op not in {">", "<="}:
+            continue
+        cols = _find_columns_for_tokens([left, right], index, rule.get("table_id"))
+        if len(cols) < 2 or cols[0][0] != cols[1][0]:
+            continue
+        _add((cols[0][0], cols[0][1], cols[1][1]),
+             "gt" if op == ">" else "le", str(rule.get("name") or ""))
+
+    # Existing metrics often encode the complementary side (e.g. 准时交付率
+    # uses delivered_at <= estimated_delivery_at) even when the document only
+    # defines 延迟率. Seed those conditions so the pair can be formed.
+    for key, slots in _conditions_from_metrics(semantic).items():
+        for slot, name in slots.items():
+            _add(key, slot, name)
+
+    created: list[str] = []
+    for (fact, left, right), pair in conditions.items():
+        if "gt" not in pair:
+            continue
+        true_label = _dimension_subject(pair["gt"])
+        if "le" in pair:
+            false_label = _dimension_subject(pair["le"])
+        else:
+            # A single-sided predicate still defines a usable boolean
+            # dimension; use the documented business complement when known.
+            false_label = DERIVED_COMPLEMENTS.get(true_label, f"非{true_label}")
+        if not true_label or not false_label or true_label == false_label:
+            continue
+        if "延迟" in true_label or "超期" in true_label:
+            true_label, false_label = "延迟", "准时"
+        elif "低分" in true_label:
+            true_label, false_label = "低分", "正常"
+        dim_id = f"d_doc_{fact}_{left}_{right}"
+        if dim_id in (semantic.get("dimensions") or {}):
+            continue
+        expr = f"{fact}.{left} > {fact}.{right}"
+        semantic.setdefault("dimensions", {})[dim_id] = {
+            "id": dim_id,
+            "name_zh": f"是否{true_label}",
+            "kind": "derived",
+            "expr": expr,
+            "requires": fact,
+            "labels": {"true": true_label, "false": false_label},
+            "synonyms": list(dict.fromkeys([
+                true_label, false_label, f"是否{true_label}",
+                f"{true_label}订单", f"{false_label}订单", f"{true_label}评价",
+            ])),
+            "selected": True,
+            "provenance": "documentation",
+            "confidence": 0.8,
+            "definition": f"{true_label}：{expr}；否则为{false_label}。",
+        }
+        created.append(dim_id)
+        warnings.append(
+            f"已从互补口径生成派生维度「是否{true_label}」（{true_label}/{false_label}）"
+        )
+
+    if created:
+        _expand_derived_grains(semantic, created)
+    return created
+
+
 def _apply_formula_rule(rule: dict[str, Any], semantic: dict[str, Any],
                         index: CatalogIndex, ctx: DatasetContext,
                         warnings: list[str]) -> tuple[str | None, str]:
@@ -848,14 +1023,23 @@ def _apply_formula_rule(rule: dict[str, Any], semantic: dict[str, Any],
             "supported_grain": supported,
             "unit": "%",
             "definition": rule.get("definition"),
-            "synonyms": list(dict.fromkeys([rule["name"], *rule.get("aliases", [])])),
+            "synonyms": list(dict.fromkeys([
+                rule["name"], *rule.get("aliases", []), *metric.get("synonyms", []),
+            ])),
             "provenance": "documentation",
             "doc_source": rule.get("source"),
         })
         semantic.setdefault("metrics", {})[metric_id] = metric
         return metric_id, action
 
-    expr = f"COUNT(CASE WHEN {condition} THEN 1 END)"
+    if rule.get("aggregation") == "count_distinct":
+        key = (
+            f"{fact}.{grain[0]}" if len(grain) == 1
+            else f"{fact}.{cols[0][1]}"
+        )
+        expr = f"COUNT(DISTINCT CASE WHEN {condition} THEN {key} END)"
+    else:
+        expr = f"COUNT(CASE WHEN {condition} THEN 1 END)"
     existing = next(
         (
             (mid, metric) for mid, metric in (semantic.get("metrics") or {}).items()
@@ -979,7 +1163,13 @@ def _apply_entity_rule(rule: dict[str, Any], semantic: dict[str, Any],
     scope = _map_scope(rule, semantic, index, fact, ctx, warnings)
     time_via = _time_via(semantic, fact)
     name = rule["name"]
-    metric_id = _new_metric_id(semantic, name)
+    metric_id = next(
+        (
+            mid for mid, metric in (semantic.get("metrics") or {}).items()
+            if metric.get("name_zh") == name
+        ),
+        None,
+    ) or _new_metric_id(semantic, name)
     semantic.setdefault("metrics", {})[metric_id] = {
         "name_zh": name,
         "type": "entity_count",
@@ -1021,7 +1211,7 @@ def apply_documentation(ctx: DatasetContext, documentation: dict[str, Any]) -> d
             elif (
                 rule.get("formula")
                 and FORMULA_RE.search(str(rule.get("formula") or ""))
-                and rule.get("aggregation") in {None, "count", "ratio"}
+                and rule.get("aggregation") in {None, "count", "count_distinct", "ratio"}
             ):
                 metric_id, action = _apply_formula_rule(
                     rule, semantic, index, ctx, warnings
@@ -1042,6 +1232,10 @@ def apply_documentation(ctx: DatasetContext, documentation: dict[str, Any]) -> d
             })
         else:
             warnings.append(f"{rule.get('name')}: {action}")
+
+    created_dimensions = _apply_derived_dimensions(
+        semantic, documentation.get("rules") or [], index, warnings
+    )
 
     semantic["status"] = "draft"
     semantic["documentation"] = {
@@ -1145,3 +1339,31 @@ def apply_documentation(ctx: DatasetContext, documentation: dict[str, Any]) -> d
         "warnings": warnings,
         "semantic_version": semantic.get("version", 1),
     }
+
+
+def derive_dimensions_from_metrics(semantic: dict[str, Any],
+                                   draft: dict[str, Any],
+                                   warnings: list[str]) -> list[str]:
+    """Create derived dimensions from predicates already present in metrics.
+
+    This is what makes a fresh upload answer things like "延迟订单的平均评分"
+    without a human editing the semantic layer: the LLM draft often defines a
+    delay-rate metric (a CASE WHEN predicate) but no boolean dimension.
+    """
+    created = _apply_derived_dimensions(semantic, [], None, warnings)
+    for dim_id in created:
+        dim = semantic["dimensions"][dim_id]
+        dimensions = draft.setdefault("dimensions", [])
+        if not any(item.get("id") == dim_id for item in dimensions):
+            dimensions.append({
+                "id": dim_id,
+                "name_zh": dim["name_zh"],
+                "kind": "derived",
+                "selected": True,
+                "confidence": dim.get("confidence", 0.8),
+                "provenance": "auto",
+            })
+        selected = draft.setdefault("selected_dimensions", [])
+        if dim_id not in selected:
+            selected.append(dim_id)
+    return created

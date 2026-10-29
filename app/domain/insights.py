@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.domain.plan import QueryPlan
-from app.domain.semantic.loader import SemanticLayer
+from app.domain.semantic.loader import Metric, SemanticLayer
 
 
 def _fmt(value: Any, unit: str | None = None) -> str:
@@ -47,7 +47,10 @@ def build_insights(plan: QueryPlan, columns: list[str], rows: list[list],
                    sem: SemanticLayer, max_items: int = 3) -> list[str]:
     if not rows:
         return []
-    metric = sem.metric(plan.metric) if plan.metric else None
+    if plan.metric_spec:
+        metric = Metric(plan.metric, plan.metric_spec)
+    else:
+        metric = sem.metric(plan.metric) if plan.metric else None
     unit = metric.raw.get("unit") if metric else None
     name = metric.name if metric else (plan.list_dim or "结果")
     out: list[str] = []

@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from app.config.settings import MAX_ROW_LIMIT
 from app.domain.compiler import Compiled
 from app.domain.plan import QueryPlan
-from app.domain.semantic.loader import SemanticLayer
+from app.domain.semantic.loader import Metric, SemanticLayer
 
 FORBIDDEN = re.compile(
     r"\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|REPLACE|TRUNCATE|ATTACH|DETACH|"
@@ -39,23 +39,67 @@ def validate_plan(plan: QueryPlan, sem: SemanticLayer) -> list[Issue]:
         return _validate_coverage(plan, sem)
 
     try:
-        metric = sem.metric(plan.metric)
+        if plan.metric_spec:
+            metric = Metric(plan.metric, plan.metric_spec)
+        else:
+            metric = sem.metric(plan.metric)
     except Exception as exc:
         return [Issue("UNKNOWN_METRIC", str(exc))]
 
+    if plan.ratio_denominator:
+        try:
+            denominator = sem.metric(plan.ratio_denominator)
+        except Exception as exc:
+            issues.append(Issue("UNKNOWN_METRIC", str(exc)))
+        else:
+            if metric.fact != denominator.fact:
+                from app.domain.semantic.graph import common_grain_table
+
+                common = common_grain_table(sem, metric.fact, denominator.fact)
+                cross_fact_ok = bool(common)
+                if not cross_fact_ok:
+                    issues.append(Issue(
+                        "METRIC_RATIO_FACT_MISMATCH",
+                        "指标比率的分子和分母来自不同事实表，且没有可用的共同 grain；"
+                        "请先对齐 grain/join，或不要分组/筛选",
+                    ))
+            if (metric.raw.get("scope") or {}) != (denominator.raw.get("scope") or {}):
+                issues.append(Issue(
+                    "METRIC_RATIO_SCOPE_MISMATCH",
+                    "指标比率的分子和分母 scope 不一致",
+                ))
+            if (metric.raw.get("time_via") or "") != (denominator.raw.get("time_via") or ""):
+                issues.append(Issue(
+                    "METRIC_RATIO_TIME_MISMATCH",
+                    "指标比率的分子和分母时间轴不一致",
+                ))
+
     if len(set(plan.dimensions)) != len(plan.dimensions):
         issues.append(Issue("DUPLICATE_DIMENSION", "维度重复"))
+
+    from app.domain.semantic.graph import build_capabilities
+
+    capability = None if plan.metric_spec else build_capabilities(sem).get(metric.id)
+    allowed_grains = (
+        set(capability.allowed_dimensions)
+        if capability else set(metric.raw.get("supported_grain") or ["none"])
+    )
 
     for d in plan.dimensions:
         if d == "none":
             continue
         if d not in sem.dimensions:
             issues.append(Issue("UNKNOWN_DIMENSION", f"未知维度: {d}"))
-        elif d not in metric.supported_grain:
+        elif d not in allowed_grains:
+            fanout_note = (
+                "；该维度需要经过一对多连接，会放大行数"
+                if capability and d in capability.fanout_dimensions else ""
+            )
             issues.append(Issue(
                 "UNSUPPORTED_GRAIN",
                 f"指标「{metric.name}」不支持按「{sem.dimensions[d].raw.get('name_zh', d)}」拆分"
-                f"（支持: {', '.join(sorted(metric.supported_grain - {'none'}))}）",
+                f"{fanout_note}"
+                f"（支持: {', '.join(sorted(allowed_grains - {'none'}))}）",
             ))
 
     allowed_filters = metric.raw.get("filter_grain")
@@ -70,8 +114,17 @@ def validate_plan(plan: QueryPlan, sem: SemanticLayer) -> list[Issue]:
                 "该指标只能按订单级维度过滤，明细级条件会被摊到整单。",
             ))
 
+    if plan.time_axis:
+        from app.domain.semantic.graph import time_axis_allowed
+
+        if not time_axis_allowed(sem, metric, plan.time_axis):
+            issues.append(Issue(
+                "UNSUPPORTED_TIME_AXIS",
+                f"时间轴 {plan.time_axis} 不可用：必须是该指标可达的时间列",
+            ))
+
     if plan.time:
-        if not metric.raw.get("time_via"):
+        if not (metric.raw.get("time_via") or plan.time_axis):
             issues.append(Issue(
                 "TIME_UNSUPPORTED",
                 f"指标「{metric.name}」没有时间列，不能按时间筛选",
@@ -88,6 +141,28 @@ def validate_plan(plan: QueryPlan, sem: SemanticLayer) -> list[Issue]:
 
     if plan.limit < 1 or plan.limit > MAX_ROW_LIMIT:
         issues.append(Issue("BAD_LIMIT", f"limit 必须在 1..{MAX_ROW_LIMIT}"))
+
+    if plan.share:
+        if not plan.dimensions:
+            issues.append(Issue("BAD_SHARE", "占比需要至少一个分组维度"))
+        if not plan.ratio_denominator and (
+            metric.type != "aggregate" or not metric.raw.get("additive")
+        ):
+            issues.append(Issue("BAD_SHARE", "占比只支持可加聚合指标"))
+        if plan.compare or plan.comparison:
+            issues.append(Issue("BAD_SHARE", "占比不能与期间比较同时使用"))
+        if plan.limit_per_group:
+            issues.append(Issue("BAD_SHARE", "占比不能与每组 Top-N 同时使用"))
+
+    if plan.limit_per_group is not None:
+        if plan.kind != "aggregate":
+            issues.append(Issue("BAD_PER_GROUP", "每组 Top-N 只用于聚合查询"))
+        elif len(plan.dimensions) < 2:
+            issues.append(Issue(
+                "BAD_PER_GROUP", "每组 Top-N 需要至少两个维度（分组维度 + 排名维度）",
+            ))
+        if not 1 <= int(plan.limit_per_group) <= 50:
+            issues.append(Issue("BAD_PER_GROUP", "每组条数必须在 1..50"))
 
     if plan.compare and metric.type not in {"aggregate", "ratio"}:
         issues.append(Issue("COMPARE_UNSUPPORTED",

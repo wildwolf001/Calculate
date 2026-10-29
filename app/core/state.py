@@ -41,14 +41,21 @@ class Status(str, Enum):
 
 class Slots(BaseModel):
     metric: str | None = None
+    metric_expr: dict | None = None
+    metric_source: str | None = None
+    ratio_numerator: str | None = None
+    ratio_denominator: str | None = None
     dimensions: list[str] = Field(default_factory=list)
     time: TimeRange | None = None
+    time_axis: str | None = None
     filters: dict[str, FilterSpec] = Field(default_factory=dict)
     having: list[HavingSpec] = Field(default_factory=list)
     compare: CompareSpec | None = None
     comparison: ComparisonSpec | None = None
     order_by: list[OrderSpec] = Field(default_factory=list)
     limit: int = 100
+    limit_per_group: int | None = None
+    share: bool = False
     nested: NestedSpec | None = None
     intent: str = "query"          # query | lookup | coverage | explain
     coverage_period: str = "month"
@@ -60,10 +67,15 @@ class Slots(BaseModel):
 @dataclass
 class FailurePolicy:
     max_retry: int = 1
+    max_attempts: int = 3
     retries: dict[str, int] = field(default_factory=dict)
+    attempts: int = 0
 
     def can_retry(self, stage: str) -> bool:
         return self.retries.get(stage, 0) < self.max_retry
+
+    def can_attempt(self) -> bool:
+        return self.attempts < self.max_attempts
 
 
 @dataclass
@@ -90,6 +102,7 @@ class SessionState:
     preferred_result_id: str | None = None
     checks: list[dict] = field(default_factory=list)
     facts: dict = field(default_factory=dict)
+    repairs: list[dict] = field(default_factory=list)
     bindings: list[dict] = field(default_factory=list)
     interpretations: list[dict] = field(default_factory=list)
     preferred_interpretation: str | None = None
@@ -111,6 +124,7 @@ class SessionState:
             "preferred_result_id": self.preferred_result_id,
             "checks": self.checks,
             "facts": self.facts,
+            "repairs": self.repairs,
             "bindings": self.bindings,
             "interpretations": self.interpretations,
             "preferred_interpretation": self.preferred_interpretation,
@@ -151,6 +165,15 @@ def _apply_grounding(slots: Slots, payload: dict) -> Slots:
     return new
 
 
+def _normalize_slots_payload(payload: dict) -> dict:
+    defaults = Slots().model_dump()
+    return {
+        key: value
+        for key, value in payload.items()
+        if not (value is None and defaults.get(key) is not None)
+    }
+
+
 def reduce(events: list, session_id: str | None = None) -> SessionState:
     sid = session_id or (events[0].session_id if events else "")
     state = SessionState(session_id=sid)
@@ -172,6 +195,7 @@ def reduce(events: list, session_id: str | None = None) -> SessionState:
             state.facts = {}
             state.analysis = None
             state.context = None
+            state.policy = FailurePolicy()
         elif t == "user.message":
             text = p.get("text", "")
             state.turn = max(state.turn, int(p.get("turn", state.turn + 1)))
@@ -221,6 +245,13 @@ def reduce(events: list, session_id: str | None = None) -> SessionState:
             state.slots = _slots_from_payload(p, state.slots)
             state.interpretations = list(p.get("interpretations") or [])
             state.preferred_interpretation = p.get("preferred_interpretation")
+            state.status = Status.GROUNDING
+        elif t == "intent.repaired":
+            state.slots = Slots.model_validate(
+                _normalize_slots_payload(p.get("slots") or {})
+            )
+            state.interpretations = []
+            state.preferred_interpretation = None
             state.status = Status.GROUNDING
         elif t == "intent.invalid":
             state.status = Status.PARSING
@@ -324,6 +355,10 @@ def reduce(events: list, session_id: str | None = None) -> SessionState:
         elif t == "llm.retry":
             stage = p.get("stage", "unknown")
             state.policy.retries[stage] = state.policy.retries.get(stage, 0) + 1
+        elif t == "repair.applied":
+            state.policy.attempts += 1
+            state.repairs.append(dict(p))
+            state.status = Status.PLANNING
         elif t == "error.raised":
             state.error = p
             if not p.get("recoverable", False):

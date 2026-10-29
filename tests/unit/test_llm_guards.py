@@ -4,7 +4,6 @@ import pytest
 
 from app.llm.client import LLMClient, extract_json
 from app.llm.compose_answer import numbers_are_grounded
-from app.llm.fallback_sql import FallbackSQLError, validate_sql
 from app.llm.parse_intent import LLMIntentParser
 from app.llm.rule_parser import RuleParser
 
@@ -34,17 +33,22 @@ def test_number_whitelist_rejects_invented_number():
     assert not numbers_are_grounded("数码家电销售额为 120,000.00 元。", ctx)
 
 
-def test_fallback_sql_guards(sem):
-    good = "SELECT SUM(price) FROM order_items JOIN orders USING(order_id) WHERE orders.purchase_at >= '2025-01-01'"
-    out = validate_sql(good, sem)
-    assert "LIMIT" in out.upper()
+def test_llm_layer_never_executes_sql():
+    """SQL is produced by the compiler only; the LLM layer must stay text-only."""
+    from pathlib import Path
 
-    with pytest.raises(FallbackSQLError):
-        validate_sql("DELETE FROM orders", sem)
-    with pytest.raises(FallbackSQLError):
-        validate_sql("SELECT * FROM secret_table", sem)
-    with pytest.raises(FallbackSQLError):
-        validate_sql("SELECT SUM(price) FROM order_items", sem)  # no time filter
+    root = Path(__file__).resolve().parents[2] / "app" / "llm"
+    offenders = []
+    for path in sorted(root.rglob("*.py")):
+        text = path.read_text(encoding="utf-8")
+        if "duckdb" in text or "sqlglot" in text or ".execute(" in text:
+            offenders.append(path.name)
+    assert offenders == [], f"LLM 层不应直接接触数据库或 SQL 执行: {offenders}"
+
+
+def test_fallback_sql_module_is_gone():
+    with pytest.raises(ImportError):
+        __import__("app.llm.fallback_sql")
 
 
 def test_llm_parser_falls_back_when_unavailable(sem):
