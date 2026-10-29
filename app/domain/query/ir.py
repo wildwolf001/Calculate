@@ -25,6 +25,8 @@ def _dump(value: Any) -> Any:
 @dataclass(frozen=True)
 class QueryIR:
     metric: str
+    metric_expr: dict[str, Any] | None = None
+    metric_source: str | None = None
     ratio_numerator: str | None = None
     ratio_denominator: str | None = None
     dimensions: tuple[str, ...] = ()
@@ -48,6 +50,10 @@ class QueryIR:
         data = slots.model_dump(mode="json") if hasattr(slots, "model_dump") else dict(slots or {})
         return cls(
             metric=str(data.get("metric") or ""),
+            metric_expr=_dump(data.get("metric_expr")),
+            metric_source=(
+                str(data["metric_source"]) if data.get("metric_source") else None
+            ),
             ratio_numerator=(
                 str(data["ratio_numerator"]) if data.get("ratio_numerator") else None
             ),
@@ -76,6 +82,8 @@ class QueryIR:
     def as_dict(self) -> dict[str, Any]:
         return {
             "metric": self.metric,
+            "metric_expr": self.metric_expr,
+            "metric_source": self.metric_source,
             "ratio_numerator": self.ratio_numerator,
             "ratio_denominator": self.ratio_denominator,
             "dimensions": list(self.dimensions),
@@ -94,3 +102,21 @@ class QueryIR:
             "unresolved": list(self.unresolved),
             "source": self.source,
         }
+
+    def to_slots(self):
+        """Lower the IR to the legacy Slots container for the planner."""
+        from app.core.state import Slots
+
+        data = self.as_dict()
+        data["metric"] = self.metric or None
+        data["dimensions"] = list(self.dimensions)
+        data["filters"] = dict(self.filters)
+        data["time"] = self.time
+        data["compare"] = self.compare
+        data["comparison"] = self.comparison
+        data["order_by"] = list(self.order_by)
+        data["having"] = list(self.having)
+        data["nested"] = self.nested
+        data["intent"] = self.intent
+        data["unresolved"] = list(self.unresolved)
+        return Slots.model_validate(data)

@@ -12,6 +12,8 @@ from app.core.interfaces import ParseResult
 from app.core.logging import log_event, logger
 from app.domain.plan import ComparisonSpec
 from app.domain.semantic.loader import SemanticLayer
+from app.agent.contracts import ToolContext
+from app.chat.agent.tools import DescribeMetricTool, SearchSemanticsTool
 from app.llm.client import LLMClient, LLMError, LLMUnavailable
 from app.llm.rule_parser import RuleParser
 from app.llm.schema_card import build_schema_card
@@ -33,7 +35,7 @@ class LLMIntentParser:
                  fallback: RuleParser | None = None,
                  dim_values_path=DIM_VALUES_PATH,
                  index: dict | None = None,
-                 use_brief: bool = False):
+                 use_brief: bool = True):
         self.sem = sem
         self.client = client or LLMClient()
         self.fallback = fallback or RuleParser(sem, dim_values_path)
@@ -42,6 +44,62 @@ class LLMIntentParser:
         self._schema_card = build_schema_card(sem, dim_values_path=dim_values_path)
         self._index = index or {}
         self._use_brief = bool(use_brief and self._index)
+
+    def _tool_context(self, text: str) -> ToolContext:
+        return ToolContext(data={"index": self._index, "question": text})
+
+    def _apply_semantic_tools(self, text: str, result: ParseResult) -> ParseResult:
+        """Use chat-side tools to enrich or rescue a parsed query.
+
+        This is deliberately conservative: it only adds a metric when exactly
+        one candidate name occurs in the question, and never invents one.
+        """
+        if not self._index or result.intent_type != "query":
+            return result
+        slots = dict(result.slots or {})
+        metric_id = slots.get("metric")
+        metrics = self._index.get("metrics") or {}
+        if metric_id and metric_id in metrics:
+            described = DescribeMetricTool().run(
+                {"metric_id": metric_id}, self._tool_context(text),
+            )
+            if described.ok:
+                expr = (described.facts.get("metric") or {}).get("expr")
+                if expr:
+                    result.notes = list(dict.fromkeys(
+                        result.notes + [f"工具口径：{expr}"]
+                    ))
+            return result
+        if slots.get("metric_expr"):
+            return result
+        searched = SearchSemanticsTool().run(
+            {"query": text, "limit": 5}, self._tool_context(text),
+        )
+        if not searched.ok:
+            return result
+        candidates = searched.facts.get("metrics") or []
+        exact = [
+            item for item in candidates
+            if item.get("name") and str(item["name"]) in text
+        ]
+        if len(exact) == 1:
+            chosen = exact[0]
+        elif len(candidates) == 1:
+            chosen = candidates[0]
+        else:
+            return result
+        slots["metric"] = chosen["id"]
+        slots["metric_source"] = "documented"
+        slots["unresolved"] = [
+            term for term in (slots.get("unresolved") or [])
+            if str(chosen.get("name")) not in str(term)
+        ]
+        result.slots = slots
+        result.unresolved = list(slots["unresolved"])
+        result.notes = list(dict.fromkeys(
+            result.notes + [f"工具检索指标：{chosen.get('name')}"]
+        ))
+        return result
 
     def _system_for(self, text: str):
         card = self._schema_card
@@ -448,6 +506,7 @@ class LLMIntentParser:
         )
         result = self._validate(data)
         result = self._postprocess_lookup(result, text)
+        result = self._apply_semantic_tools(text, result)
         result.notes = list(dict.fromkeys(
             result.notes + ["由工具辅助重新规划"]
         ))
@@ -473,6 +532,7 @@ class LLMIntentParser:
                                                      stage="parse_intent")
                     result = self._validate(data)
                     result = self._postprocess_lookup(result, text)
+                    result = self._apply_semantic_tools(text, result)
                     result.notes = list(dict.fromkeys(result.notes + ["由模型解析意图"]))
                     return result
                 except (LLMError, LLMUnavailable, IntentParseError, ValueError) as exc:
@@ -480,6 +540,7 @@ class LLMIntentParser:
                     log_event(logger, "parse_intent.invalid", attempt=attempt + 1,
                               error=last_error)
             fallback = self.fallback.parse(text, context)
+            fallback = self._apply_semantic_tools(text, fallback)
             fallback.notes = list(dict.fromkeys(
                 fallback.notes + [
                     f"模型解析失败，已使用规则解析：{last_error}",
@@ -487,5 +548,6 @@ class LLMIntentParser:
             ))
             return fallback
         result = self.fallback.parse(text, context)
+        result = self._apply_semantic_tools(text, result)
         result.notes = list(dict.fromkeys(result.notes + ["离线规则解析"]))
         return result

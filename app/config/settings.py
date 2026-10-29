@@ -82,7 +82,7 @@ LLM_ENABLED = bool(LLM_API_KEY) and os.getenv("LLM_DISABLED", "").lower() not in
 LLM_SEMANTIC_DRAFT = os.getenv("LLM_SEMANTIC_DRAFT", "1").lower() not in {"0", "false", "no"}
 # Use the compact semantic brief instead of the full schema card. Off by
 # default until the chat agent switch is complete.
-USE_SEMANTIC_BRIEF = os.getenv("USE_SEMANTIC_BRIEF", "0").lower() in {"1", "true", "yes"}
+USE_SEMANTIC_BRIEF = os.getenv("USE_SEMANTIC_BRIEF", "1").lower() in {"1", "true", "yes"}
 LLM_SEMANTIC_TIMEOUT_SECONDS = float(os.getenv("LLM_SEMANTIC_TIMEOUT_SECONDS", "120"))
 
 # ---- Controller ----

@@ -8,6 +8,7 @@ from __future__ import annotations
 from app.config.settings import MAX_ROW_LIMIT
 from app.core.state import Slots
 from app.domain.plan import OrderSpec, QueryPlan, TimeRange
+from app.domain.query.ir import QueryIR
 from app.domain.semantic.graph import allowed_dimensions
 from app.domain.semantic.loader import Metric, SemanticLayer, SemanticError
 
@@ -141,6 +142,11 @@ def coverage_plan(slots: Slots, sem: SemanticLayer) -> QueryPlan:
         ],
         coverage_period="month",
     )
+
+
+def plan_from_ir(ir: QueryIR, sem: SemanticLayer) -> QueryPlan:
+    """IR is the planning contract; Slots is only its legacy container."""
+    return plan_from_slots(ir.to_slots(), sem)
 
 
 def plan_from_slots(slots: Slots, sem: SemanticLayer) -> QueryPlan:

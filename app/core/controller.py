@@ -53,7 +53,7 @@ from app.domain.insights import build_insights
 from app.domain.planner import (
     degrade_unsupported_dimensions,
     member_list_plan,
-    plan_from_slots,
+    plan_from_ir,
 )
 from app.domain.plan import FilterSpec, HavingSpec, QueryPlan
 from app.domain.policy import PolicySet
@@ -1101,7 +1101,7 @@ class Controller:
                 plan = member_list_plan(dim, slots, self.sem)
             else:
                 slots = apply_degradations(slots, report)
-                plan = plan_from_slots(slots, self.sem)
+                plan = plan_from_ir(QueryIR.from_slots(slots), self.sem)
                 if report.degradations:
                     reasons = [
                         str(d.get("reason")) for d in report.degradations
@@ -1698,7 +1698,7 @@ class Controller:
                         op=binding.get("op", "in"), value=binding["ids"]
                     )
                 self._infer_limit_per_group(question, slots)
-                plan = plan_from_slots(slots, self.sem)
+                plan = plan_from_ir(QueryIR.from_slots(slots), self.sem)
                 plan.interpretation_id = iid
                 plan.interpretation_label = interp.get("label")
                 plan.preferred = is_pref
@@ -2126,7 +2126,7 @@ class Controller:
                 )
             else:
                 slots = apply_degradations(slots, report)
-                plan = plan_from_slots(slots, self.sem)
+                plan = plan_from_ir(QueryIR.from_slots(slots), self.sem)
                 if report.degradations:
                     reasons = [
                         str(d.get("reason")) for d in report.degradations
