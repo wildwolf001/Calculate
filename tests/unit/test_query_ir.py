@@ -45,7 +45,7 @@ def test_query_ir_round_trip_keeps_derived_metric():
     assert ir.metric == spec.id
     assert ir.metric_spec.name == "平均"
     assert ir.metric_source == "inferred"
-    lowered = ir.to_slots()
+    lowered = QueryIR.from_slots(ir.as_dict())
     assert lowered.metric_spec.name == "平均"
     assert lowered.metric_source == "inferred"
 

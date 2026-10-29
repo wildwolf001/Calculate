@@ -1,8 +1,8 @@
-"""Typed query IR.
+"""Typed query IR: the parser -> planner contract.
 
-The parser still produces Slots; this module is the stable boundary between
-language and planning. The planner keeps its legacy Slots entry point until the
-model migration is complete.
+The planner consumes QueryIR directly. Slots remains only as a legacy DTO for
+lookup/analysis/subquestion paths and for replaying old event logs; it is not
+the planner's input.
 """
 from __future__ import annotations
 
@@ -45,7 +45,10 @@ class QueryIR:
     nested: dict[str, Any] | None = None
     intent: str = "query"
     unresolved: tuple[str, ...] = ()
-    source: str = "slots"
+    notes: tuple[str, ...] = ()
+    visualization: dict[str, Any] | None = None
+    coverage_period: str = "month"
+    source: str = "parser"
 
     @classmethod
     def from_slots(cls, slots: Any) -> "QueryIR":
@@ -83,6 +86,9 @@ class QueryIR:
             nested=_dump(data.get("nested")),
             intent=str(data.get("intent") or "query"),
             unresolved=tuple(str(item) for item in (data.get("unresolved") or [])),
+            notes=tuple(str(item) for item in (data.get("notes") or [])),
+            visualization=_dump(data.get("visualization")),
+            coverage_period=str(data.get("coverage_period") or "month"),
         )
 
     def as_dict(self) -> dict[str, Any]:
@@ -109,23 +115,8 @@ class QueryIR:
             "nested": self.nested,
             "intent": self.intent,
             "unresolved": list(self.unresolved),
+            "notes": list(self.notes),
+            "visualization": self.visualization,
+            "coverage_period": self.coverage_period,
             "source": self.source,
         }
-
-    def to_slots(self):
-        """Lower the IR to the legacy Slots container for the planner."""
-        from app.core.state import Slots
-
-        data = self.as_dict()
-        data["metric"] = self.metric or None
-        data["dimensions"] = list(self.dimensions)
-        data["filters"] = dict(self.filters)
-        data["time"] = self.time
-        data["compare"] = self.compare
-        data["comparison"] = self.comparison
-        data["order_by"] = list(self.order_by)
-        data["having"] = list(self.having)
-        data["nested"] = self.nested
-        data["intent"] = self.intent
-        data["unresolved"] = list(self.unresolved)
-        return Slots.model_validate(data)

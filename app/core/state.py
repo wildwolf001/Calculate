@@ -23,6 +23,7 @@ from app.domain.plan import (
     QueryPlan,
     TimeRange,
 )
+from app.domain.query.ir import QueryIR
 from app.domain.query.metric import MetricSpec
 
 
@@ -85,6 +86,7 @@ class SessionState:
     dataset_id: str = DEFAULT_DATASET_ID
     status: Status = Status.IDLE
     slots: Slots = field(default_factory=Slots)
+    ir: QueryIR | None = None
     prev_slots: Slots = field(default_factory=Slots)
     plan: QueryPlan | None = None
     artifacts: dict[str, dict] = field(default_factory=dict)
@@ -118,6 +120,7 @@ class SessionState:
             "status": self.status.value,
             "turn": self.turn,
             "slots": self.slots.model_dump(mode="json"),
+            "ir": self.ir.as_dict() if self.ir else None,
             "plan": self.plan.model_dump(mode="json") if self.plan else None,
             "pending": self.pending,
             "error": self.error,
@@ -235,6 +238,7 @@ def reduce(events: list, session_id: str | None = None) -> SessionState:
                 state.status = Status.PARSING
                 state.plan = None
                 state.slots = Slots()
+                state.ir = None
         elif t == "intent.classified":
             state.intent = p
         elif t == "query.normalized":
@@ -244,6 +248,7 @@ def reduce(events: list, session_id: str | None = None) -> SessionState:
             state.context = p
         elif t == "intent.parsed":
             state.slots = _slots_from_payload(p, state.slots)
+            state.ir = QueryIR.from_slots(p.get("ir") or state.slots)
             state.interpretations = list(p.get("interpretations") or [])
             state.preferred_interpretation = p.get("preferred_interpretation")
             state.status = Status.GROUNDING
@@ -251,6 +256,7 @@ def reduce(events: list, session_id: str | None = None) -> SessionState:
             state.slots = Slots.model_validate(
                 _normalize_slots_payload(p.get("slots") or {})
             )
+            state.ir = QueryIR.from_slots(state.slots)
             state.interpretations = []
             state.preferred_interpretation = None
             state.status = Status.GROUNDING
@@ -287,6 +293,7 @@ def reduce(events: list, session_id: str | None = None) -> SessionState:
             state.slots = _apply_grounding(state.slots, p)
             if p.get("notes"):
                 state.slots.notes = list(dict.fromkeys(state.slots.notes + p["notes"]))
+            state.ir = QueryIR.from_slots(state.slots)
             state.status = Status.PLANNING
         elif t == "plan.compiled":
             state.plan = QueryPlan.model_validate(p.get("plan", p))

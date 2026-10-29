@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import re
 import traceback
+from dataclasses import replace
 from typing import AsyncIterator
 
 from app.config.settings import (
@@ -602,6 +603,7 @@ class Controller:
             ]
             events.append(("intent.parsed", {
                 "slots": slots,
+                "ir": QueryIR.from_slots(slots).as_dict(),
                 "notes": result.notes,
                 "interpretations": meta,
                 "preferred_interpretation": preferred,
@@ -610,10 +612,13 @@ class Controller:
             return events + self._multi_interpretation_events(state, result)
 
         try:
-            events.append(("query.ir.created", QueryIR.from_slots(slots).as_dict()))
+            ir = QueryIR.from_slots(slots)
+            events.append(("query.ir.created", ir.as_dict()))
+            events.append(("intent.parsed", {
+                "slots": slots, "notes": result.notes, "ir": ir.as_dict(),
+            }))
         except Exception:
-            pass
-        events.append(("intent.parsed", {"slots": slots, "notes": result.notes}))
+            events.append(("intent.parsed", {"slots": slots, "notes": result.notes}))
         return events
 
     def _analysis_request_text(self, options: dict | None) -> str:
@@ -2107,9 +2112,19 @@ class Controller:
 
     def _handle_planning(self, state: SessionState) -> list[tuple[str, dict]]:
         slots = Slots.model_validate(state.slots.model_dump())
-        self._infer_limit_per_group(self._last_user_text(state), slots)
+        ir = state.ir or QueryIR.from_slots(slots)
+        if (
+            not ir.limit_per_group
+            and len(ir.dimensions) >= 2
+            and re.search(
+                r"(每个|各|按).{0,16}(最好|最高|最大|第一|排名|top)",
+                self._last_user_text(state) or "",
+                re.IGNORECASE,
+            )
+        ):
+            ir = replace(ir, limit_per_group=1)
         report = assess_slots(
-            slots, self.sem, policy=self.policy,
+            ir, self.sem, policy=self.policy,
             model=getattr(self.ctx, "model", None),
         )
         events: list[tuple[str, dict]] = [("capability.assessed", report.as_dict())]
@@ -2131,8 +2146,10 @@ class Controller:
                     slots.dimensions[0] if slots.dimensions else None, slots, self.sem
                 )
             else:
-                slots = apply_degradations(slots, report)
-                plan = plan_from_ir(QueryIR.from_slots(slots), self.sem)
+                if report.degradations:
+                    slots = apply_degradations(slots, report)
+                    ir = QueryIR.from_slots(slots)
+                plan = plan_from_ir(ir, self.sem)
                 if report.degradations:
                     reasons = [
                         str(d.get("reason")) for d in report.degradations

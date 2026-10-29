@@ -1,13 +1,25 @@
-"""Slots -> QueryPlan. Deterministic; no model calls here.
+"""QueryIR -> QueryPlan. Deterministic; no model calls here.
 
-The parser resolves words to ids; the planner only fills defaults, normalizes
-ordering/limits, and refuses to invent a metric.
+The parser resolves words to ids and emits QueryIR; the planner only fills
+defaults, normalizes ordering/limits, and refuses to invent a metric. The
+plan_from_slots wrapper exists only for legacy analysis/subquestion callers.
 """
 from __future__ import annotations
 
+from typing import Any
+
 from app.config.settings import MAX_ROW_LIMIT
 from app.core.state import Slots
-from app.domain.plan import OrderSpec, QueryPlan, TimeRange
+from app.domain.plan import (
+    CompareSpec,
+    ComparisonSpec,
+    FilterSpec,
+    HavingSpec,
+    NestedSpec,
+    OrderSpec,
+    QueryPlan,
+    TimeRange,
+)
 from app.domain.query.ir import QueryIR
 from app.domain.semantic.graph import allowed_dimensions
 from app.domain.semantic.loader import Metric, SemanticLayer, SemanticError
@@ -144,30 +156,91 @@ def coverage_plan(slots: Slots, sem: SemanticLayer) -> QueryPlan:
     )
 
 
+def _time_range(value: Any) -> TimeRange | None:
+    if value is None:
+        return None
+    if isinstance(value, TimeRange):
+        return value
+    return TimeRange.model_validate(value)
+
+
+def _filters(value: dict[str, Any] | None) -> dict[str, FilterSpec]:
+    return {
+        str(key): item if isinstance(item, FilterSpec) else FilterSpec.model_validate(item)
+        for key, item in (value or {}).items()
+    }
+
+
+def _coverage_plan_ir(ir: QueryIR, sem: SemanticLayer) -> QueryPlan:
+    metric_id = ir.metric
+    if metric_id is None:
+        candidates = [
+            metric for metric in sem.metrics.values()
+            if metric.raw.get("selected", True)
+            and metric.type == "aggregate"
+            and metric.raw.get("time_via")
+        ]
+        candidates.sort(
+            key=lambda metric: (
+                str(metric.raw.get("analysis_role") or "") not in {
+                    "primary_sales", "sales_primary",
+                },
+                "销售额" not in metric.name and "销售" not in metric.name,
+                "记录数" in metric.name,
+                metric.name,
+            )
+        )
+        if not candidates:
+            raise SemanticError("覆盖诊断需要至少一个带时间列的聚合指标")
+        metric_id = candidates[0].id
+    metric = sem.metric(metric_id)
+    if metric.type != "aggregate":
+        raise SemanticError("覆盖诊断目前只支持聚合指标")
+    if not metric.raw.get("time_via"):
+        raise SemanticError(f"指标「{metric.name}」没有时间列，无法诊断时间段覆盖")
+    time = _time_range(ir.time)
+    if time is None:
+        lo, hi = sem.time_range
+        time = TimeRange(start=lo, end=hi)
+    return QueryPlan(
+        kind="coverage",
+        plan_id=f"coverage_{metric.id}",
+        metric=metric.id,
+        dimensions=[],
+        time=time,
+        filters=_filters(ir.filters),
+        limit=MAX_ROW_LIMIT,
+        notes=list(ir.notes) + [
+            "覆盖诊断使用完整自然月序列，并区分无记录月份与零业务量月份。"
+        ],
+        coverage_period=ir.coverage_period,
+    )
+
+
 def plan_from_ir(ir: QueryIR, sem: SemanticLayer) -> QueryPlan:
-    """IR is the planning contract; Slots is only its legacy container."""
-    return plan_from_slots(ir.to_slots(), sem)
-
-
-def plan_from_slots(slots: Slots, sem: SemanticLayer) -> QueryPlan:
-    if slots.intent == "coverage":
-        return coverage_plan(slots, sem)
+    """The only parser -> planner contract. No Slots conversion here."""
+    if ir.intent == "coverage":
+        return _coverage_plan_ir(ir, sem)
     derived_spec: dict | None = None
-    if slots.metric_spec:
-        spec = slots.metric_spec
+    if ir.metric_spec:
+        spec = ir.metric_spec
         derived_spec = spec.to_raw()
         metric = Metric(spec.id, derived_spec)
     else:
-        metric_id = slots.ratio_numerator or slots.metric
+        metric_id = ir.ratio_numerator or ir.metric
         if not metric_id:
             raise SemanticError("没有识别出可查询的指标")
         metric = sem.metric(metric_id)
 
-    time = slots.time
-    notes = list(slots.notes)
+    comparison = (
+        ir.comparison if isinstance(ir.comparison, ComparisonSpec)
+        else (ComparisonSpec.model_validate(ir.comparison) if ir.comparison else None)
+    )
+    time = _time_range(ir.time)
+    notes = list(ir.notes)
     if time is None:
-        if slots.comparison:
-            time = slots.comparison.current
+        if comparison:
+            time = comparison.current
         elif metric.raw.get("time_via"):
             lo, hi = sem.time_range
             time = TimeRange(start=lo, end=hi)
@@ -177,8 +250,8 @@ def plan_from_slots(slots: Slots, sem: SemanticLayer) -> QueryPlan:
         else:
             notes.append("该指标没有时间列，按全部数据统计。")
 
-    dims = [d for d in slots.dimensions if d != "none"]
-    if slots.comparison and dims == ["month"]:
+    dims = [d for d in ir.dimensions if d != "none"]
+    if comparison and dims == ["month"]:
         # The comparison itself defines the two periods; a month dimension
         # would produce one row per period instead of one comparison row.
         dims = []
@@ -186,17 +259,18 @@ def plan_from_slots(slots: Slots, sem: SemanticLayer) -> QueryPlan:
     for d in dims:
         sem.dimension(d)
 
-    order_by = list(slots.order_by)
+    order_by: list[OrderSpec] = [
+        item if isinstance(item, OrderSpec) else OrderSpec.model_validate(item)
+        for item in ir.order_by
+    ]
     if not order_by and dims:
         # deterministic default: sort by the value for ranking-style metrics,
         # otherwise keep dimension order (stable, explainable)
-        if metric.type in {"ratio"} or slots.ratio_denominator:
+        if metric.type in {"ratio"} or ir.ratio_denominator:
             order_by = [OrderSpec(field="value", direction="desc")]
-        else:
-            order_by = []
 
-    limit = max(1, min(int(slots.limit), MAX_ROW_LIMIT))
-    limit_per_group = slots.limit_per_group
+    limit = max(1, min(int(ir.limit), MAX_ROW_LIMIT))
+    limit_per_group = ir.limit_per_group
     if limit_per_group and len(dims) < 2:
         # "哪个商家最高" is a global top-N, not a per-group top-N. Keeping
         # limit_per_group with one dimension would force a needless LLM repair.
@@ -204,30 +278,44 @@ def plan_from_slots(slots: Slots, sem: SemanticLayer) -> QueryPlan:
         limit_per_group = None
         notes.append("只有一个分组维度，按整体排序取前 N。")
 
-    plan = QueryPlan(
+    return QueryPlan(
         plan_id=(
-            f"p_{metric.id}_over_{slots.ratio_denominator}"
-            if slots.ratio_denominator else f"p_{metric.id}"
+            f"p_{metric.id}_over_{ir.ratio_denominator}"
+            if ir.ratio_denominator else f"p_{metric.id}"
         ),
         metric=metric.id,
         metric_spec=derived_spec,
-        metric_source=slots.metric_source or ("inferred" if derived_spec else None),
-        ratio_numerator=slots.ratio_numerator,
-        ratio_denominator=slots.ratio_denominator,
+        metric_source=ir.metric_source or ("inferred" if derived_spec else None),
+        ratio_numerator=ir.ratio_numerator,
+        ratio_denominator=ir.ratio_denominator,
         dimensions=dims,
         time=time,
-        time_axis=slots.time_axis,
-        filters=slots.filters,
-        having=slots.having,
+        time_axis=ir.time_axis,
+        filters=_filters(ir.filters),
+        having=[
+            item if isinstance(item, HavingSpec) else HavingSpec.model_validate(item)
+            for item in ir.having
+        ],
         ratio_grain=metric.raw.get("ratio_grain") if metric.type == "ratio" else None,
-        nested=slots.nested,
+        nested=(
+            ir.nested if isinstance(ir.nested, NestedSpec)
+            else (NestedSpec.model_validate(ir.nested) if ir.nested else None)
+        ),
         order_by=order_by,
         limit=limit,
         limit_per_group=limit_per_group,
-        share=bool(slots.share),
-        compare=slots.compare,
-        comparison=slots.comparison,
+        share=bool(ir.share),
+        compare=(
+            ir.compare if isinstance(ir.compare, CompareSpec)
+            else (CompareSpec.model_validate(ir.compare) if ir.compare else None)
+        ),
+        comparison=comparison,
         notes=notes,
-        visualization=slots.visualization,
+        visualization=ir.visualization,
+        coverage_period=ir.coverage_period,
     )
-    return plan
+
+
+def plan_from_slots(slots: Slots, sem: SemanticLayer) -> QueryPlan:
+    """Legacy adapter for analysis/subquestion code; not used by the parser path."""
+    return plan_from_ir(QueryIR.from_slots(slots), sem)
