@@ -3,7 +3,9 @@ from __future__ import annotations
 from app.core.state import Slots
 from app.domain.planner import plan_from_ir, plan_from_slots
 from app.domain.query.ir import QueryIR
+from app.domain.query.metric import build_metric_spec
 from app.domain.semantic.loader import Dimension, Metric, SemanticLayer
+from app.llm.parse_intent import LLMIntentParser
 
 
 def _sem():
@@ -50,6 +52,38 @@ def test_single_dimension_per_group_becomes_overall_limit():
     plan = plan_from_ir(QueryIR.from_slots(slots), sem)
     assert plan.limit == 1
     assert plan.limit_per_group is None
+
+
+def test_metric_spec_is_idempotent_and_normalizes_time_via():
+    sem = _sem()
+    first = build_metric_spec(
+        {"aggregation": "AVG", "operand": "t1.c04", "fact": "t1", "label": "平均"},
+        sem,
+    )
+    assert first["time_via"] == "t1.c02"
+    second = build_metric_spec(first, sem)
+    assert second["expr"] == "AVG(t1.c04)"
+    assert second["time_via"] == "t1.c02"
+
+
+def test_parser_normalized_metric_expr_reaches_planner(tmp_path):
+    sem = _sem()
+    dim_values = tmp_path / "dim_values.json"
+    dim_values.write_text('{"values": {}, "aliases": {}, "id_maps": {}}', encoding="utf-8")
+    parser = LLMIntentParser(sem, client=None, dim_values_path=dim_values)
+    raw_slots = parser._validate_slots({
+        "metric_expr": {
+            "aggregation": "AVG",
+            "operand": "t1.c04",
+            "fact": "t1",
+            "label": "平均评分",
+        }
+    })
+    slots = Slots.model_validate(raw_slots)
+    plan = plan_from_ir(QueryIR.from_slots(slots), sem)
+    assert plan.metric_spec is not None
+    assert plan.metric_spec["expr"] == "AVG(t1.c04)"
+    assert plan.metric_spec["time_via"] == "t1.c02"
 
 
 def test_plan_from_ir_matches_plan_from_slots():

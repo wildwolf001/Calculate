@@ -1646,6 +1646,7 @@ class Controller:
         )
         events: list[tuple[str, dict]] = []
         executed: list[dict] = []
+        rejections: list[str] = []
         filter_failure: tuple[dict, str] | None = None
         question = self._last_user_text(state)
 
@@ -1703,6 +1704,7 @@ class Controller:
                 plan.interpretation_label = interp.get("label")
                 plan.preferred = is_pref
             except Exception as exc:
+                rejections.append(str(exc))
                 events.append(("interpretation.rejected", {
                     "interpretation_id": iid, "label": interp.get("label"),
                     "message": str(exc),
@@ -1815,9 +1817,13 @@ class Controller:
                 }))
                 events.append(("result.presented", {"result_id": None}))
                 return events
+            reason = next((item for item in rejections if item), "")
             events.append(("error.raised", {
                 "code": "NO_INTERPRETATION",
-                "message": "这几种理解都无法生成可执行的查询。",
+                "message": (
+                    f"这几种理解都无法生成可执行的查询：{reason}"
+                    if reason else "这几种理解都无法生成可执行的查询。"
+                ),
                 "recoverable": False,
             }))
             return events

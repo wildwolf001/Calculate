@@ -39,6 +39,8 @@
 - LLMIntentParser 接受 metric_expr；capability/planner/compiler/validator/pipeline/insights/presentation 都能解析 synthetic metric。
 - 全链路 controller 测试：派生 AVG 指标可走完 parse→capability→plan→compile→execute→compose。
 - QueryIR 成为 planner 入口：controller 用 plan_from_ir(QueryIR.from_slots(slots))，IR 含 metric_expr/metric_source。
+- build_metric_spec 幂等：既接受 aggregation+operand，也接受规范化后的 expr+fact；time_via 自动补 table 前缀；supported_grain 只取 N:1 可达维度。
+- parser→planner 回归测试：parser 规范化后的 metric_expr 能直接进入 planner。
 
 ### Agent 内核
 
@@ -99,7 +101,7 @@
   - tests/integration/test_derived_metric_turn.py（1）
   - tests/integration/test_agent_api.py（1）
   - tests/unit/test_ingest_decider.py（4）
-- 全量：263 passed / 0 failed / 92 skipped。
+- 全量：265 passed / 0 failed / 92 skipped。
 - 未使用电商数据集；测试数据为临时生成的 CSV/DataFrame。
 
 ## 尚未接线
