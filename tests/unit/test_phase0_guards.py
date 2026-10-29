@@ -9,6 +9,7 @@ from app.core.event_store import EventStore
 from app.core.state import Slots
 from app.domain.capability import assess_slots
 from app.domain.plan import FilterSpec
+from app.domain.query.metric import MetricSpec
 from app.domain.semantic.loader import Dimension, Metric, SemanticLayer
 from app.llm.parse_intent import LLMIntentParser
 
@@ -142,7 +143,7 @@ def test_parser_accepts_derived_metric_expression(tmp_path):
             "label": "平均评分",
         }
     })
-    assert slots["metric_expr"]["expr"] == "AVG(t1.c05)"
+    assert slots["metric_spec"]["expr"] == "AVG(t1.c05)"
     assert slots["metric_source"] == "inferred"
     assert slots["metric"].startswith("derived_")
 
@@ -160,12 +161,12 @@ def test_parser_accepts_derived_metric_expression(tmp_path):
 
 def test_capability_accepts_derived_metric_expression(tmp_path):
     controller, sem = _controller(tmp_path, [_avg_metric()])
-    slots = Slots(metric_expr={
+    slots = Slots(metric_spec=MetricSpec.from_input({
         "aggregation": "AVG",
         "operand": "t1.c05",
         "fact": "t1",
         "label": "平均评分",
-    })
+    }, sem))
     report = assess_slots(slots, sem)
     assert report.status == "answerable"
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 from app.core.state import Slots
 from app.domain.planner import plan_from_ir, plan_from_slots
 from app.domain.query.ir import QueryIR
-from app.domain.query.metric import build_metric_spec
+from app.domain.query.metric import MetricSpec
 from app.domain.semantic.loader import Dimension, Metric, SemanticLayer
 from app.llm.parse_intent import LLMIntentParser
 
@@ -30,19 +30,23 @@ def _sem():
 
 
 def test_query_ir_round_trip_keeps_derived_metric():
+    spec = MetricSpec.from_input(
+        {"aggregation": "AVG", "operand": "t1.c04", "fact": "t1", "label": "平均"},
+        _sem(),
+    )
     slots = Slots(
-        metric="derived_x",
-        metric_expr={"aggregation": "AVG", "operand": "t1.c04", "fact": "t1", "label": "平均"},
+        metric=spec.id,
+        metric_spec=spec,
         metric_source="inferred",
         dimensions=["d"],
         time={"start": "2025-01-01", "end": "2025-02-01"},
     )
     ir = QueryIR.from_slots(slots)
-    assert ir.metric == "derived_x"
-    assert ir.metric_expr["label"] == "平均"
+    assert ir.metric == spec.id
+    assert ir.metric_spec.name == "平均"
     assert ir.metric_source == "inferred"
     lowered = ir.to_slots()
-    assert lowered.metric_expr["label"] == "平均"
+    assert lowered.metric_spec.name == "平均"
     assert lowered.metric_source == "inferred"
 
 
@@ -54,16 +58,16 @@ def test_single_dimension_per_group_becomes_overall_limit():
     assert plan.limit_per_group is None
 
 
-def test_metric_spec_is_idempotent_and_normalizes_time_via():
+def test_metric_spec_normalizes_time_via_and_round_trips_raw():
     sem = _sem()
-    first = build_metric_spec(
+    first = MetricSpec.from_input(
         {"aggregation": "AVG", "operand": "t1.c04", "fact": "t1", "label": "平均"},
         sem,
     )
-    assert first["time_via"] == "t1.c02"
-    second = build_metric_spec(first, sem)
-    assert second["expr"] == "AVG(t1.c04)"
-    assert second["time_via"] == "t1.c02"
+    assert first.time_via == "t1.c02"
+    second = MetricSpec.from_raw(first.to_raw())
+    assert second.expr == "AVG(t1.c04)"
+    assert second.time_via == "t1.c02"
 
 
 def test_parser_normalized_metric_expr_reaches_planner(tmp_path):
@@ -80,6 +84,7 @@ def test_parser_normalized_metric_expr_reaches_planner(tmp_path):
         }
     })
     slots = Slots.model_validate(raw_slots)
+    assert isinstance(slots.metric_spec, MetricSpec)
     plan = plan_from_ir(QueryIR.from_slots(slots), sem)
     assert plan.metric_spec is not None
     assert plan.metric_spec["expr"] == "AVG(t1.c04)"

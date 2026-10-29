@@ -39,8 +39,9 @@
 - LLMIntentParser 接受 metric_expr；capability/planner/compiler/validator/pipeline/insights/presentation 都能解析 synthetic metric。
 - 全链路 controller 测试：派生 AVG 指标可走完 parse→capability→plan→compile→execute→compose。
 - QueryIR 成为 planner 入口：controller 用 plan_from_ir(QueryIR.from_slots(slots))，IR 含 metric_expr/metric_source。
-- build_metric_spec 幂等：既接受 aggregation+operand，也接受规范化后的 expr+fact；time_via 自动补 table 前缀；supported_grain 只取 N:1 可达维度。
-- parser→planner 回归测试：parser 规范化后的 metric_expr 能直接进入 planner。
+- 派生指标改为强类型 MetricSpec：parser 只构造一次，Slots/QueryIR 直接持有 MetricSpec，planner 不再二次解析 dict；只有 compiler 边界调用 to_raw()。
+- MetricSpec.from_input 校验 aggregation/operand；time_via 自动补 table 前缀；supported_grain 只取 N:1 可达维度。
+- parser→planner 回归测试：parser 产生的 metric_spec 能直接进入 planner。
 
 ### Agent 内核
 

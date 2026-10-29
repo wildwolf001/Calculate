@@ -9,6 +9,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.domain.query.metric import MetricSpec
+
 
 def _dump(value: Any) -> Any:
     if value is None:
@@ -25,7 +27,7 @@ def _dump(value: Any) -> Any:
 @dataclass(frozen=True)
 class QueryIR:
     metric: str
-    metric_expr: dict[str, Any] | None = None
+    metric_spec: MetricSpec | None = None
     metric_source: str | None = None
     ratio_numerator: str | None = None
     ratio_denominator: str | None = None
@@ -50,7 +52,11 @@ class QueryIR:
         data = slots.model_dump(mode="json") if hasattr(slots, "model_dump") else dict(slots or {})
         return cls(
             metric=str(data.get("metric") or ""),
-            metric_expr=_dump(data.get("metric_expr")),
+            metric_spec=(
+                MetricSpec.model_validate(data["metric_spec"])
+                if isinstance(data.get("metric_spec"), dict)
+                else data.get("metric_spec")
+            ),
             metric_source=(
                 str(data["metric_source"]) if data.get("metric_source") else None
             ),
@@ -82,7 +88,10 @@ class QueryIR:
     def as_dict(self) -> dict[str, Any]:
         return {
             "metric": self.metric,
-            "metric_expr": self.metric_expr,
+            "metric_spec": (
+                self.metric_spec.model_dump(mode="json")
+                if self.metric_spec is not None else None
+            ),
             "metric_source": self.metric_source,
             "ratio_numerator": self.ratio_numerator,
             "ratio_denominator": self.ratio_denominator,

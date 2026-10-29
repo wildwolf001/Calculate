@@ -6,6 +6,7 @@ import pytest
 from app.core.state import Slots
 from app.domain.pipeline import execute_prepared, prepare
 from app.domain.planner import plan_from_slots
+from app.domain.query.metric import MetricSpec
 from app.domain.semantic.loader import SemanticLayer
 
 
@@ -51,14 +52,13 @@ def _warehouse(tmp_path):
 def test_derived_avg_metric_plans_and_executes(tmp_path):
     sem = _sem()
     slots = Slots(
-        metric_expr={
+        metric_spec=MetricSpec.from_input({
             "aggregation": "AVG",
             "operand": "t1.c04",
             "fact": "t1",
             "time_via": "t1.c02",
             "label": "平均评分",
-            "supported_dimensions": ["none", "d_late"],
-        },
+        }, sem),
         metric_source="inferred",
         time={"start": "2025-05-01", "end": "2025-06-01"},
     )
@@ -76,12 +76,12 @@ def test_derived_avg_metric_plans_and_executes(tmp_path):
 def test_derived_count_distinct_metric(tmp_path):
     sem = _sem()
     slots = Slots(
-        metric_expr={
+        metric_spec=MetricSpec.from_input({
             "aggregation": "COUNT_DISTINCT",
             "operand": "t1.c03",
             "fact": "t1",
             "label": "渠道数",
-        },
+        }, sem),
         time={"start": "2025-05-01", "end": "2025-06-01"},
     )
     plan = plan_from_slots(slots, sem)

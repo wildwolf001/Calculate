@@ -7,6 +7,7 @@ import duckdb
 from app.core.controller import Controller
 from app.core.event_store import EventStore
 from app.core.interfaces import ParseResult
+from app.domain.query.metric import MetricSpec
 from app.domain.resolver import RuleGrounder
 from app.domain.semantic.loader import SemanticLayer
 from app.llm.compose_answer import TemplateComposer
@@ -17,13 +18,13 @@ class DerivedParser:
         return ParseResult(
             intent_type="query", tier="A", confidence=1.0,
             slots={
-                "metric_expr": {
+                "metric_spec": MetricSpec.from_input({
                     "aggregation": "AVG",
                     "operand": "t1.c04",
                     "fact": "t1",
                     "time_via": "t1.c02",
                     "label": "平均评分",
-                },
+                }, _sem()).model_dump(),
                 "time": {"start": "2025-05-01", "end": "2025-06-01"},
             },
         )

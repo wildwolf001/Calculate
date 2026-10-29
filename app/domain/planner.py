@@ -153,13 +153,10 @@ def plan_from_slots(slots: Slots, sem: SemanticLayer) -> QueryPlan:
     if slots.intent == "coverage":
         return coverage_plan(slots, sem)
     derived_spec: dict | None = None
-    if slots.metric_expr:
-        from app.domain.query.metric import build_metric_spec
-
-        derived_spec = build_metric_spec(
-            slots.metric_expr, sem, label=slots.metric_expr.get("label")
-        )
-        metric = Metric(derived_spec["id"], derived_spec)
+    if slots.metric_spec:
+        spec = slots.metric_spec
+        derived_spec = spec.to_raw()
+        metric = Metric(spec.id, derived_spec)
     else:
         metric_id = slots.ratio_numerator or slots.metric
         if not metric_id:

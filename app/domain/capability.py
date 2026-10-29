@@ -187,15 +187,10 @@ def assess_slots(slots: Any, sem: Any, policy: Any | None = None,
 
     report = CapabilityReport(status="answerable", metric=metric_id)
     metric = None
-    metric_expr = getattr(slots, "metric_expr", None)
-    if metric_expr:
-        from app.domain.query.metric import build_metric_spec
-
+    metric_spec = getattr(slots, "metric_spec", None)
+    if metric_spec:
         try:
-            spec = build_metric_spec(
-                metric_expr, sem, label=(metric_expr or {}).get("label")
-            )
-            metric = Metric(spec["id"], spec)
+            metric = Metric(metric_spec.id, metric_spec.to_raw())
             report.metric = metric.id
         except Exception as exc:
             report.missing.append(Missing("metric", "派生指标", str(exc)))

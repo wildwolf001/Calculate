@@ -11,6 +11,7 @@ from app.config.settings import DIM_VALUES_PATH, MAX_SUBQUESTIONS
 from app.core.interfaces import ParseResult
 from app.core.logging import log_event, logger
 from app.domain.plan import ComparisonSpec
+from app.domain.query.metric import MetricSpec
 from app.domain.semantic.loader import SemanticLayer
 from app.agent.contracts import ToolContext
 from app.chat.agent.tools import DescribeMetricTool, SearchSemanticsTool
@@ -86,7 +87,7 @@ class LLMIntentParser:
                         result.notes + [f"工具口径：{expr}"]
                     ))
             return result
-        if slots.get("metric_expr"):
+        if slots.get("metric_spec"):
             return result
         searched = SearchSemanticsTool().run(
             {"query": text, "limit": 5}, self._tool_context(text),
@@ -164,19 +165,18 @@ class LLMIntentParser:
             raise IntentParseError(f"未知槽位字段: {sorted(unknown)}")
 
         metric_expr = raw_slots.get("metric_expr") or None
+        metric_spec = None
         metric = raw_slots.get("metric")
         if metric_expr is not None:
             if not isinstance(metric_expr, dict):
                 raise IntentParseError("metric_expr 必须是对象")
-            from app.domain.query.metric import build_metric_spec
-
             try:
-                metric_expr = build_metric_spec(
+                metric_spec = MetricSpec.from_input(
                     metric_expr, self.sem, label=metric_expr.get("label")
                 )
             except Exception as exc:
                 raise IntentParseError(f"metric_expr 非法: {exc}") from exc
-            metric = metric_expr["id"]
+            metric = metric_spec.id
         elif metric is not None:
             if metric not in self.sem.metrics:
                 by_name = [m.id for m in self.sem.metrics.values() if m.name == metric]
@@ -256,9 +256,11 @@ class LLMIntentParser:
 
         return {
             "metric": metric,
-            "metric_expr": metric_expr,
+            "metric_spec": (
+                metric_spec.model_dump(mode="json") if metric_spec is not None else None
+            ),
             "metric_source": raw_slots.get("metric_source") or (
-                "inferred" if metric_expr else None
+                "inferred" if metric_spec else None
             ),
             "ratio_numerator": ratio_numerator,
             "ratio_denominator": ratio_denominator,

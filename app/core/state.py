@@ -23,6 +23,7 @@ from app.domain.plan import (
     QueryPlan,
     TimeRange,
 )
+from app.domain.query.metric import MetricSpec
 
 
 class Status(str, Enum):
@@ -41,7 +42,7 @@ class Status(str, Enum):
 
 class Slots(BaseModel):
     metric: str | None = None
-    metric_expr: dict | None = None
+    metric_spec: MetricSpec | None = None
     metric_source: str | None = None
     ratio_numerator: str | None = None
     ratio_denominator: str | None = None
