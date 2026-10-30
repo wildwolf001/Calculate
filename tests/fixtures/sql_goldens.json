@@ -1,6 +1,6 @@
 {
   "aggregate": {
-    "sql": "SELECT \"d\".\"c02\" AS \"d_city\", SUM(t.c04) AS \"value\"\nFROM \"t\"\n  JOIN \"d\" ON \"t\".\"c03\" = \"d\".\"c01\"\nWHERE (\"t\".\"c02\" >= ?) AND (\"t\".\"c02\" < ?) AND (\"d\".\"c02\" = ?)\nGROUP BY 1\nORDER BY \"d_city\" ASC NULLS LAST\nLIMIT 100",
+    "sql": "SELECT \"d\".\"c02\" AS \"d_city\", SUM(\"t\".\"c04\") AS \"value\"\nFROM \"t\"\n  JOIN \"d\" ON \"t\".\"c03\" = \"d\".\"c01\"\nWHERE (\"t\".\"c02\" >= ?) AND (\"t\".\"c02\" < ?) AND (\"d\".\"c02\" = ?)\nGROUP BY 1\nORDER BY \"d_city\" ASC NULLS LAST\nLIMIT 100",
     "params": [
       "2025-05-01",
       "2025-06-01",
@@ -23,7 +23,7 @@
     ]
   },
   "per_group": {
-    "sql": "SELECT * FROM (\nSELECT \"d\".\"c02\" AS \"d_city\", \"d\".\"c01\" AS \"d_flag\", SUM(t.c04) AS \"value\"\nFROM \"t\"\n  JOIN \"d\" ON \"t\".\"c03\" = \"d\".\"c01\"\nGROUP BY 1, 2\nORDER BY \"value\" DESC NULLS LAST, \"d_city\" ASC NULLS LAST, \"d_flag\" ASC NULLS LAST\n) AS \"_per_group\"\nQUALIFY ROW_NUMBER() OVER (PARTITION BY \"d_city\" ORDER BY \"value\" DESC) <= 1\nORDER BY \"value\" DESC NULLS LAST LIMIT 50",
+    "sql": "SELECT * FROM (\nSELECT \"d\".\"c02\" AS \"d_city\", \"d\".\"c01\" AS \"d_flag\", SUM(\"t\".\"c04\") AS \"value\"\nFROM \"t\"\n  JOIN \"d\" ON \"t\".\"c03\" = \"d\".\"c01\"\nGROUP BY 1, 2\nORDER BY \"value\" DESC NULLS LAST, \"d_city\" ASC NULLS LAST, \"d_flag\" ASC NULLS LAST\n) AS \"_per_group\"\nQUALIFY ROW_NUMBER() OVER (PARTITION BY \"d_city\" ORDER BY \"value\" DESC) <= 1\nORDER BY \"value\" DESC NULLS LAST LIMIT 50",
     "params": [],
     "columns": [
       "d_city",
@@ -48,7 +48,7 @@
     ]
   },
   "share": {
-    "sql": "WITH grouped AS (\n  SELECT \"d\".\"c02\" AS \"d_city\", SUM(t.c04) AS \"value\"\n  FROM \"t\"\n  JOIN \"d\" ON \"t\".\"c03\" = \"d\".\"c01\"\n  GROUP BY 1\n)\nSELECT \"d_city\", \"value\", \"value\" / NULLIF(SUM(\"value\") OVER (), 0) AS \"share\"\nFROM grouped\nORDER BY \"d_city\" ASC NULLS LAST\nLIMIT 100",
+    "sql": "WITH grouped AS (\n  SELECT \"d\".\"c02\" AS \"d_city\", SUM(\"t\".\"c04\") AS \"value\"\n  FROM \"t\"\n  JOIN \"d\" ON \"t\".\"c03\" = \"d\".\"c01\"\n  GROUP BY 1\n)\nSELECT \"d_city\", \"value\", \"value\" / NULLIF(SUM(\"value\") OVER (), 0) AS \"share\"\nFROM grouped\nORDER BY \"d_city\" ASC NULLS LAST\nLIMIT 100",
     "params": [],
     "columns": [
       "d_city",

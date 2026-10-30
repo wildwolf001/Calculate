@@ -158,7 +158,14 @@ def common_grain_table(sem: SemanticLayer, fact_a: str, fact_b: str) -> str | No
     for preferred in (fact_b, fact_a):
         if preferred in candidates:
             return preferred
-    return sorted(candidates)[0]
+    # Prefer the most granular common grain. Alphabetical order picked a
+    # higher-level table such as customers over orders, which then forced a
+    # 1:N join back to orders for the time filter.
+    closures = {
+        table: _n1_tables(sem, table) & set(candidates)
+        for table in candidates
+    }
+    return max(candidates, key=lambda table: (len(closures[table]), table))
 
 
 def time_axis_allowed(sem: SemanticLayer, metric: Any, ref: str) -> bool:

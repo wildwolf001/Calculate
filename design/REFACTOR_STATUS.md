@@ -104,8 +104,10 @@
   - tests/integration/test_derived_metric_turn.py（1）
   - tests/integration/test_agent_api.py（1）
   - tests/unit/test_ingest_decider.py（4）
-- 全量：265 passed / 0 failed / 92 skipped。
+- 全量：278 passed / 0 failed / 92 skipped。
 - 真实 API：平均评分按是否延迟分组返回 4.02/2.00；品类销售额返回 105,245.50。
+- 多表 join 回归：tests/integration/test_multi_table_joins.py 覆盖多跳 join、count distinct 抗 fanout、跨事实比率、binding、反 fanout 拒绝、Controller 全流程；tests/integration/test_generic_ingest.py 增加多表 Excel 多跳 join。
+- 修复 common_grain_table 选到高层表（customers 而非 orders）导致时间过滤无法 join；修复 join 条件与指标表达式未走 binding 的 SQL 错误；derived dimension 统一走 binding 重写。
 - 未使用电商数据集；测试数据为临时生成的 CSV/DataFrame。
 
 ## 尚未接线

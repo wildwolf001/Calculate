@@ -192,6 +192,63 @@ def test_relation_dimension_filters_use_display_value(tmp_path):
     assert outcome.result.rows[0][0] == 100
 
 
+def test_multi_hop_excel_join_builds_valid_sql(monkeypatch, tmp_path):
+    # Keep this test deterministic and offline: the generic pipeline may call
+    # the semantic-draft LLM, which is not relevant to join correctness.
+    monkeypatch.setattr(
+        "app.ingest.llm_semantic.refine_semantic",
+        lambda *args, **kwargs: {"warnings": []},
+    )
+    book = tmp_path / "multi.xlsx"
+    workbook = Workbook()
+    orders = workbook.active
+    orders.title = "orders"
+    orders.append(["order_id", "customer_id", "order_date", "amount"])
+    orders.append(["O1", "C1", "2025-01-01", 100])
+    orders.append(["O2", "C1", "2025-01-02", 200])
+    orders.append(["O3", "C2", "2025-01-03", 300])
+    customers = workbook.create_sheet("customers")
+    customers.append(["customer_id", "city"])
+    customers.append(["C1", "北京"])
+    customers.append(["C2", "上海"])
+    items = workbook.create_sheet("items")
+    items.append(["order_id", "product_id", "price"])
+    items.append(["O1", "P1", 10])
+    items.append(["O1", "P2", 20])
+    items.append(["O2", "P1", 50])
+    products = workbook.create_sheet("products")
+    products.append(["product_id", "category"])
+    products.append(["P1", "CAT_A"])
+    products.append(["P2", "CAT_B"])
+    categories = workbook.create_sheet("categories")
+    categories.append(["category", "category_name"])
+    categories.append(["CAT_A", "数码"])
+    categories.append(["CAT_B", "家居"])
+    workbook.save(book)
+
+    root = tmp_path / "ds"
+    analyze_files([book], root, "ds_multi_hop", "多跳")
+    sem = _sem(root)
+    draft = _draft(root)
+    ids = {t["label"]: t["table_id"] for t in draft["tables"]}
+    metric = next(
+        m for m in sem.metrics.values()
+        if m.raw.get("fact") == ids["multi/items"] and "SUM(" in str(m.raw.get("expr"))
+    )
+    dim = next(
+        d for d in sem.dimensions.values()
+        if d.raw.get("column") == f"{ids['multi/categories']}.c02"
+    )
+    outcome = run_query(
+        QueryPlan(metric=metric.id, dimensions=[dim.id], limit=10),
+        sem, db_path=root / "warehouse.duckdb",
+    )
+    assert outcome.ok, outcome.error
+    rows = {row[0]: row[1] for row in outcome.result.rows}
+    assert rows == {"家居": 20, "数码": 60}
+    assert f'"{ids["multi/categories"]}"' in outcome.result.sql
+
+
 def test_high_cardinality_label_is_a_dimension(tmp_path):
     products = tmp_path / "products.csv"
     items = tmp_path / "order_items.csv"

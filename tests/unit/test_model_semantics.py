@@ -88,7 +88,7 @@ def test_compiler_normalizes_simple_metric_expr():
         binding={"tables": {}}, raw={},
     )
     compiled, _ = prepare(QueryPlan(metric="m"), sem)
-    assert "SUM(t.c2)" in compiled.sql
+    assert 'SUM("t"."c2")' in compiled.sql
 
 
 def test_ratio_table_mismatch_is_flagged():

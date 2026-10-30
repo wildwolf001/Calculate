@@ -93,13 +93,8 @@ class _Builder:
         return self.phys(dim.raw["column"])
 
     def _derived_expr(self, dim) -> str:
-        """Translate table.column references in a derived expression."""
-        expr = str(dim.raw.get("expr") or "")
-        return re.sub(
-            r"\b(t_[A-Za-z0-9_]+)\.([A-Za-z0-9_]+)\b",
-            lambda match: self.phys(f"{match.group(1)}.{match.group(2)}"),
-            expr,
-        )
+        """Translate table.column references through the binding."""
+        return self._rewrite_expr(str(dim.raw.get("expr") or ""))
 
     def _filter_condition(self, dim_id: str, op: str, value) -> str:
         dim = self.sem.dimension(dim_id)
@@ -234,10 +229,18 @@ class _Builder:
                 node, node_col, dst_col, direction, node_depth = parent[cur]
                 key = frozenset((node, cur))
                 if key not in edges:
+                    node_ref = f"{node}.{node_col}"
+                    cur_ref = f"{cur}.{dst_col}"
                     if direction == "forward":
-                        cond = f"{_q(node)}.{_q(node_col)} = {_q(cur)}.{_q(dst_col)}"
+                        cond = (
+                            f"{_q(node)}.{_q(self.sem.column(node_ref))} = "
+                            f"{_q(cur)}.{_q(self.sem.column(cur_ref))}"
+                        )
                     else:
-                        cond = f"{_q(cur)}.{_q(dst_col)} = {_q(node)}.{_q(node_col)}"
+                        cond = (
+                            f"{_q(cur)}.{_q(self.sem.column(cur_ref))} = "
+                            f"{_q(node)}.{_q(self.sem.column(node_ref))}"
+                        )
                         reverse_used = True
                     edges[key] = (node_depth, f"JOIN {_q(cur)} ON {cond}")
                 cur = node
@@ -862,6 +865,23 @@ class _Builder:
             tables.append(dst)
         return "\n  ".join(joins), tables
 
+    def _rewrite_expr(self, expr: str) -> str:
+        """Resolve every table.column reference through the binding.
+
+        Metric expressions are authored against logical columns; without this
+        pass a non-identity binding produces SQL that still says c03 instead of
+        the physical amt column.
+        """
+        def replace(match: re.Match) -> str:
+            table, column = match.group(1), match.group(2)
+            if table not in self.sem.tables:
+                return match.group(0)
+            if column == "*":
+                return f"{_q(table)}.*"
+            return f"{_q(table)}.{_q(self.sem.column(f'{table}.{column}'))}"
+
+        return re.sub(r"\b([A-Za-z_]\w*)\.([A-Za-z_]\w*|\*)\b", replace, str(expr or ""))
+
     def _metric_expr_sql(self) -> str:
         return self._metric_sql(self.metric)
 
@@ -870,10 +890,10 @@ class _Builder:
 
         expr = from_metric_raw(metric.raw)
         if isinstance(expr, AggExpr) and self._simple_operand(expr.operand):
-            return f"{expr.aggregation}({expr.operand})"
+            return self._rewrite_expr(f"{expr.aggregation}({expr.operand})")
         if isinstance(expr, CountDistinctExpr) and self._simple_operand(expr.operand):
-            return f"COUNT(DISTINCT {expr.operand})"
-        return str(metric.raw.get("expr") or "")
+            return self._rewrite_expr(f"COUNT(DISTINCT {expr.operand})")
+        return self._rewrite_expr(str(metric.raw.get("expr") or ""))
 
     @staticmethod
     def _simple_operand(operand: str) -> bool:
@@ -882,7 +902,7 @@ class _Builder:
     def _compile_coverage(self) -> Compiled:
         if self.metric.type != "aggregate":
             raise SemanticError("覆盖诊断目前只支持聚合指标")
-        expr = self.metric.raw.get("expr")
+        expr = self._rewrite_expr(str(self.metric.raw.get("expr") or ""))
         time_via = self.metric.raw.get("time_via")
         if not expr or not time_via:
             raise SemanticError(f"指标 {self.metric.id} 缺少 expr/time_via")
