@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
 
-from app.domain.plan import TimeRange
+from app.domain.plan import FilterSpec, TimeRange
 from app.domain.semantic.loader import Metric
 from app.domain.semantic.graph import (
     allowed_dimensions,
@@ -175,7 +175,11 @@ def assess_slots(slots: Any, sem: Any, policy: Any | None = None,
     intent = str(getattr(slots, "intent", "query") or "query")
     metric_id = getattr(slots, "metric", None)
     dims = [d for d in (getattr(slots, "dimensions", []) or []) if d and d != "none"]
-    filters = dict(getattr(slots, "filters", {}) or {})
+    raw_filters = dict(getattr(slots, "filters", {}) or {})
+    filters = {
+        key: value if isinstance(value, FilterSpec) else FilterSpec.model_validate(value)
+        for key, value in raw_filters.items()
+    }
 
     if intent == "lookup":
         report = CapabilityReport(status="answerable")

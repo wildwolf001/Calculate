@@ -8,6 +8,7 @@ import pytest
 
 from app.core.controller import Controller
 from app.core.event_store import EventStore
+from app.domain.capability import assess_slots
 from app.core.interfaces import ParseResult
 from app.domain.pipeline import PipelineError, execute_prepared, prepare
 from app.domain.resolver import RuleGrounder
@@ -228,6 +229,17 @@ def test_controller_turn_runs_multi_table_join(tmp_path):
     state = EventStore(tmp_path / "sessions").replay("s1")
     artifact = state.artifacts[state.last_result_id]
     assert artifact["rows"] == [["家居", 20.0], ["数码", 60.0]]
+
+
+def test_capability_accepts_ir_filter_dict():
+    report = assess_slots(
+        QueryIR(
+            metric="sales",
+            filters={"d_status": {"op": "eq", "value": "delivered"}},
+        ),
+        _sem(),
+    )
+    assert report.status in {"answerable", "degradable"}
 
 
 def test_multi_hop_join_sales_by_category(tmp_path):
