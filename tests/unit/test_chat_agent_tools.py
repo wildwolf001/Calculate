@@ -3,6 +3,7 @@ from __future__ import annotations
 from app.agent.contracts import ToolContext
 from app.chat.agent.tools import DescribeMetricTool, ProfileColumnTool, SearchSemanticsTool
 from app.core.interfaces import ParseResult
+from app.domain.semantic.loader import Metric, SemanticLayer
 from app.llm.parse_intent import LLMIntentParser
 
 INDEX = {
@@ -85,6 +86,38 @@ def test_parser_uses_search_tool_to_rescue_unresolved(tmp_path):
     assert result.slots["metric"] == "m_refund"
     assert result.slots["metric_source"] == "documented"
     assert result.unresolved == []
+
+
+def test_prefer_published_ratio_over_scope_mismatch(tmp_path):
+    sem = SemanticLayer(
+        version=1, dataset="ratio",
+        tables={"orders": {"grain": ["c01"], "time": "c04", "columns": ["c01", "c04"]}},
+        joins={}, pre_aggregates={},
+        metrics={
+            "m_delay": Metric("m_delay", {
+                "name_zh": "配送延迟率", "type": "ratio", "fact": "orders",
+                "numerator": "COUNT(CASE WHEN orders.c04 > orders.c04 THEN 1 END)",
+                "denominator": "COUNT(orders.c01)",
+                "scope": {"orders.c01": "delivered"},
+                "synonyms": ["配送延迟率", "延迟送达率"],
+            }),
+        },
+        dimensions={}, policies={}, time_range=("2025-01-01", "2025-12-31"),
+        binding={"tables": {}}, raw={},
+    )
+    dim_values = tmp_path / "dim_values.json"
+    dim_values.write_text('{"values": {}, "aliases": {}, "id_maps": {}}', encoding="utf-8")
+    parser = LLMIntentParser(sem, client=None, dim_values_path=dim_values)
+    result = ParseResult(
+        intent_type="query", tier="A", confidence=0.8,
+        slots={"ratio_numerator": "m_late", "ratio_denominator": "m_orders"},
+    )
+    out = parser._prefer_published_ratio(
+        "5月已送达订单不少于3笔的商家中，延迟率最高的是谁？", result,
+    )
+    assert out.slots["metric"] == "m_delay"
+    assert out.slots["ratio_numerator"] is None
+    assert out.slots["ratio_denominator"] is None
 
 
 def test_profile_column_and_unknown():

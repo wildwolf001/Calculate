@@ -16,21 +16,39 @@ def _tokens(text: str) -> list[str]:
     return [part for part in re.split(r"[\s,，。；;:：/、()（）]+", text or "") if part]
 
 
+def _longest_common(term: str, text: str) -> int:
+    """Longest common substring length (Chinese has no word spaces)."""
+    best = 0
+    for start in range(len(term)):
+        for end in range(start + 2, len(term) + 1):
+            part = term[start:end]
+            if part in text:
+                best = max(best, len(part))
+    return best
+
+
+def _term_score(term: Any, text: str, exact: int, partial: int) -> int:
+    value = str(term or "")
+    if not value:
+        return 0
+    if value in text:
+        return exact
+    length = _longest_common(value, text)
+    return min(length, partial) if length >= 2 else 0
+
+
 def _score(item: dict[str, Any], question: str) -> int:
     """Chinese-aware retrieval: match names/synonyms/labels as substrings.
 
-    Splitting on whitespace used to give every item score 0 for a Chinese
-    question, so the brief always showed the alphabetically first metrics.
+    Exact matching alone missed "延迟率" because the published metric is
+    "配送延迟率"; partial substring matching fixes that class of miss.
     """
     text = str(question or "")
-    name = str(item.get("name") or "")
-    score = 5 if name and name in text else 0
+    score = _term_score(item.get("name"), text, exact=10, partial=6)
     for synonym in item.get("synonyms") or []:
-        if synonym and str(synonym) in text:
-            score += 3
+        score += _term_score(synonym, text, exact=6, partial=3)
     for label in (item.get("labels") or {}).values():
-        if label and str(label) in text:
-            score += 2
+        score += _term_score(label, text, exact=4, partial=2)
     for key in ("definition", "expr", "numerator", "denominator"):
         value = item.get(key)
         if value and str(value) in text:

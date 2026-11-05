@@ -167,6 +167,39 @@ def test_brief_retrieves_chinese_name_over_alphabetical_order():
     assert "商家名称" in brief
 
 
+def test_brief_matches_partial_chinese_metric_name():
+    index = {
+        "dataset_id": "d",
+        "semantic_version": 1,
+        "metrics": {
+            **{
+                f"m{i:02d}": {
+                    "name": f"指标{i}",
+                    "type": "aggregate",
+                    "expr": "COUNT(*)",
+                    "fact": "t1",
+                    "supported_dimensions": ["d_seller"],
+                }
+                for i in range(10)
+            },
+            "m_delay": {
+                "name": "配送延迟率",
+                "type": "ratio",
+                "expr": "late / delivered",
+                "fact": "t1",
+                "synonyms": ["配送延迟率", "延迟送达率"],
+                "supported_dimensions": ["d_seller"],
+            },
+        },
+        "dimensions": {
+            "d_seller": {"name": "商家名称", "kind": "categorical", "synonyms": ["商家"]},
+        },
+        "tables": {},
+    }
+    brief = build_brief(index, "5月已送达订单不少于3笔的商家中，延迟率最高的是谁？")
+    assert "m_delay" in brief
+
+
 def test_parser_can_use_brief(tmp_path):
     dim_values = tmp_path / "dim_values.json"
     dim_values.write_text('{"values": {}, "aliases": {}, "id_maps": {}}', encoding="utf-8")

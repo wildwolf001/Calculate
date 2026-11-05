@@ -166,15 +166,25 @@ class _Builder:
         for ref in self.metric.raw.get("scope", {}):
             needed.add(self._table_of(ref))
         # dimensions & filters
+        fact = self.metric.fact
         for dim_id in list(self.plan.dimensions) + list(self.plan.filters):
             dim = self.sem.dimension(dim_id)
             if dim.kind in {"categorical", "time"}:
+                refs = [
+                    ref for ref in (dim.raw.get("column"), dim.raw.get("filter_column"))
+                    if ref
+                ]
+                direct = {self._table_of(ref) for ref in refs}
+                needed |= direct
+                # Do not trust a stored join_path here: a shared dimension may
+                # carry a path belonging to another fact and add an unrelated
+                # 1:N child table. The BFS below finds the path from this fact.
+                if direct:
+                    continue
                 for step in dim.join_path:
                     src, _, dst = step.partition(" -> ")
                     needed.add(src)
                     needed.add(dst)
-                if dim.raw.get("column"):
-                    needed.add(self._table_of(dim.raw["column"]))
             elif dim.kind == "derived":
                 needed.add(dim.raw["requires"])
         # order_reviews time_via needs orders (scope) already covered above

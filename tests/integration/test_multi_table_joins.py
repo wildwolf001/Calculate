@@ -231,6 +231,40 @@ def test_controller_turn_runs_multi_table_join(tmp_path):
     assert artifact["rows"] == [["家居", 20.0], ["数码", 60.0]]
 
 
+def test_shared_dimension_does_not_add_child_join(tmp_path):
+    sem = _sem_with_order_amount()
+    sem.dimensions["d_status"].raw["join_path"] = ["order_items -> orders"]
+    plan = plan_from_ir(
+        QueryIR(
+            metric="order_amount",
+            filters={"d_status": {"op": "eq", "value": "delivered"}},
+        ),
+        sem,
+    )
+    compiled, issues = prepare(plan, sem)
+    assert not [i for i in issues if i.severity == "error"]
+    assert '"order_items"' not in compiled.sql
+    result = execute_prepared(compiled, db_path=_warehouse(tmp_path))
+    assert result.rows == [[300.0]]
+
+
+def test_shared_dimension_path_is_recomputed_from_fact(tmp_path):
+    sem = _sem()
+    sem.dimensions["d_status"].raw["join_path"] = ["order_items -> orders"]
+    plan = plan_from_ir(
+        QueryIR(
+            metric="payment_total",
+            filters={"d_status": {"op": "eq", "value": "delivered"}},
+        ),
+        sem,
+    )
+    compiled, issues = prepare(plan, sem)
+    assert not [i for i in issues if i.severity == "error"]
+    assert '"order_items"' not in compiled.sql
+    result = execute_prepared(compiled, db_path=_warehouse(tmp_path))
+    assert result.rows == [[300.0]]
+
+
 def test_capability_accepts_ir_filter_dict():
     report = assess_slots(
         QueryIR(

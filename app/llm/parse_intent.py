@@ -65,6 +65,38 @@ class LLMIntentParser:
                 return True
         return False
 
+    def _prefer_published_ratio(self, text: str, result: ParseResult) -> ParseResult:
+        """Prefer an existing ratio metric over composing two mismatched ones."""
+        if result.intent_type != "query":
+            return result
+        slots = dict(result.slots or {})
+        if not slots.get("ratio_numerator") and not slots.get("ratio_denominator"):
+            return result
+        from app.llm.semantic_brief import _term_score
+
+        best = None
+        best_score = 0
+        for metric in self.sem.metrics.values():
+            if metric.type != "ratio":
+                continue
+            score = _term_score(metric.name, text, exact=10, partial=6)
+            for synonym in metric.synonyms:
+                score = max(score, _term_score(synonym, text, exact=6, partial=3))
+            if score > best_score:
+                best = metric
+                best_score = score
+        if best is None or best_score < 3:
+            return result
+        slots["metric"] = best.id
+        slots["ratio_numerator"] = None
+        slots["ratio_denominator"] = None
+        slots["metric_source"] = "documented"
+        result.slots = slots
+        result.notes = list(dict.fromkeys(
+            result.notes + [f"优先使用已发布比率指标「{best.name}」"]
+        ))
+        return result
+
     def _apply_semantic_tools(self, text: str, result: ParseResult) -> ParseResult:
         """Use chat-side tools to enrich or rescue a parsed query.
 
@@ -524,6 +556,7 @@ class LLMIntentParser:
         )
         result = self._validate(data)
         result = self._postprocess_lookup(result, text)
+        result = self._prefer_published_ratio(text, result)
         result = self._apply_semantic_tools(text, result)
         result.notes = list(dict.fromkeys(
             result.notes + ["由工具辅助重新规划"]
@@ -555,6 +588,7 @@ class LLMIntentParser:
                             "请给出可执行的 slots，或明确说明缺少什么"
                         )
                     result = self._postprocess_lookup(result, text)
+                    result = self._prefer_published_ratio(text, result)
                     result = self._apply_semantic_tools(text, result)
                     result.notes = list(dict.fromkeys(result.notes + ["由模型解析意图"]))
                     return result
@@ -563,6 +597,7 @@ class LLMIntentParser:
                     log_event(logger, "parse_intent.invalid", attempt=attempt + 1,
                               error=last_error)
             fallback = self.fallback.parse(text, context)
+            fallback = self._prefer_published_ratio(text, fallback)
             fallback = self._apply_semantic_tools(text, fallback)
             fallback.notes = list(dict.fromkeys(
                 fallback.notes + [
@@ -571,6 +606,7 @@ class LLMIntentParser:
             ))
             return fallback
         result = self.fallback.parse(text, context)
+        result = self._prefer_published_ratio(text, result)
         result = self._apply_semantic_tools(text, result)
         result.notes = list(dict.fromkeys(result.notes + ["离线规则解析"]))
         return result
