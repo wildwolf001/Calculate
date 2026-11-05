@@ -98,6 +98,7 @@ $schema_card
 8.3 “A 除以 B / A 占 B 的比例 / 每 B 的 A”时，metric=A，ratio_numerator=A，ratio_denominator=B；两者必须都是 schema 中已定义的指标，否则留 null 并写入 unresolved。不要臆造未定义指标。
 8.1 “每个X最好的Y/每组前N/各城市排名第一”这类问题：dimensions 同时给出分组维度和排名维度，order_by=value desc，limit_per_group=1（或 N），limit 设为 200；不要只给一个维度。
 8.4 没有已发布指标、但列明显支持聚合时（例如“平均评分”），用 metric_expr 组合：operand 必须是 schema 中真实存在的 table.column；有文档口径时优先用已定义指标，不要用 metric_expr 覆盖它。
+8.5 如果 schema 结尾出现“检索候选（确定性 resolver）”，优先使用其中标记 [selected] 的 metric；候选都不适用时才选其他指标，并说明原因。不要自己组合两个 scope 不一致的指标来表达一个已发布比率。
 9. 口径类问题（为什么/口径/定义/怎么算）intent_type=explain；问候/寒暄 intent_type=smalltalk；枚举维度值 intent_type=lookup。
    9.1 问题里用括号给出公式（如“延迟订单（delivered_at > estimated_delivery_at）”）只是口径说明，不是 explain；仍要输出可执行 slots。若 schema 中有“是否延迟”这类派生维度，用 filters 表达“延迟/准时”，不要放进 unresolved。
    用户要求整体经营分析/经营诊断，且没有指定具体指标和期间时，intent_type=analysis，slots 留空。

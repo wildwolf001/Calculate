@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from app.core.interfaces import ParseResult
 from app.domain.semantic.loader import Metric, SemanticLayer
 from app.domain.semantic.resolver import SemanticResolver
+from app.llm.parse_intent import LLMIntentParser
 
 
 def _sem() -> SemanticLayer:
@@ -51,6 +53,19 @@ def test_exact_name_wins_over_longer_name():
     result = SemanticResolver(_sem()).resolve("2025年上半年销售额是多少？")
     assert result.status == "unique"
     assert result.selected == "m_sales"
+
+
+def test_parser_guard_overrides_low_confidence_metric(tmp_path):
+    dim_values = tmp_path / "dim_values.json"
+    dim_values.write_text('{"values": {}, "aliases": {}, "id_maps": {}}', encoding="utf-8")
+    parser = LLMIntentParser(_sem(), client=None, dim_values_path=dim_values)
+    result = ParseResult(
+        intent_type="query", tier="A", confidence=0.7,
+        slots={"metric": "m_doc_delay"},
+    )
+    out = parser._apply_resolver("5月已送达订单不少于3笔的商家中，延迟率最高的是谁？", result)
+    assert out.slots["metric"] == "m_delay"
+    assert out.slots["metric_source"] == "resolved"
 
 
 def test_missing_metric_is_reported():
