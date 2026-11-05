@@ -68,6 +68,22 @@ def test_parser_guard_overrides_low_confidence_metric(tmp_path):
     assert out.slots["metric_source"] == "resolved"
 
 
+def test_known_metric_aliases_are_not_unresolved(tmp_path):
+    dim_values = tmp_path / "dim_values.json"
+    dim_values.write_text('{"values": {}, "aliases": {}, "id_maps": {}}', encoding="utf-8")
+    parser = LLMIntentParser(_sem(), client=None, dim_values_path=dim_values)
+    result = ParseResult(
+        intent_type="query", tier="A", confidence=0.8,
+        slots={
+            "metric": "m_sales",
+            "unresolved": ["销售额", "延迟订单"],
+        },
+    )
+    out = parser._apply_resolver("销售额是多少", result)
+    assert out.slots["metric"] == "m_sales"
+    assert out.slots["unresolved"] == []
+
+
 def test_missing_metric_is_reported():
     result = SemanticResolver(_sem()).resolve("今天天气怎么样？")
     assert result.status == "missing"

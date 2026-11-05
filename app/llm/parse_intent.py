@@ -185,23 +185,37 @@ class LLMIntentParser:
             return result
         resolution = self.resolver.resolve(text)
         current = slots.get("metric")
-        if current and resolution.status == "unique" and resolution.selected:
-            scores = {item.metric_id: item.score for item in resolution.candidates}
-            top = resolution.candidates[0]
-            current_score = scores.get(str(current), 0)
-            if (
-                top.metric_id != current
-                and top.score >= 100
-                and top.score - current_score >= 10
-            ):
-                slots["metric"] = top.metric_id
-                slots["metric_source"] = "resolved"
-                result.slots = slots
-                result.notes = list(dict.fromkeys(
-                    result.notes + [
-                        f"确定性 resolver 覆盖指标：{current} → {top.metric_id}",
-                    ]
-                ))
+        if current:
+            # The LLM already chose a published metric. Do not turn a merely
+            # ambiguous resolver result into "unknown term" clarification; and
+            # drop unresolved terms that are actually known metric aliases.
+            known = {
+                str(term)
+                for metric in self.sem.metrics.values()
+                for term in [metric.name, *metric.synonyms]
+                if term
+            }
+            slots["unresolved"] = [
+                term for term in (slots.get("unresolved") or [])
+                if str(term) not in known
+            ]
+            if resolution.status == "unique" and resolution.selected:
+                scores = {item.metric_id: item.score for item in resolution.candidates}
+                top = resolution.candidates[0]
+                current_score = scores.get(str(current), 0)
+                if (
+                    top.metric_id != current
+                    and top.score >= 100
+                    and top.score - current_score >= 10
+                ):
+                    slots["metric"] = top.metric_id
+                    slots["metric_source"] = "resolved"
+                    result.notes = list(dict.fromkeys(
+                        result.notes + [
+                            f"确定性 resolver 覆盖指标：{current} → {top.metric_id}",
+                        ]
+                    ))
+            result.slots = slots
             return result
         if resolution.status == "unique" and resolution.selected:
             slots["metric"] = resolution.selected
