@@ -29,6 +29,35 @@ SKIP_KEYS = re.compile(
     re.I,
 )
 METADATA_HINTS = re.compile(r"随机种子|数据结构|数据来源|生成|可重复|文件说明", re.I)
+
+
+def extract_policy(notes: list[str]) -> dict[str, Any]:
+    """Turn README metadata notes into an explicit, machine-readable policy."""
+    policy: dict[str, Any] = {}
+    for note in notes or []:
+        text = str(note or "")
+        match = re.search(
+            r"(\d{4})-(\d{2})\s*[至到]\s*(\d{4})-(\d{2})", text
+        )
+        if match:
+            import calendar
+            from datetime import date
+
+            y1, m1, y2, m2 = (int(item) for item in match.groups())
+            end_day = calendar.monthrange(y2, m2)[1]
+            policy["time_range"] = [
+                date(y1, m1, 1).isoformat(),
+                date(y2, m2, end_day).isoformat(),
+            ]
+            continue
+        match = re.search(r"(?:订单数|行数|记录数)[:：]\s*(\d+)", text)
+        if match:
+            policy["expected_rows"] = int(match.group(1))
+            continue
+        match = re.search(r"随机种子[:：]\s*(\d+)", text)
+        if match:
+            policy["seed"] = int(match.group(1))
+    return policy
 STATUS_ALIASES = {
     "已送达": "delivered",
     "已取消": "cancelled",
@@ -1237,6 +1266,9 @@ def apply_documentation(ctx: DatasetContext, documentation: dict[str, Any]) -> d
         semantic, documentation.get("rules") or [], index, warnings
     )
 
+    policy = extract_policy(list(documentation.get("notes") or []))
+    if policy:
+        semantic["policy"] = policy
     semantic["status"] = "draft"
     semantic["documentation"] = {
         "source": documentation.get("source"),

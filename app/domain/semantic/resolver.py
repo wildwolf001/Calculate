@@ -82,6 +82,16 @@ class SemanticResolver:
                 if common >= 2:
                     score += min(common, 8) * 8
                     matched.append(str(synonym))
+        # A question asking for a "率/占比/比例" should prefer a published
+        # ratio metric over a generic amount/count metric that merely shares
+        # words like "订单" or "已送达".
+        if metric.type == "ratio" and any(
+            marker in text for marker in ("率", "占比", "比例")
+        ) and any(
+            marker in f"{name} {' '.join(str(s) for s in metric.synonyms)}"
+            for marker in ("率", "占比", "比例")
+        ):
+            score += 30
         return score, tuple(dict.fromkeys(matched))
 
     def resolve(self, text: str) -> Resolution:

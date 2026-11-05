@@ -104,7 +104,7 @@
   - tests/integration/test_derived_metric_turn.py（1）
   - tests/integration/test_agent_api.py（1）
   - tests/unit/test_ingest_decider.py（4）
-- 全量：288 passed / 0 failed / 92 skipped。
+- 全量：290 passed / 0 failed / 92 skipped。
 - 真实 API：平均评分按是否延迟分组返回 4.02/2.00；品类销售额返回 105,245.50。
 - 多表 join 回归：tests/integration/test_multi_table_joins.py 覆盖多跳 join、count distinct 抗 fanout、跨事实比率、binding、反 fanout 拒绝、Controller 全流程；tests/integration/test_generic_ingest.py 增加多表 Excel 多跳 join。
 - 修复 common_grain_table 选到高层表（customers 而非 orders）导致时间过滤无法 join；修复 join 条件与指标表达式未走 binding 的 SQL 错误；derived dimension 统一走 binding 重写。
@@ -113,6 +113,8 @@
 - brief 增加全量指标/维度“名称目录”，保证已发布指标名不会因 top-k 截断而从 prompt 消失；表达式/取值仍按相关度裁剪。
 - 新增 SemanticResolver：确定性候选（名称/同义词/中文部分匹配），parser 注入候选提示，缺失指标时唯一命中可回填，多候选不猜。
 - 新增 QualityScan：按查询时间轴检查缺失月份/末尾部分月份、指标负值/空值、fanout_used；结果进入 checks.completed。
+- README notes 提升为 DatasetPolicy（time_range/expected_rows/seed），quality scan 校验请求是否超出 policy 范围。
+- Resolver 对“率/占比/比例”问题优先 ratio 指标，避免被“已送达订单金额”等通用词抢走。
 - 未使用电商数据集；测试数据为临时生成的 CSV/DataFrame。
 
 ## 尚未接线

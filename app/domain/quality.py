@@ -86,6 +86,29 @@ def _join_path(sem: SemanticLayer, start: str, target: str) -> tuple[str, str] |
     return "\n  ".join(joins), target
 
 
+def _policy_issue(plan: QueryPlan, sem: SemanticLayer) -> QualityIssue | None:
+    policy = (sem.raw or {}).get("policy") or {}
+    bounds = policy.get("time_range") or []
+    if not plan.time or len(bounds) != 2:
+        return None
+    try:
+        p_start, p_end = (date.fromisoformat(str(item)) for item in bounds)
+    except ValueError:
+        return None
+    start, end = plan.time.start, plan.time.end - timedelta(days=1)
+    if start < p_start or end > p_end:
+        return QualityIssue(
+            "POLICY_RANGE", "warn", "请求超出 README 数据范围",
+            f"README 声明的数据范围为 {p_start} 至 {p_end}，"
+            f"本次请求覆盖 {start} 至 {end}，超出部分可能没有数据或不可比。",
+            {"requested": [str(start), str(end)],
+             "policy_range": [str(p_start), str(p_end)]},
+            "超出权威范围的时间段可能为空或不完整。",
+            "按 README 范围裁剪，或确认数据是否已更新。",
+        )
+    return None
+
+
 def _coverage(plan: QueryPlan, metric, sem: SemanticLayer, con) -> list[QualityIssue]:
     if not plan.time:
         return []
@@ -195,7 +218,11 @@ def scan_quality(plan: QueryPlan, metric, result, sem: SemanticLayer,
     except Exception:
         return []
     try:
-        issues = _coverage(plan, metric, sem, con)
+        issues = []
+        policy_issue = _policy_issue(plan, sem)
+        if policy_issue:
+            issues.append(policy_issue)
+        issues.extend(_coverage(plan, metric, sem, con))
         issues.extend(_value_health(metric, sem, con))
         if getattr(result, "meta", {}).get("fanout_used"):
             issues.append(QualityIssue(

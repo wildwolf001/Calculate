@@ -51,3 +51,22 @@ def test_quality_scan_reports_missing_month_and_negative(tmp_path):
     neg = next(item for item in facts if item["code"] == "NEGATIVE_VALUES")
     assert neg["evidence"]["negative_rows"] == 1
     assert neg["evidence"]["negative_sum"] == -50.0
+
+
+def test_quality_scan_reports_readme_policy_range(tmp_path):
+    path = tmp_path / "q2.duckdb"
+    con = duckdb.connect(str(path))
+    con.execute("CREATE TABLE t (c01 DATE, c02 DOUBLE)")
+    con.execute("INSERT INTO t VALUES ('2025-01-10', 100), ('2025-04-10', 80)")
+    con.close()
+    sem = _sem()
+    sem.raw = {"policy": {"time_range": ["2025-01-01", "2025-03-31"]}}
+    outcome = run_query(
+        QueryPlan(
+            metric="m",
+            time=TimeRange(start=date(2025, 1, 1), end=date(2025, 5, 1)),
+        ),
+        sem,
+        db_path=path,
+    )
+    assert "POLICY_RANGE" in {issue.id for issue in outcome.checks}
