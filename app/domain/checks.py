@@ -14,6 +14,7 @@ import duckdb
 from app.config.settings import QUALITY_PATH, WAREHOUSE_PATH
 from app.domain.executor import ResultSet
 from app.domain.plan import QueryPlan, TimeRange
+from app.domain.quality import scan_quality
 from app.domain.semantic.loader import SemanticLayer
 
 SHARE_TOLERANCE = 0.005  # 0.5%
@@ -482,6 +483,25 @@ def run_checks(plan: QueryPlan, metric, result: ResultSet, sem: SemanticLayer,
             "MULTI_VALUED_DIMENSION", "warn", "维度可多值",
             "同一实体可能属于多个分组，分组计数之和可能大于总体；"
             "这是多值维度的正常结果。",
+        ))
+
+    # Query-aware checks: missing months, partial periods, negative values.
+    try:
+        scan = scan_quality(plan, metric, result, sem, db_path=db_path)
+        for item in scan:
+            issues.append(CheckIssue(
+                item.code, item.severity, item.title, item.detail,
+            ))
+            facts.setdefault("quality_scan", []).append({
+                "code": item.code,
+                "severity": item.severity,
+                "evidence": item.evidence,
+                "impact": item.impact,
+                "suggestion": item.suggestion,
+            })
+    except Exception as exc:
+        issues.append(CheckIssue(
+            "QUALITY_SCAN_FAILED", "info", "数据质量扫描未完成", str(exc),
         ))
 
     return issues, facts

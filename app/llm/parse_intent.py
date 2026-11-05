@@ -13,6 +13,7 @@ from app.core.logging import log_event, logger
 from app.domain.plan import ComparisonSpec
 from app.domain.query.metric import MetricSpec
 from app.domain.semantic.loader import SemanticLayer
+from app.domain.semantic.resolver import SemanticResolver
 from app.agent.contracts import ToolContext
 from app.chat.agent.tools import DescribeMetricTool, SearchSemanticsTool
 from app.llm.client import LLMClient, LLMError, LLMUnavailable
@@ -45,11 +46,14 @@ class LLMIntentParser:
         self._schema_card = build_schema_card(sem, dim_values_path=dim_values_path)
         self._index = index or {}
         self._use_brief = bool(use_brief and self._index)
+        self.resolver = SemanticResolver(sem)
 
     def _tool_context(self, text: str) -> ToolContext:
         return ToolContext(data={"index": self._index, "question": text})
 
     def _has_semantic_hit(self, text: str) -> bool:
+        if self.resolver.resolve(text).status != "missing":
+            return True
         if not self._index:
             return False
         searched = SearchSemanticsTool().run(
@@ -150,13 +154,52 @@ class LLMIntentParser:
         ))
         return result
 
+    def _candidate_hint(self, text: str) -> str:
+        resolution = self.resolver.resolve(text)
+        if not resolution.candidates:
+            return ""
+        lines = ["检索候选（确定性 resolver）:"]
+        for item in resolution.candidates[:8]:
+            mark = " [selected]" if item.metric_id == resolution.selected else ""
+            lines.append(f"- {item.metric_id}: {item.name}; score={item.score}{mark}")
+        return "\n".join(lines)
+
     def _system_for(self, text: str):
         card = self._schema_card
         if self._use_brief:
             brief = build_brief(self._index, text)
             if brief:
                 card = brief
+        hint = self._candidate_hint(text)
+        if hint:
+            card = f"{card}\n\n{hint}"
         return self._system.substitute(schema_card=card)
+
+    def _apply_resolver(self, text: str, result: ParseResult) -> ParseResult:
+        if result.intent_type != "query":
+            return result
+        slots = dict(result.slots or {})
+        if slots.get("metric") or slots.get("metric_spec"):
+            return result
+        if slots.get("ratio_numerator") or slots.get("ratio_denominator"):
+            return result
+        resolution = self.resolver.resolve(text)
+        if resolution.status == "unique" and resolution.selected:
+            slots["metric"] = resolution.selected
+            slots["metric_source"] = "resolved"
+            result.slots = slots
+            result.notes = list(dict.fromkeys(
+                result.notes + [resolution.reason]
+            ))
+        elif resolution.status == "ambiguous":
+            slots["unresolved"] = [
+                f"{item.name}" for item in resolution.candidates[:3]
+            ]
+            result.slots = slots
+            result.notes = list(dict.fromkeys(
+                result.notes + [resolution.reason]
+            ))
+        return result
 
     # ---------- validation ----------
     ALLOWED_SLOT_KEYS = {
@@ -557,6 +600,7 @@ class LLMIntentParser:
         result = self._validate(data)
         result = self._postprocess_lookup(result, text)
         result = self._prefer_published_ratio(text, result)
+        result = self._apply_resolver(text, result)
         result = self._apply_semantic_tools(text, result)
         result.notes = list(dict.fromkeys(
             result.notes + ["由工具辅助重新规划"]
@@ -589,6 +633,7 @@ class LLMIntentParser:
                         )
                     result = self._postprocess_lookup(result, text)
                     result = self._prefer_published_ratio(text, result)
+                    result = self._apply_resolver(text, result)
                     result = self._apply_semantic_tools(text, result)
                     result.notes = list(dict.fromkeys(result.notes + ["由模型解析意图"]))
                     return result
@@ -598,6 +643,7 @@ class LLMIntentParser:
                               error=last_error)
             fallback = self.fallback.parse(text, context)
             fallback = self._prefer_published_ratio(text, fallback)
+            fallback = self._apply_resolver(text, fallback)
             fallback = self._apply_semantic_tools(text, fallback)
             fallback.notes = list(dict.fromkeys(
                 fallback.notes + [
@@ -607,6 +653,7 @@ class LLMIntentParser:
             return fallback
         result = self.fallback.parse(text, context)
         result = self._prefer_published_ratio(text, result)
+        result = self._apply_resolver(text, result)
         result = self._apply_semantic_tools(text, result)
         result.notes = list(dict.fromkeys(result.notes + ["离线规则解析"]))
         return result
