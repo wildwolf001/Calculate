@@ -288,8 +288,6 @@ def plan_from_ir(ir: QueryIR, sem: SemanticLayer) -> QueryPlan:
             raise SemanticError(
                 f"实体计数需要 entity_count 指标，不能使用 {metric.name}"
             )
-        if dims:
-            raise SemanticError("实体计数暂不支持按维度拆分")
         if ir.having:
             raise SemanticError("实体计数不能使用 HAVING 表达实体阈值")
         nested = NestedSpec(

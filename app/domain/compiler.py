@@ -1030,6 +1030,39 @@ class _Builder:
             min_orders = int(self.plan.nested.min_orders)
         if not entity or not count_orders:
             raise SemanticError(f"实体指标 {self.metric.id} 定义不完整")
+        dims = list(self.plan.dimensions)
+        if dims:
+            dim_cols = [
+                f"{self._dim_column(dim)} AS {_q(dim)}" for dim in dims
+            ]
+            select_cols = dim_cols + [
+                f"{self.phys(entity)} AS {_q('_entity')}",
+                f"{count_orders} AS {_q('_n')}",
+            ]
+            group_by = ", ".join(str(i) for i in range(1, len(dims) + 2))
+            outer_dims = ", ".join(_q(dim) for dim in dims)
+            outer_group = ", ".join(str(i) for i in range(1, len(dims) + 1))
+            order = self._order_clause({"value", *dims})
+            limit = max(1, int(self.plan.limit))
+            sql = "\n".join([
+                "WITH entity AS (",
+                "  SELECT " + ", ".join(select_cols),
+                "  " + self._from_clause().replace("\n", "\n  "),
+                "  " + self._where_clause().replace("\n", "\n  "),
+                f"  GROUP BY {group_by}",
+                "), filtered AS (",
+                f"  SELECT {outer_dims}, {_q('_entity')}, {_q('_n')} "
+                f"FROM entity WHERE {_q('_n')} >= {self.p(min_orders)}",
+                ")",
+                f"SELECT {outer_dims}, COUNT(*) AS {_q('value')} FROM filtered",
+                f"GROUP BY {outer_group}",
+                order,
+                f"LIMIT {limit}",
+            ])
+            return self._finalize(
+                sql, dims + ["value"],
+                {"min_orders": min_orders, "entity": entity, "grouped": True},
+            )
         sql = "\n".join([
             "WITH entity AS (",
             f"  SELECT {self.phys(entity)} AS {_q('_entity')}, {count_orders} AS {_q('_n')}",

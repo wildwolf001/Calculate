@@ -20,14 +20,19 @@ class EntityCountSpec(BaseModel):
     min_events: int = Field(default=1, ge=1)
 ```
 
-parser 输出 `entity_count`，而不是 `having` 或 `nested`。binder 只把实体名词绑定到已发布的 `entity_count` 指标；如果没有匹配指标，返回 unresolved，不回退到订单数。
+parser 输出 `entity_count`，而不是 `having` 或 `nested`。语义层加载时会把 `entity_count` 指标里的 entity/event 元数据展开成实体注册表，并为每个实体生成一个 `min_orders=1` 的实体指标。binder 优先绑定这个注册表里的指标；没有匹配实体时澄清，不回退到订单数。
 
-planner 将 `entity_count` 规范化为 `NestedSpec(min_orders=min_events)`，compiler 复用已有的实体 CTE。validator 禁止实体计数使用全局 `HAVING`，并禁止 `nested` + 无分组维度。
+planner 将 `entity_count` 规范化为 `NestedSpec(min_orders=min_events)`。compiler 支持两种形态：
+
+- 无维度：按实体分组、阈值过滤、外层 `COUNT(*)`；
+- 有维度：按 `维度 + 实体` 分组、阈值过滤、外层按维度 `COUNT(*)`。
+
+validator 禁止实体计数使用全局 `HAVING`，并禁止 `nested` + 无分组维度。
 
 ## 边界
 
-- 实体计数不允许按维度拆分（当前 compiler 的 `_compile_entity` 只按实体分组；分组实体计数是后续工作）。
-- 实体计数只绑定 `type=entity_count` 的已发布指标；没有则澄清，不猜。
+- 分组实体计数只允许语义层声明支持的维度；跨事实表的 fanout 维度会被 `allowed_dimensions` 拒绝。
+- 实体注册表可以从现有 `entity_count` 指标推导，也可以由 `entities` 配置显式声明；没有实体元数据时澄清，不猜。
 - 组内过滤仍保留 `nested -> HAVING`，但要求存在分组维度。
 
 ## 测试
@@ -38,14 +43,15 @@ planner 将 `entity_count` 规范化为 `NestedSpec(min_orders=min_events)`，co
 - 多轮上下文：阈值变化、时间变化、实体计数不泄漏到新指标；
 - 负例：订单数问题不能被改成实体计数；
 - 组内过滤仍使用 `HAVING`；
+- 分组实体计数（按客户分层）使用两层 `GROUP BY`；
 - 缺少实体指标时澄清，而不是回退到订单数；
 - 第二套完全不同的 schema（accounts/invoices）零 Python 改动通过。
 
 ## 后续
 
-当前实现仍依赖语义层里已有 `entity_count` 指标（如 `复购客户数`）。真正的通用化需要：
+当前的实体注册表优先从已有 `entity_count` 指标推导，也支持显式 `entities` 配置。下一步的通用化重点：
 
-- 语义层增加中性的 entity/event/scope 原语；
-- ingest 为每个实体表生成自然键和事件关系；
-- compiler 从原语组合实体计数，而不是从预置指标里挑；
-- resolver 退化为纯 binder，删除 `nested` 和 legacy ecommerce 分支。
+- ingest 自动为没有 `entity_count` 指标的数据集推断实体表、自然键和事件关系；
+- 把显式 `entities` 作为发布语义的一部分，而不是仅靠指标反推；
+- 让 resolver 退化为纯 binder，逐步删除 legacy ecommerce 分支；
+- 在兼容旧事件回放的前提下，最终移除 `nested`。

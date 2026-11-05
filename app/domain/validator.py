@@ -193,11 +193,6 @@ def validate_plan(plan: QueryPlan, sem: SemanticLayer) -> list[Issue]:
                 "实体计数只能绑定 entity_count 指标，"
                 f"不能使用「{metric.name}」",
             ))
-        if plan.dimensions:
-            issues.append(Issue(
-                "ENTITY_COUNT_GROUPED_UNSUPPORTED",
-                "实体计数暂不支持按维度拆分",
-            ))
         if plan.having:
             issues.append(Issue(
                 "ENTITY_COUNT_HAS_HAVING",

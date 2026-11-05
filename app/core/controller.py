@@ -2191,7 +2191,6 @@ class Controller:
             )
             hard_codes = {
                 "ENTITY_COUNT_MISMATCH",
-                "ENTITY_COUNT_GROUPED_UNSUPPORTED",
                 "ENTITY_COUNT_HAS_HAVING",
                 "ENTITY_COUNT_MISSING_THRESHOLD",
                 "NESTED_WITHOUT_GROUP",

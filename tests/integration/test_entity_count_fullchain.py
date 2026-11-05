@@ -11,7 +11,7 @@ import duckdb
 from app.core.controller import Controller
 from app.core.event_store import EventStore
 from app.domain.resolver import RuleGrounder
-from app.domain.semantic.loader import Dimension, Metric, SemanticLayer
+from app.domain.semantic.loader import Dimension, Metric, SemanticLayer, expand_entities
 from app.llm.compose_answer import TemplateComposer
 from app.llm.parse_intent import LLMIntentParser
 from app.llm.rule_parser import RuleParser
@@ -61,23 +61,6 @@ def _semantic(
             "supported_grain": ["none", "month", "seller"],
             "unit": "笔",
         }),
-        "repeat_entity_count": Metric("repeat_entity_count", {
-            "name_zh": metric_name,
-            "type": "entity_count",
-            "fact": fact_table,
-            "entity": f"{entity_table}.{natural_key}",
-            "entity_join": f"{fact_table} -> {entity_table}",
-            "count_orders": f"COUNT(DISTINCT {fact_table}.{fact_key})",
-            "min_orders": 2,
-            "scope": {f"{fact_table}.{status_col}": status_value},
-            "time_via": f"{fact_table}.{date_col}",
-            "supported_grain": ["none"],
-            "unit": "个",
-            "definition": (
-                f"按 {natural_key} 统计{status_value}事件不少于 2 的{entity_label}数"
-            ),
-            "synonyms": [metric_name, entity_label],
-        }),
     }
     dimensions = {
         "status": Dimension("status", {
@@ -91,7 +74,7 @@ def _semantic(
     }
     if extra_dims:
         dimensions.update(extra_dims)
-    return SemanticLayer(
+    sem = SemanticLayer(
         version=1,
         dataset="entity_fixture",
         tables=tables,
@@ -104,9 +87,27 @@ def _semantic(
         binding={"tables": {}},
         capabilities={"entity_count": True, "member_list": True, "ratio": True},
         parser="generic",
-        raw={},
+        raw={
+            "entities": {
+                entity_table: {
+                    "table": entity_table,
+                    "key": natural_key,
+                    "label": entity_label,
+                    "aliases": [entity_label, f"自然{entity_label}"],
+                    "event": {
+                        "fact": fact_table,
+                        "key": f"{fact_table}.{fact_key}",
+                        "scope": {f"{fact_table}.{status_col}": status_value},
+                        "time_via": f"{fact_table}.{date_col}",
+                        "join": f"{fact_table} -> {entity_table}",
+                    },
+                }
+            }
+        },
         time_axes=[],
     )
+    expand_entities(sem)
+    return sem
 
 
 def _make_db(tmp_path: Path, *, entity_table: str, entity_pk: str,
@@ -189,10 +190,16 @@ def _ecommerce_env(tmp_path: Path):
         status_col="status", status_value="已送达", date_col="order_date",
         metric_name="复购客户数", entity_label="客户",
         order_metric_name="已送达订单数",
-        extra_dims={"seller": Dimension("seller", {
-            "name_zh": "商家名称", "kind": "categorical",
-            "column": "orders.seller",
-        })},
+        extra_dims={
+            "seller": Dimension("seller", {
+                "name_zh": "商家名称", "kind": "categorical",
+                "column": "orders.seller",
+            }),
+            "segment": Dimension("segment", {
+                "name_zh": "客户分层", "kind": "categorical",
+                "column": "customers.segment",
+            }),
+        },
     )
     _make_db(
         tmp_path,
@@ -238,7 +245,7 @@ def test_entity_count_full_chain_returns_repeat_customers(tmp_path):
     assert _rows(events) == [[2]]
     assert "2" in _answer(events)
     created = next(e.payload for e in events if e.type == "query.ir.created")
-    assert created["metric"] == "repeat_entity_count"
+    assert created["metric"] == "entity_count_customers"
     assert created["entity_count"] == {"entity": "自然客户", "min_events": 2}
     assert created["nested"] == {"entity": "自然客户", "min_orders": 2}
     assert not any(e.type == "plan.repaired" for e in events)
@@ -311,7 +318,7 @@ def test_llm_order_metric_is_corrected_for_entity_question(tmp_path):
     events = _turn(ctrl, "s1", QUESTION)
     assert _rows(events) == [[2]]
     created = next(e.payload for e in events if e.type == "query.ir.created")
-    assert created["metric"] == "repeat_entity_count"
+    assert created["metric"] == "entity_count_customers"
     assert created["entity_count"] == {"entity": "自然客户", "min_events": 2}
     assert not any(e.type == "plan.repaired" for e in events)
 
@@ -407,4 +414,14 @@ def test_context_does_not_leak_entity_count_into_a_new_metric(tmp_path):
     created = next(e.payload for e in second if e.type == "query.ir.created")
     assert created["metric"] == "order_count"
     assert created["entity_count"] is None
+
+
+def test_grouped_entity_count_by_customer_segment(tmp_path):
+    sem, dim_values = _ecommerce_env(tmp_path)
+    ctrl = _controller(tmp_path, sem, dim_values, RuleParser(sem, dim_values))
+    events = _turn(ctrl, "s1", "按客户分层，有多少自然客户至少2笔已送达订单？")
+    rows = _rows(events)
+    assert {row[0]: row[1] for row in rows} == {"新客": 1, "老客": 1}
+    sql = next(e.payload["sql"] for e in events if e.type == "sql.compiled")
+    assert sql.count("GROUP BY") >= 2
 

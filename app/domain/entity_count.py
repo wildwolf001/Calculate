@@ -110,7 +110,8 @@ class EntityResolution:
 
 
 def resolve_entity_count_metric(
-    spec: EntityCountSpec, sem: SemanticLayer
+    spec: EntityCountSpec, sem: SemanticLayer,
+    dimensions: tuple[str, ...] = (),
 ) -> EntityResolution:
     entity = str(spec.entity or "").strip()
     if not entity:
@@ -118,6 +119,9 @@ def resolve_entity_count_metric(
     scored: list[tuple[int, str, str]] = []
     for metric in sem.metrics.values():
         if metric.type != "entity_count":
+            continue
+        supported = set(metric.raw.get("supported_grain") or ["none"])
+        if dimensions and any(dim not in supported for dim in dimensions):
             continue
         best = 0
         for term in [metric.name, *metric.synonyms]:
@@ -187,14 +191,27 @@ def apply_entity_count(
         return slots
 
     resolved = EntityCountSpec(entity=entity, min_events=spec.min_events)
-    resolution = resolve_entity_count_metric(resolved, sem)
+    dimensions = tuple(str(dim) for dim in (slots.get("dimensions") or []))
+    resolution = resolve_entity_count_metric(resolved, sem, dimensions)
     if resolution.status == "unique" and resolution.selected:
+        min_events = resolved.min_events
+        if auto and min_events == 1:
+            selected = sem.metrics.get(resolution.selected)
+            default = int(selected.raw.get("min_orders") or 1) if selected else 1
+            if default > 1:
+                min_events = default
+        if (
+            auto and min_events == 1 and not explicit
+            and not any(cue in entity for cue in ("自然", "去重", "唯一", "不同"))
+        ):
+            return slots
+        bound = EntityCountSpec(entity=entity, min_events=min_events)
         slots["metric"] = resolution.selected
         slots["metric_source"] = "entity_count"
-        slots["entity_count"] = resolved.model_dump(mode="json")
+        slots["entity_count"] = bound.model_dump(mode="json")
         slots["nested"] = {
             "entity": entity,
-            "min_orders": resolved.min_events,
+            "min_orders": min_events,
         }
         slots["having"] = []
         slots["unresolved"] = [
@@ -203,7 +220,7 @@ def apply_entity_count(
         ]
         slots["notes"] = list(dict.fromkeys(
             list(slots.get("notes") or [])
-            + [f"实体计数：{entity}，每个实体至少 {resolved.min_events} 个事件"]
+            + [f"实体计数：{entity}，每个实体至少 {min_events} 个事件"]
         ))
         return slots
 

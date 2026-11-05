@@ -6,6 +6,7 @@ startup. The agent never silently degrades to "best effort" business logic.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
@@ -62,6 +63,28 @@ class Dimension:
 
 
 @dataclass
+class Entity:
+    id: str
+    raw: dict[str, Any]
+
+    @property
+    def table(self) -> str:
+        return str(self.raw.get("table") or "")
+
+    @property
+    def key(self) -> str:
+        return str(self.raw.get("key") or "")
+
+    @property
+    def label(self) -> str:
+        return str(self.raw.get("label") or self.raw.get("name_zh") or self.id)
+
+    @property
+    def aliases(self) -> list[str]:
+        return [str(item) for item in (self.raw.get("aliases") or []) if item]
+
+
+@dataclass
 class SemanticLayer:
     version: int
     dataset: str
@@ -77,6 +100,7 @@ class SemanticLayer:
     parser: str = "generic"
     raw: dict[str, Any] = field(repr=False, default_factory=dict)
     time_axes: list[dict[str, Any]] = field(default_factory=list)
+    entities: dict[str, Entity] = field(default_factory=dict)
 
     # ---- lookup helpers ----
     def metric(self, mid: str) -> Metric:
@@ -207,6 +231,149 @@ def validate(sem: dict, binding: dict, catalog_path: Path = CATALOG_PATH) -> Non
         raise SemanticError("语义层校验失败:\n  - " + "\n  - ".join(errors))
 
 
+
+def _split_ref(ref: str) -> tuple[str, str]:
+    table, _, column = str(ref or "").partition(".")
+    return table, column
+
+
+def _entity_supported_grain(sem: SemanticLayer, entity_table: str,
+                            fact_table: str) -> list[str]:
+    supported = ["none"]
+    for dim in sem.dimensions.values():
+        if dim.kind == "time":
+            supported.append(dim.id)
+            continue
+        column = dim.raw.get("column")
+        table = _split_ref(column)[0] if column else ""
+        requires = str(dim.raw.get("requires") or "")
+        if table in {entity_table, fact_table} or requires in {entity_table, fact_table}:
+            supported.append(dim.id)
+    return list(dict.fromkeys(supported))
+
+
+def _expand_entities(sem: SemanticLayer) -> None:
+    """Fill the entity registry and generate neutral entity-count metrics.
+
+    Entity-count metrics are pre-coordinated macros (entity + scope + threshold).
+    This turns their entity/event metadata into a reusable registry and adds a
+    min_events=1 metric per entity, so "how many customers" no longer depends
+    on a metric whose name happens to contain 复购.
+    """
+    explicit = sem.raw.get("entities") or {}
+    if isinstance(explicit, dict):
+        for entity_id, raw in explicit.items():
+            if isinstance(raw, dict):
+                sem.entities[str(entity_id)] = Entity(str(entity_id), dict(raw))
+
+    def find_entity(table: str, key: str):
+        for entity in sem.entities.values():
+            if entity.table == table and entity.key == key:
+                return entity
+        return None
+
+    for metric in list(sem.metrics.values()):
+        if metric.type != "entity_count":
+            continue
+        table, key = _split_ref(metric.raw.get("entity") or "")
+        if not table or not key:
+            continue
+        entity = find_entity(table, key)
+        if entity is None:
+            name = metric.name
+            label = str(metric.raw.get("entity_label") or name)
+            for prefix in ("复购", "重复", "多次"):
+                label = label.replace(prefix, "")
+            if label.endswith("数"):
+                label = label[:-1]
+            label = label or table
+            entity_id = str(metric.raw.get("entity_id") or table)
+            aliases = [label, f"自然{label}", f"去重{label}"]
+            event_key = ""
+            match = re.search(r"(t_[A-Za-z0-9_]+\.[A-Za-z0-9_]+)",
+                              str(metric.raw.get("count_orders") or ""))
+            if match:
+                event_key = match.group(1)
+            if not event_key:
+                grain = (sem.tables.get(metric.fact) or {}).get("grain") or []
+                if grain:
+                    event_key = f"{metric.fact}.{grain[0]}"
+            entity = Entity(entity_id, {
+                "table": table,
+                "key": key,
+                "label": label,
+                "aliases": aliases,
+                "unit": metric.raw.get("unit"),
+                "event": {
+                    "fact": metric.fact,
+                    "key": event_key,
+                    "scope": dict(metric.raw.get("scope") or {}),
+                    "time_via": metric.raw.get("time_via"),
+                    "join": metric.raw.get("entity_join"),
+                },
+            })
+            sem.entities[entity.id] = entity
+
+    for entity in list(sem.entities.values()):
+        event = entity.raw.get("event") or {}
+        fact = str(event.get("fact") or "")
+        if not fact or fact not in sem.tables:
+            continue
+        metric_id = f"entity_count_{entity.id}"
+        if metric_id in sem.metrics:
+            continue
+        label = entity.label
+        exact_name = f"{label}数"
+        if any(
+            metric.type == "entity_count"
+            and metric.raw.get("entity") == f"{entity.table}.{entity.key}"
+            and metric.name == exact_name
+            for metric in sem.metrics.values()
+        ):
+            continue
+        event_key = str(event.get("key") or "")
+        if not event_key:
+            grain = (sem.tables.get(fact) or {}).get("grain") or []
+            if grain:
+                event_key = f"{fact}.{grain[0]}"
+        count_orders = (
+            f"COUNT(DISTINCT {event_key})" if event_key else "COUNT(*)"
+        )
+        # Do not add the bare label: it would hijack an existing
+        # order-scoped metric such as 客户数.  Natural/deduplicated aliases are
+        # explicit enough for the entity-count binder.
+        aliases = [
+            alias for alias in dict.fromkeys([
+                f"自然{label}", f"去重{label}", exact_name,
+                *entity.aliases,
+            ])
+            if alias != label
+        ]
+        sem.metrics[metric_id] = Metric(metric_id, {
+            "name_zh": exact_name,
+            "type": "entity_count",
+            "fact": fact,
+            "entity": f"{entity.table}.{entity.key}",
+            "entity_join": event.get("join") or f"{fact} -> {entity.table}",
+            "count_orders": count_orders,
+            "min_orders": 1,
+            "scope": dict(event.get("scope") or {}),
+            "time_via": event.get("time_via"),
+            "supported_grain": _entity_supported_grain(
+                sem, entity.table, fact
+            ),
+            "unit": entity.raw.get("unit") or "个",
+            "definition": f"按 {entity.key} 去重的{label}数",
+            "synonyms": aliases,
+            "provenance": "derived",
+            "confidence": 0.7,
+        })
+
+def expand_entities(sem: SemanticLayer) -> None:
+    """Public hook for tests/callers that construct SemanticLayer directly."""
+    _expand_entities(sem)
+
+
 def load_semantic(
     semantic_path: Path = SEMANTIC_PATH,
     binding_path: Path = BINDING_PATH,
@@ -217,7 +384,7 @@ def load_semantic(
     validate(sem, binding, catalog_path=catalog_path)
     metrics = {mid: Metric(mid, m) for mid, m in sem.get("metrics", {}).items()}
     dimensions = {did: Dimension(did, d) for did, d in sem.get("dimensions", {}).items()}
-    return SemanticLayer(
+    layer = SemanticLayer(
         version=int(sem.get("version", 1)),
         dataset=sem.get("dataset", ""),
         tables=sem.get("tables", {}),
@@ -235,6 +402,8 @@ def load_semantic(
         raw=sem,
         time_axes=list(sem.get("time_axes") or []),
     )
+    _expand_entities(layer)
+    return layer
 
 
 def available_dimension_values(dim_id: str,
