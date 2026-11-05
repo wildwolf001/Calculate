@@ -110,6 +110,7 @@
 - 修复 common_grain_table 选到高层表（customers 而非 orders）导致时间过滤无法 join；修复 join 条件与指标表达式未走 binding 的 SQL 错误；derived dimension 统一走 binding 重写。
 - capability 接受 QueryIR 的 dict filters，避免主链路 IR 化后 FilterSpec 属性访问崩溃；补回归测试。
 - categories 数据源验收发现并修复：中文 brief 对“延迟率”→“配送延迟率”的部分匹配；parser 优先使用已发布 ratio 指标，避免分子/分母 scope 不一致；共享维度不再沿用其他 fact 的 join_path，防止无意义 1:N join。
+- brief 增加全量指标/维度“名称目录”，保证已发布指标名不会因 top-k 截断而从 prompt 消失；表达式/取值仍按相关度裁剪。
 - 未使用电商数据集；测试数据为临时生成的 CSV/DataFrame。
 
 ## 尚未接线

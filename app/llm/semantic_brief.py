@@ -109,6 +109,18 @@ def build_brief(index: dict[str, Any], question: str,
 
     lines: list[str] = []
     lines.append(f"dataset={index.get('dataset_id')} semantic_version={index.get('semantic_version')}")
+    # Recall catalogue: names are cheap and must never be lost to top-k
+    # truncation. Expressions/values below are still retrieved by relevance.
+    metric_catalog = list(metrics.items())[:120]
+    lines.append("指标目录:")
+    lines.append("; ".join(
+        f"{mid}={metric.get('name') or mid}" for mid, metric in metric_catalog
+    ))
+    dim_catalog = list(dimensions.items())[:120]
+    lines.append("维度目录:")
+    lines.append("; ".join(
+        f"{did}={dim.get('name') or did}" for did, dim in dim_catalog
+    ))
     lines.append("指标:")
     lines.extend(
         _metric_line(mid, metric, dim_names) for mid, metric in ranked_metrics
