@@ -249,6 +249,10 @@ class ToolHarness:
         issue_codes = {issue.get("code") for issue in issues}
         if "NESTED_UNSUPPORTED" not in issue_codes or not plan.nested:
             return None, {}
+        if plan.entity_count or not plan.dimensions:
+            # Entity counts and ungrouped plans need a per-entity subquery.
+            # Rewriting them to a global HAVING changes the question.
+            return None, {}
         repaired = plan.model_copy(deep=True)
         minimum = int(repaired.nested.min_orders)
         repaired.nested = None

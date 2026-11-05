@@ -278,6 +278,24 @@ def plan_from_ir(ir: QueryIR, sem: SemanticLayer) -> QueryPlan:
         limit_per_group = None
         notes.append("只有一个分组维度，按整体排序取前 N。")
 
+    entity_count = ir.entity_count
+    nested = (
+        ir.nested if isinstance(ir.nested, NestedSpec)
+        else (NestedSpec.model_validate(ir.nested) if ir.nested else None)
+    )
+    if entity_count is not None:
+        if metric.type != "entity_count":
+            raise SemanticError(
+                f"实体计数需要 entity_count 指标，不能使用 {metric.name}"
+            )
+        if dims:
+            raise SemanticError("实体计数暂不支持按维度拆分")
+        if ir.having:
+            raise SemanticError("实体计数不能使用 HAVING 表达实体阈值")
+        nested = NestedSpec(
+            entity=entity_count.entity, min_orders=entity_count.min_events
+        )
+
     return QueryPlan(
         plan_id=(
             f"p_{metric.id}_over_{ir.ratio_denominator}"
@@ -297,10 +315,8 @@ def plan_from_ir(ir: QueryIR, sem: SemanticLayer) -> QueryPlan:
             for item in ir.having
         ],
         ratio_grain=metric.raw.get("ratio_grain") if metric.type == "ratio" else None,
-        nested=(
-            ir.nested if isinstance(ir.nested, NestedSpec)
-            else (NestedSpec.model_validate(ir.nested) if ir.nested else None)
-        ),
+        nested=nested,
+        entity_count=entity_count,
         order_by=order_by,
         limit=limit,
         limit_per_group=limit_per_group,

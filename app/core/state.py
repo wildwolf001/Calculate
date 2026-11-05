@@ -16,6 +16,7 @@ from app.config.settings import DEFAULT_DATASET_ID
 from app.domain.plan import (
     CompareSpec,
     ComparisonSpec,
+    EntityCountSpec,
     FilterSpec,
     HavingSpec,
     NestedSpec,
@@ -59,6 +60,7 @@ class Slots(BaseModel):
     limit_per_group: int | None = None
     share: bool = False
     nested: NestedSpec | None = None
+    entity_count: EntityCountSpec | None = None
     intent: str = "query"          # query | lookup | coverage | explain
     coverage_period: str = "month"
     unresolved: list[str] = Field(default_factory=list)

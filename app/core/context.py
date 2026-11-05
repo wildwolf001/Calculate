@@ -63,6 +63,7 @@ def _scope_from_plan(plan: dict | None) -> dict:
         "dimensions": list(plan.get("dimensions") or []),
         "time": plan.get("time"),
         "comparison": plan.get("comparison"),
+        "entity_count": plan.get("entity_count"),
         "filters": plan.get("filters") or {},
     }
 
@@ -210,6 +211,14 @@ def apply_context_action(result, context: dict | None) -> None:
     for key in ("metric", "time", "comparison"):
         if slots.get(key) is None and base.get(key) is not None:
             slots[key] = base[key]
+    if (
+        slots.get("metric") == base.get("metric")
+        and slots.get("entity_count") is None
+        and base.get("entity_count") is not None
+    ):
+        slots["entity_count"] = base["entity_count"]
+        if slots.get("nested") is None and base.get("nested") is not None:
+            slots["nested"] = base["nested"]
     if action in {"inherit", "refine"} and not slots.get("dimensions"):
         slots["dimensions"] = list(base.get("dimensions") or [])
     if action == "reference_result" and not slots.get("dimensions"):

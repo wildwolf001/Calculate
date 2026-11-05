@@ -2189,6 +2189,33 @@ class Controller:
                     repairable=True,
                 ).as_dict(),
             )
+            hard_codes = {
+                "ENTITY_COUNT_MISMATCH",
+                "ENTITY_COUNT_GROUPED_UNSUPPORTED",
+                "ENTITY_COUNT_HAS_HAVING",
+                "ENTITY_COUNT_MISSING_THRESHOLD",
+                "NESTED_WITHOUT_GROUP",
+            }
+            if plan.entity_count or any(
+                issue.get("code") in hard_codes for issue in issue_dicts
+            ):
+                message = "；".join(
+                    str(issue.get("message") or issue.get("code"))
+                    for issue in issue_dicts
+                )
+                return events + [
+                    ("plan.rejected", {
+                        "reason": str(exc),
+                        "issues": issue_dicts,
+                        "recoverable": False,
+                    }),
+                    ("answer.composed", {
+                        "text": message,
+                        "result_id": None,
+                        "status": "rejected",
+                    }),
+                    ("result.presented", {"result_id": None}),
+                ]
             repaired_plan, repair_details = self.tools.repair_nested_plan(
                 plan, issue_dicts
             )
@@ -2615,8 +2642,13 @@ class Controller:
         plan = state.plan
         metric = self._metric_for_plan(plan)
         ctx = project_for_composer(state)
+        metric_name = metric.name if metric else plan.metric
+        if plan is not None and plan.entity_count is not None:
+            metric_name = plan.entity_count.entity
+            if not metric_name.endswith("数"):
+                metric_name += "数"
         ctx.update({
-            "metric_name": metric.name if metric else plan.metric,
+            "metric_name": metric_name,
             "metric_unit": metric.raw.get("unit") if metric else None,
             "metric_type": metric.type if metric else "aggregate",
             "time_axis": metric.raw.get("time_axis") if metric else None,

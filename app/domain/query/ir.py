@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.domain.plan import EntityCountSpec
 from app.domain.query.metric import MetricSpec
 
 
@@ -43,6 +44,7 @@ class QueryIR:
     order_by: tuple[dict[str, Any], ...] = ()
     having: tuple[dict[str, Any], ...] = ()
     nested: dict[str, Any] | None = None
+    entity_count: EntityCountSpec | None = None
     intent: str = "query"
     unresolved: tuple[str, ...] = ()
     notes: tuple[str, ...] = ()
@@ -84,6 +86,12 @@ class QueryIR:
             order_by=tuple(_dump(item) for item in (data.get("order_by") or [])),
             having=tuple(_dump(item) for item in (data.get("having") or [])),
             nested=_dump(data.get("nested")),
+            entity_count=(
+                data["entity_count"]
+                if isinstance(data.get("entity_count"), EntityCountSpec)
+                else (EntityCountSpec.model_validate(data["entity_count"])
+                      if isinstance(data.get("entity_count"), dict) else None)
+            ),
             intent=str(data.get("intent") or "query"),
             unresolved=tuple(str(item) for item in (data.get("unresolved") or [])),
             notes=tuple(str(item) for item in (data.get("notes") or [])),
@@ -113,6 +121,10 @@ class QueryIR:
             "order_by": list(self.order_by),
             "having": list(self.having),
             "nested": self.nested,
+            "entity_count": (
+                self.entity_count.model_dump(mode="json")
+                if self.entity_count is not None else None
+            ),
             "intent": self.intent,
             "unresolved": list(self.unresolved),
             "notes": list(self.notes),

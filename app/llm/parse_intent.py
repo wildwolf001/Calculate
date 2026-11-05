@@ -10,7 +10,8 @@ from string import Template
 from app.config.settings import DIM_VALUES_PATH, MAX_SUBQUESTIONS
 from app.core.interfaces import ParseResult
 from app.core.logging import log_event, logger
-from app.domain.plan import ComparisonSpec
+from app.domain.entity_count import apply_entity_count
+from app.domain.plan import ComparisonSpec, EntityCountSpec
 from app.domain.query.metric import MetricSpec
 from app.domain.semantic.loader import SemanticLayer
 from app.domain.semantic.resolver import SemanticResolver
@@ -74,6 +75,8 @@ class LLMIntentParser:
         if result.intent_type != "query":
             return result
         slots = dict(result.slots or {})
+        if slots.get("entity_count"):
+            return result
         if not slots.get("ratio_numerator") and not slots.get("ratio_denominator"):
             return result
         from app.llm.semantic_brief import _term_score
@@ -110,6 +113,8 @@ class LLMIntentParser:
         if not self._index or result.intent_type != "query":
             return result
         slots = dict(result.slots or {})
+        if slots.get("entity_count"):
+            return result
         metric_id = slots.get("metric")
         metrics = self._index.get("metrics") or {}
         if metric_id and metric_id in metrics:
@@ -175,10 +180,30 @@ class LLMIntentParser:
             card = f"{card}\n\n{hint}"
         return self._system.substitute(schema_card=card)
 
+    def _apply_entity_count(
+        self, text: str, result: ParseResult, context: dict | None = None
+    ) -> ParseResult:
+        if result.intent_type != "query":
+            return result
+        slots = dict(result.slots or {})
+        explicit = isinstance(slots.get("entity_count"), dict)
+        previous = (context or {}).get("slots") or {}
+        slots = apply_entity_count(
+            slots, text, self.sem, previous=previous, explicit=explicit
+        )
+        result.slots = slots
+        result.unresolved = list(slots.get("unresolved") or [])
+        result.notes = list(dict.fromkeys(
+            list(result.notes or []) + list(slots.get("notes") or [])
+        ))
+        return result
+
     def _apply_resolver(self, text: str, result: ParseResult) -> ParseResult:
         if result.intent_type != "query":
             return result
         slots = dict(result.slots or {})
+        if slots.get("entity_count"):
+            return result
         if slots.get("metric_spec"):
             return result
         if slots.get("ratio_numerator") or slots.get("ratio_denominator"):
@@ -237,7 +262,7 @@ class LLMIntentParser:
     # ---------- validation ----------
     ALLOWED_SLOT_KEYS = {
         "metric", "dimensions", "time", "filters", "having", "compare",
-        "comparison", "order_by", "limit", "nested", "intent", "unresolved", "notes",
+        "comparison", "order_by", "limit", "nested", "entity_count", "intent", "unresolved", "notes",
         "coverage_period", "ratio_numerator", "ratio_denominator", "time_axis",
         "share", "limit_per_group", "metric_expr", "metric_source",
     }
@@ -362,6 +387,17 @@ class LLMIntentParser:
             if not 1 <= limit_per_group <= 50:
                 raise IntentParseError("limit_per_group 必须在 1..50")
 
+        entity_count = raw_slots.get("entity_count") or None
+        if isinstance(entity_count, dict):
+            try:
+                entity_count = EntityCountSpec.model_validate(entity_count).model_dump(
+                    mode="json"
+                )
+            except Exception as exc:
+                raise IntentParseError(f"entity_count 非法: {exc}") from exc
+        elif entity_count is not None:
+            raise IntentParseError("entity_count 必须是对象")
+
         return {
             "metric": metric,
             "metric_spec": (
@@ -384,6 +420,7 @@ class LLMIntentParser:
             "limit_per_group": limit_per_group,
             "share": share,
             "nested": raw_slots.get("nested") or None,
+            "entity_count": entity_count,
             "intent": raw_slots.get("intent", "query"),
             "unresolved": raw_slots.get("unresolved") or [],
             "notes": [],
@@ -632,6 +669,7 @@ class LLMIntentParser:
         )
         result = self._validate(data)
         result = self._postprocess_lookup(result, text)
+        result = self._apply_entity_count(text, result, context)
         result = self._prefer_published_ratio(text, result)
         result = self._apply_resolver(text, result)
         result = self._apply_semantic_tools(text, result)
@@ -665,6 +703,7 @@ class LLMIntentParser:
                             "请给出可执行的 slots，或明确说明缺少什么"
                         )
                     result = self._postprocess_lookup(result, text)
+                    result = self._apply_entity_count(text, result, context)
                     result = self._prefer_published_ratio(text, result)
                     result = self._apply_resolver(text, result)
                     result = self._apply_semantic_tools(text, result)
@@ -675,6 +714,7 @@ class LLMIntentParser:
                     log_event(logger, "parse_intent.invalid", attempt=attempt + 1,
                               error=last_error)
             fallback = self.fallback.parse(text, context)
+            fallback = self._apply_entity_count(text, fallback, context)
             fallback = self._prefer_published_ratio(text, fallback)
             fallback = self._apply_resolver(text, fallback)
             fallback = self._apply_semantic_tools(text, fallback)
@@ -685,6 +725,7 @@ class LLMIntentParser:
             ))
             return fallback
         result = self.fallback.parse(text, context)
+        result = self._apply_entity_count(text, result, context)
         result = self._prefer_published_ratio(text, result)
         result = self._apply_resolver(text, result)
         result = self._apply_semantic_tools(text, result)

@@ -13,6 +13,8 @@ from datetime import date, timedelta
 
 from app.config.settings import DIM_VALUES_PATH
 from app.core.interfaces import ParseResult
+from app.domain.entity_count import apply_entity_count, detect_entity_count
+from app.domain.plan import EntityCountSpec
 from app.domain.semantic.graph import allowed_dimensions
 from app.domain.semantic.loader import SemanticLayer
 
@@ -688,6 +690,58 @@ class RuleParser:
         dims = self._generic_dims(masked)
         order_by, limit = self._generic_rank(text)
 
+        # Entity-count questions are a shape, not an order-count metric.  Bind
+        # the entity/threshold here so the normal metric scoring never turns
+        # "customers with >= 2 orders" into COUNT(order_id).
+        entity_spec = detect_entity_count(text)
+        if entity_spec is None:
+            threshold = re.search(
+                r"(?:至少|不少于)\s*(\d+)\s*(?:笔|单|次|个|张|份|条)", text
+            )
+            prev_entity = (
+                (prev.get("entity_count") or {}) if isinstance(prev, dict) else {}
+            )
+            if threshold and prev_entity.get("entity"):
+                entity_spec = EntityCountSpec(
+                    entity="", min_events=int(threshold.group(1))
+                )
+        if entity_spec is not None:
+            probe = {
+                "metric": None,
+                "dimensions": list(dims),
+                "filters": dict(filters),
+                "having": [],
+                "notes": list(notes),
+            }
+            if entity_spec.min_events > 1 or not entity_spec.entity:
+                # A follow-up such as "那至少3笔呢" carries only the threshold;
+                # the entity comes from the previous turn.  Plain "how many X"
+                # with min_events=1 is re-detected by the binder, so a false
+                # positive like "一共有" must not become an explicit shape.
+                probe["entity_count"] = entity_spec.model_dump(mode="json")
+            apply_entity_count(
+                probe, text, self.sem, previous=prev if isinstance(prev, dict) else None
+            )
+            if probe.get("metric"):
+                slots = self._slots(
+                    probe["metric"], dims, time_range, filters, [], None,
+                    order_by, limit, text, notes,
+                )
+                slots["entity_count"] = probe["entity_count"]
+                slots["nested"] = probe["nested"]
+                slots["metric_source"] = "entity_count"
+                slots["notes"] = list(probe.get("notes") or notes)
+                return ParseResult(
+                    intent_type="query", tier="A", confidence=0.85,
+                    slots=slots, notes=slots["notes"],
+                )
+            if probe.get("unresolved"):
+                return ParseResult(
+                    intent_type="query", tier="A", confidence=0.5,
+                    slots=probe, unresolved=list(probe["unresolved"]),
+                    notes=list(probe.get("notes") or []),
+                )
+
         if not hits:
             count_metric = self._count_metric_for_noun(text)
             if count_metric:
@@ -765,6 +819,14 @@ class RuleParser:
             notes.append("已忽略与指标粒度不兼容的筛选：" + "、".join(dropped_filters))
         slots = self._slots(chosen, kept_dims, time_range, kept_filters, [], None,
                             order_by, limit, text, notes)
+        if (
+            prev.get("entity_count")
+            and not slots.get("entity_count")
+            and chosen == prev.get("metric")
+        ):
+            slots["entity_count"] = prev["entity_count"]
+            if prev.get("nested"):
+                slots["nested"] = prev["nested"]
         return ParseResult(
             intent_type="query", tier="A", confidence=0.8,
             slots=slots, notes=notes,

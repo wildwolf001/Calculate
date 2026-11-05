@@ -51,6 +51,11 @@ class NestedSpec(BaseModel):
     min_orders: int = 2
 
 
+class EntityCountSpec(BaseModel):
+    entity: str
+    min_events: int = Field(default=1, ge=1)
+
+
 class QueryPlan(BaseModel):
     # Two plan shapes share one contract: aggregates need a metric, member
     # lists enumerate the values of one dimension and only need list_dim.
@@ -69,6 +74,7 @@ class QueryPlan(BaseModel):
     ratio_numerator: str | None = None
     ratio_denominator: str | None = None
     nested: NestedSpec | None = None
+    entity_count: EntityCountSpec | None = None
     order_by: list[OrderSpec] = Field(default_factory=list)
     limit: int = 100
     limit_per_group: int | None = None

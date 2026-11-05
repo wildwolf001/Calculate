@@ -67,6 +67,11 @@ def display_spec(plan: QueryPlan, sem: SemanticLayer, result: ResultSet) -> dict
         }
 
     metric = _metric_for(plan, sem)
+    label = metric.name
+    if plan.entity_count:
+        label = plan.entity_count.entity
+        if not label.endswith("数"):
+            label += "数"
     unit = metric.raw.get("unit")
     unit_suffix = f"（{unit}）" if unit else ""
     present = set(result.columns)
@@ -90,11 +95,11 @@ def display_spec(plan: QueryPlan, sem: SemanticLayer, result: ResultSet) -> dict
         add("value", metric.name + unit_suffix, "percent" if unit == "%" else "metric")
         add("order_count", "订单数", "int", show=False)
     else:
-        add("value", metric.name + unit_suffix, "percent" if unit == "%" else "metric")
+        add("value", label + unit_suffix, "percent" if unit == "%" else "metric")
 
     return {
         "columns": cols,
-        "metric_name": metric.name,
+        "metric_name": label,
         "unit": unit,
         "provenance": plan.metric_source or "documented",
     }

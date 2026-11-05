@@ -58,9 +58,16 @@ def _score(item: dict[str, Any], question: str) -> int:
 
 def _metric_line(metric_id: str, metric: dict[str, Any],
                  dim_names: dict[str, str]) -> str:
-    expr = metric.get("expr") or (
-        f'{metric.get("numerator") or ""} / {metric.get("denominator") or ""}'
-    )
+    if metric.get("type") == "entity_count":
+        expr = (
+            f'entity={metric.get("entity")}; '
+            f'min_orders={metric.get("min_orders")}; '
+            f'count_orders={metric.get("count_orders")}'
+        )
+    else:
+        expr = metric.get("expr") or (
+            f'{metric.get("numerator") or ""} / {metric.get("denominator") or ""}'
+        )
     scope = metric.get("scope") or {}
     dims = metric.get("supported_dimensions") or []
     dim_text = [

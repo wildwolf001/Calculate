@@ -186,8 +186,38 @@ def validate_plan(plan: QueryPlan, sem: SemanticLayer) -> list[Issue]:
         if cur.start == base.start and cur.end == base.end:
             issues.append(Issue("SAME_COMPARISON_PERIOD", "比较的两个期间完全相同"))
 
-    if plan.nested and metric.type != "entity_count":
-        issues.append(Issue("NESTED_UNSUPPORTED", "nested 参数只用于实体计数指标"))
+    if plan.entity_count:
+        if metric.type != "entity_count":
+            issues.append(Issue(
+                "ENTITY_COUNT_MISMATCH",
+                "实体计数只能绑定 entity_count 指标，"
+                f"不能使用「{metric.name}」",
+            ))
+        if plan.dimensions:
+            issues.append(Issue(
+                "ENTITY_COUNT_GROUPED_UNSUPPORTED",
+                "实体计数暂不支持按维度拆分",
+            ))
+        if plan.having:
+            issues.append(Issue(
+                "ENTITY_COUNT_HAS_HAVING",
+                "实体计数的阈值必须按实体分组后过滤，不能用全局 HAVING",
+            ))
+        if not plan.nested:
+            issues.append(Issue(
+                "ENTITY_COUNT_MISSING_THRESHOLD",
+                "实体计数缺少 per-entity 阈值",
+            ))
+    elif plan.nested and metric.type != "entity_count":
+        if not plan.dimensions:
+            issues.append(Issue(
+                "NESTED_WITHOUT_GROUP",
+                "没有分组维度时，nested 不能改写成全局 HAVING",
+            ))
+        else:
+            issues.append(Issue(
+                "NESTED_UNSUPPORTED", "nested 参数只用于实体计数指标"
+            ))
 
     if plan.ratio_grain and metric.type != "ratio":
         issues.append(Issue("RATIO_GRAIN_UNUSED", "ratio_grain 只用于比率指标", "warn"))
