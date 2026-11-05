@@ -205,7 +205,7 @@ class LLMIntentParser:
                 current_score = scores.get(str(current), 0)
                 if (
                     top.metric_id != current
-                    and top.score >= 100
+                    and top.score >= 40
                     and top.score - current_score >= 10
                 ):
                     slots["metric"] = top.metric_id

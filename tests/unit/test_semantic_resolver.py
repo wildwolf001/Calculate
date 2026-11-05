@@ -28,6 +28,17 @@ def _sem() -> SemanticLayer:
                 "name_zh": "销售额", "type": "aggregate", "fact": "orders",
                 "expr": "SUM(orders.c04)",
             }),
+            "m_order": Metric("m_order", {
+                "name_zh": "订单数", "type": "aggregate", "fact": "orders",
+                "expr": "COUNT(DISTINCT orders.c01)",
+                "synonyms": ["订单数", "订单量"],
+            }),
+            "m_deal": Metric("m_deal", {
+                "name_zh": "成交订单数", "type": "aggregate", "fact": "orders",
+                "expr": "COUNT(DISTINCT orders.c01)",
+                "scope": {"orders.c03": "delivered"},
+                "synonyms": ["成交订单数", "已送达订单数"],
+            }),
             "m_paid_sales": Metric("m_paid_sales", {
                 "name_zh": "已送达商品销售额", "type": "aggregate", "fact": "orders",
                 "expr": "SUM(orders.c04)",
@@ -82,6 +93,14 @@ def test_known_metric_aliases_are_not_unresolved(tmp_path):
     out = parser._apply_resolver("销售额是多少", result)
     assert out.slots["metric"] == "m_sales"
     assert out.slots["unresolved"] == []
+
+
+def test_compound_status_phrase_prefers_scoped_metric():
+    result = SemanticResolver(_sem()).resolve(
+        "2025年1月至6月共有多少笔已送达订单？"
+    )
+    assert result.status == "unique"
+    assert result.selected == "m_deal"
 
 
 def test_missing_metric_is_reported():

@@ -75,12 +75,15 @@ class SemanticResolver:
             if not synonym:
                 continue
             if synonym in text:
-                score += 80
+                if 80 > score:
+                    score = 80
                 matched.append(synonym)
             else:
                 common = _common_len(str(synonym), text)
                 if common >= 2:
-                    score += min(common, 8) * 8
+                    # Best synonym, not sum: summing aliases made generic
+                    # words like "订单" dominate every order-related metric.
+                    score = max(score, min(common, 8) * 8)
                     matched.append(str(synonym))
         # A question asking for a "率/占比/比例" should prefer a published
         # ratio metric over a generic amount/count metric that merely shares
