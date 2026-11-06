@@ -324,6 +324,11 @@ def _expand_entities(sem: SemanticLayer) -> None:
             continue
         label = entity.label
         exact_name = f"{label}数"
+        if (
+            exact_name in {metric.name for metric in sem.metrics.values()}
+            or "unique" in entity.key.lower()
+        ) and not label.startswith("自然"):
+            exact_name = f"自然{label}数"
         if any(
             metric.type == "entity_count"
             and metric.raw.get("entity") == f"{entity.table}.{entity.key}"
