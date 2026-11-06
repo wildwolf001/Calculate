@@ -1,0 +1,351 @@
+{
+  "Q01": {
+    "question": "2025年1月至6月共有多少笔已送达订单？",
+    "ir": {
+      "metric": "m_llm_成交订单数",
+      "metric_spec": null,
+      "metric_source": "documented",
+      "ratio_numerator": null,
+      "ratio_denominator": null,
+      "dimensions": [],
+      "filters": {},
+      "time": {
+        "start": "2025-01-01",
+        "end": "2025-07-01"
+      },
+      "time_axis": null,
+      "compare": null,
+      "comparison": null,
+      "share": false,
+      "limit": 100,
+      "limit_per_group": null,
+      "order_by": [],
+      "having": [],
+      "nested": null,
+      "entity_count": null,
+      "intent": "query",
+      "unresolved": [],
+      "notes": [
+        "指标 m_llm_成交订单数 的 scope 已限定 t_007.c03='delivered'，因此无需再加订单状态筛选条件",
+        "时间区间右开：2025年6月包含至 2025-06-30，上界为 2025-07-01",
+        "模型假设：“已送达订单”按订单状态 delivered 口径统计，对应成交订单数指标（该指标已内置 delivered 过滤）",
+        "模型假设：“1月至6月”按订单时间字段统计，区间为 2025-01-01 至 2025-07-01（右开）"
+      ],
+      "visualization": {
+        "type": "kpi",
+        "x": null,
+        "y": "成交订单数",
+        "reason": "单一汇总数值，无需分组，用 KPI 卡片呈现最直观"
+      },
+      "coverage_period": "month",
+      "source": "parser"
+    },
+    "intent_type": "query"
+  },
+  "Q02": {
+    "question": "2025年1月至6月已送达订单的商品销售额是多少？不含运费。",
+    "ir": {
+      "metric": "m_004_c06_sum",
+      "metric_spec": null,
+      "metric_source": "documented",
+      "ratio_numerator": null,
+      "ratio_denominator": null,
+      "dimensions": [],
+      "filters": {},
+      "time": {
+        "start": "2025-01-01",
+        "end": "2025-07-01"
+      },
+      "time_axis": null,
+      "compare": null,
+      "comparison": null,
+      "share": false,
+      "limit": 100,
+      "limit_per_group": null,
+      "order_by": [],
+      "having": [],
+      "nested": null,
+      "entity_count": null,
+      "intent": "query",
+      "unresolved": [],
+      "notes": [
+        "销售额指标本身已限定订单状态为 delivered",
+        "时间取 t_004.c05（下单时间）",
+        "模型假设：“不含运费”理解为只取商品销售额（t_004.c06），不叠加运费合计（t_004.c07）",
+        "模型假设：“已送达订单”由指标自带的 delivered 口径处理，无需额外筛选",
+        "模型假设：月份区间按左闭右开处理：2025-01-01 ~ 2025-07-01"
+      ],
+      "visualization": {
+        "type": "kpi",
+        "x": null,
+        "y": "销售额",
+        "reason": "单一汇总指标无分组维度，用 KPI 展示"
+      },
+      "coverage_period": "month",
+      "source": "parser"
+    },
+    "intent_type": "query"
+  },
+  "Q03": {
+    "question": "4月商品销售额比3月增长多少？",
+    "ir": {
+      "metric": "m_004_c06_sum",
+      "metric_spec": null,
+      "metric_source": "documented",
+      "ratio_numerator": null,
+      "ratio_denominator": null,
+      "dimensions": [],
+      "filters": {},
+      "time": null,
+      "time_axis": null,
+      "compare": null,
+      "comparison": {
+        "label": "2025-04 vs 2025-03（环比）",
+        "mode": "period_vs_period",
+        "current": {
+          "start": "2025-04-01",
+          "end": "2025-05-01"
+        },
+        "baseline": {
+          "start": "2025-03-01",
+          "end": "2025-04-01"
+        }
+      },
+      "share": false,
+      "limit": 100,
+      "limit_per_group": null,
+      "order_by": [],
+      "having": [],
+      "nested": null,
+      "entity_count": null,
+      "intent": "query",
+      "unresolved": [],
+      "notes": [
+        "时间区间右开：3月=2025-03-01~2025-04-01，4月=2025-04-01~2025-05-01",
+        "销售额仅统计订单状态为 delivered 的记录",
+        "模型假设：问题未写年份，按数据中最近年份（2025年）理解",
+        "模型假设：销售额口径为已送达订单（delivered）的 SUM(t_004.c06)",
+        "模型假设：'比3月增长多少'理解为环比，比较2025-04与2025-03"
+      ],
+      "visualization": {
+        "type": "grouped_bar",
+        "x": "期间",
+        "y": "销售额",
+        "reason": "两期（3月、4月）同一指标的对比，使用分组柱状图最直观"
+      },
+      "coverage_period": "month",
+      "source": "parser"
+    },
+    "intent_type": "query"
+  },
+  "Q04": {
+    "question": "4月商品销售额最高的品类是什么？金额是多少？",
+    "ir": {
+      "metric": "m_004_c06_sum",
+      "metric_spec": null,
+      "metric_source": "documented",
+      "ratio_numerator": null,
+      "ratio_denominator": null,
+      "dimensions": [
+        "d_004_001_c03"
+      ],
+      "filters": {},
+      "time": {
+        "start": "2025-04-01",
+        "end": "2025-05-01"
+      },
+      "time_axis": null,
+      "compare": null,
+      "comparison": null,
+      "share": false,
+      "limit": 1,
+      "limit_per_group": null,
+      "order_by": [
+        {
+          "field": "value",
+          "direction": "desc"
+        }
+      ],
+      "having": [],
+      "nested": null,
+      "entity_count": null,
+      "intent": "query",
+      "unresolved": [],
+      "notes": [
+        "时间区间右开：2025-04-01 至 2025-05-01",
+        "销售额口径为已送达（delivered）订单",
+        "模型假设：“商品销售额”按已发布指标“销售额”（订单明细中商品金额合计，口径限定为已送达订单）理解",
+        "模型假设：问题未写年份，按数据中最近一次出现的4月理解为2025年4月"
+      ],
+      "visualization": {
+        "type": "bar",
+        "x": "品类",
+        "y": "销售额",
+        "reason": "按品类比较销售额并取最高值，分类排名用柱状图"
+      },
+      "coverage_period": "month",
+      "source": "parser"
+    },
+    "intent_type": "query"
+  },
+  "Q05": {
+    "question": "5月已送达订单不少于3笔的商家中，延迟率最高的是谁？",
+    "ir": {
+      "metric": "m_llm_延迟交付率",
+      "metric_spec": null,
+      "metric_source": "documented",
+      "ratio_numerator": null,
+      "ratio_denominator": null,
+      "dimensions": [
+        "d_004_009_c02"
+      ],
+      "filters": {},
+      "time": {
+        "start": "2025-05-01",
+        "end": "2025-06-01"
+      },
+      "time_axis": null,
+      "compare": null,
+      "comparison": null,
+      "share": false,
+      "limit": 1,
+      "limit_per_group": null,
+      "order_by": [
+        {
+          "field": "value",
+          "direction": "desc"
+        }
+      ],
+      "having": [
+        {
+          "metric": "order_count",
+          "op": "gte",
+          "value": 3
+        }
+      ],
+      "nested": null,
+      "entity_count": null,
+      "intent": "query",
+      "unresolved": [],
+      "notes": [
+        "延迟交付率口径：已送达订单中 实际送达时间 > 预计送达时间 的订单数 / 已送达订单数",
+        "时间按订单时间 t_007.c04 归属月份",
+        "模型假设：“5月”按数据中最近出现的年份理解为 2025-05-01 至 2025-06-01（右开区间）",
+        "模型假设：“已送达订单”由延迟交付率指标自带的 delivered 口径保证",
+        "模型假设：“不少于3笔”作为商家分组过滤条件，计算订单数为每组已送达订单数"
+      ],
+      "visualization": {
+        "type": "bar",
+        "x": "商家名称",
+        "y": "延迟交付率",
+        "reason": "按商家比较单一比率指标并取最高值，适合用横向分类柱状图"
+      },
+      "coverage_period": "month",
+      "source": "parser"
+    },
+    "intent_type": "query"
+  },
+  "Q06": {
+    "question": "有评价的已送达订单中，延迟订单与准时订单的平均评分分别是多少？",
+    "ir": {
+      "metric": "m_006_c03_avg",
+      "metric_spec": null,
+      "metric_source": "documented",
+      "ratio_numerator": null,
+      "ratio_denominator": null,
+      "dimensions": [
+        "d_doc_t_007_c07_c08"
+      ],
+      "filters": {
+        "d_006_007_c03": {
+          "op": "eq",
+          "value": "delivered"
+        }
+      },
+      "time": null,
+      "time_axis": null,
+      "compare": null,
+      "comparison": null,
+      "share": false,
+      "limit": 100,
+      "limit_per_group": null,
+      "order_by": [],
+      "having": [],
+      "nested": null,
+      "entity_count": null,
+      "intent": "query",
+      "unresolved": [],
+      "notes": [
+        "平均评分指标来自 t_006，是否延迟维度表达式基于 t_007，需按订单关联后分组",
+        "未指定时间范围，默认取数据全部覆盖区间",
+        "模型假设：“有评价”理解为评价表 t_006 中存在的评价记录，平均评分按评价条数口径计算",
+        "模型假设：“已送达订单”用订单状态 delivered 过滤",
+        "模型假设：“延迟/准时”按派生维度 是否延迟（实际送达时间 t_007.c07 > 预计送达时间 t_007.c08）分组，而非筛选单个取值"
+      ],
+      "visualization": {
+        "type": "bar",
+        "x": "是否延迟",
+        "y": "平均评分",
+        "reason": "两个分类（准时/延迟）对比单一连续指标，柱状图最直观"
+      },
+      "coverage_period": "month",
+      "source": "parser"
+    },
+    "intent_type": "query"
+  },
+  "Q07": {
+    "question": "有多少自然客户完成了至少2笔已送达订单？",
+    "ir": {
+      "metric": "entity_count_t_002",
+      "metric_spec": null,
+      "metric_source": "entity_count",
+      "ratio_numerator": null,
+      "ratio_denominator": null,
+      "dimensions": [],
+      "filters": {},
+      "time": null,
+      "time_axis": null,
+      "compare": null,
+      "comparison": null,
+      "share": false,
+      "limit": 100,
+      "limit_per_group": null,
+      "order_by": [],
+      "having": [],
+      "nested": {
+        "entity": "自然客户",
+        "min_orders": 2
+      },
+      "entity_count": {
+        "entity": "自然客户",
+        "min_events": 2
+      },
+      "intent": "query",
+      "unresolved": [],
+      "notes": [
+        "这是实体计数问题，不是简单的“订单数”聚合，因此 metric 留空、由 entity_count 驱动计算",
+        "已送达口径（order status = delivered）作为事件筛选条件，作用于计数前的事件集合",
+        "检索候选 [selected] 为 entity_count_t_002（自然客户数），与本问的实体计数口径匹配",
+        "模型假设：“自然客户”按客户维度（customer）实体去重计数，与检索选中的“自然客户数”实体计数口径一致",
+        "模型假设：“至少2笔已送达订单”理解为该客户在订单状态为 delivered 的订单中，去重订单数 >= 2",
+        "模型假设：未指定时间范围，统计全量数据覆盖区间",
+        "实体计数：自然客户，每个实体至少 2 个事件"
+      ],
+      "visualization": {
+        "type": "kpi",
+        "x": null,
+        "y": "客户数",
+        "reason": "结果是单一数值（满足条件的客户数），适合用 KPI 卡片展示"
+      },
+      "coverage_period": "month",
+      "source": "parser"
+    },
+    "intent_type": "query"
+  },
+  "Q08": {
+    "question": "直接关联商品明细和支付表为什么会导致金额重复？",
+    "ir": null,
+    "intent_type": "explain",
+    "explanation": "因为这两张表的粒度(grain)不同，而且不是一一对应。商品明细表 t_004 的粒度是「订单+商品行」(c02 订单号, c01 商品行)，一个订单里有多条商品行；支付表 t_005 的粒度是「订单+支付流水」(c01, c02)，一个订单也可能有多条支付流水(例如分多期、多种支付方式 voucher/credit_card 等)。当按订单号直接 JOIN 时，一条商品行会匹配该订单下的每一条支付流水，一条支付流水也会匹配该订单下的每一条商品行，结果行数被放大成「商品行数 × 支付流水数」，即笛卡尔式膨胀。此时再对支付金额 SUM(t_005.c05) 求和，同一笔支付金额会被重复累加 N 次(N=该订单的商品行数)，销售额 SUM(t_004.c06) 同样会被重复累加 M 次(M=该订单的支付流水数)，两边都虚高且互不相等。平均类指标(如平均支付金额、平均商品成交单价)也会因为分母行"
+  }
+}
