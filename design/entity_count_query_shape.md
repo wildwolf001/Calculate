@@ -49,7 +49,8 @@ validator 禁止实体计数使用全局 `HAVING`，并禁止 `nested` + 无分�
 - 组内过滤仍使用 `HAVING`；
 - 分组实体计数（按客户分层）使用两层 `GROUP BY`；
 - 缺少实体指标时澄清，而不是回退到订单数；
-- 第二套完全不同的 schema（accounts/invoices）零 Python 改动通过。
+- 第二套完全不同的 schema（accounts/invoices）零 Python 改动通过；
+- `test_q01_q08_fullchain.py` 用真实 LLM 记录下来的 IR，从用户问题跑到最终答案，验证 Q01–Q08。
 
 ## 后续
 
