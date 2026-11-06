@@ -379,6 +379,61 @@ def expand_entities(sem: SemanticLayer) -> None:
     _expand_entities(sem)
 
 
+def materialize_semantic(
+    semantic: dict[str, Any],
+    metrics: dict[str, Any],
+    dimensions: dict[str, Any],
+    keep_dims: list[str] | None = None,
+) -> dict[str, Any]:
+    """Build-time entity registry and generated entity metrics.
+
+    Publishing calls this once and writes the result into semantic.yaml.  The
+    runtime loader deliberately does not invent entities or metric names.
+    """
+    data = dict(semantic)
+    data["metrics"] = {mid: dict(raw) for mid, raw in metrics.items()}
+    data["dimensions"] = {did: dict(raw) for did, raw in dimensions.items()}
+    dim_map = {
+        did: Dimension(did, raw) for did, raw in data["dimensions"].items()
+    }
+    layer = SemanticLayer(
+        version=int(data.get("version", 1)),
+        dataset=str(data.get("dataset") or ""),
+        tables=data.get("tables") or {},
+        joins=data.get("joins") or {},
+        pre_aggregates=data.get("pre_aggregates") or {},
+        metrics={mid: Metric(mid, raw) for mid, raw in data["metrics"].items()},
+        dimensions=dim_map,
+        policies=data.get("policies") or {},
+        time_range=tuple(
+            normalize_date_bound(v)
+            for v in (data.get("time_range") or ["", ""])
+        ),
+        binding={"tables": {}},
+        capabilities=data.get("capabilities") or {},
+        parser=str(data.get("parser") or "generic"),
+        raw=data,
+        time_axes=list(data.get("time_axes") or []),
+    )
+    _expand_entities(layer)
+    data["entities"] = {
+        entity_id: json.loads(json.dumps(entity.raw, ensure_ascii=False))
+        for entity_id, entity in layer.entities.items()
+    }
+    allowed = set(keep_dims or [])
+    for mid, metric in layer.metrics.items():
+        if mid in data["metrics"]:
+            continue
+        raw = dict(metric.raw)
+        if allowed:
+            raw["supported_grain"] = [
+                grain for grain in (raw.get("supported_grain") or ["none"])
+                if grain in {"none", *allowed}
+            ]
+        data["metrics"][mid] = raw
+    return data
+
+
 def load_semantic(
     semantic_path: Path = SEMANTIC_PATH,
     binding_path: Path = BINDING_PATH,
@@ -406,8 +461,12 @@ def load_semantic(
         parser=str(sem.get("parser", "generic")),
         raw=sem,
         time_axes=list(sem.get("time_axes") or []),
+        entities={
+            str(entity_id): Entity(str(entity_id), dict(raw))
+            for entity_id, raw in (sem.get("entities") or {}).items()
+            if isinstance(raw, dict)
+        },
     )
-    _expand_entities(layer)
     return layer
 
 

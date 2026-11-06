@@ -20,7 +20,7 @@ from app.datasets.manifest import read_manifest, write_manifest
 from app.datasets.registry import DatasetContext, DatasetError, DatasetRegistry
 from app.domain.pipeline import execute_prepared, prepare
 from app.domain.plan import QueryPlan
-from app.domain.semantic.loader import load_semantic
+from app.domain.semantic.loader import load_semantic, materialize_semantic
 from app.domain.semantic.timeaxis import infer_time_axis
 
 
@@ -150,6 +150,15 @@ def publish_dataset(registry: DatasetRegistry, dataset_id: str,
         raw["provenance"] = "human"
         raw["confirmed_at"] = datetime.now().isoformat(timespec="seconds")
         new_dimensions[dim_id] = raw
+
+    semantic = materialize_semantic(
+        semantic, new_metrics, new_dimensions, keep_dims=keep_dims
+    )
+    new_metrics = semantic["metrics"]
+    new_dimensions = semantic["dimensions"]
+    for metric_id in new_metrics:
+        if metric_id not in keep_metrics:
+            keep_metrics.append(metric_id)
 
     version = int(semantic.get("version", 1)) + 1
     semantic["version"] = version

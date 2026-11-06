@@ -7,7 +7,7 @@ audit possible.
 from __future__ import annotations
 
 from copy import deepcopy
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum
 
 from pydantic import BaseModel, Field
@@ -68,6 +68,13 @@ class Slots(BaseModel):
     visualization: dict | None = None
 
 
+def slots_from_ir(ir: QueryIR | None) -> Slots:
+    """Read-only compatibility view for UI/replay/legacy callers."""
+    if ir is None:
+        return Slots()
+    return Slots.model_validate(ir.as_dict())
+
+
 @dataclass
 class FailurePolicy:
     max_retry: int = 1
@@ -87,9 +94,8 @@ class SessionState:
     session_id: str
     dataset_id: str = DEFAULT_DATASET_ID
     status: Status = Status.IDLE
-    slots: Slots = field(default_factory=Slots)
     ir: QueryIR | None = None
-    prev_slots: Slots = field(default_factory=Slots)
+    prev_ir: QueryIR | None = None
     plan: QueryPlan | None = None
     artifacts: dict[str, dict] = field(default_factory=dict)
     pending: dict | None = None
@@ -114,6 +120,22 @@ class SessionState:
     interpretation_results: list[dict] = field(default_factory=list)
     context: dict | None = None
     trace_id: str | None = None
+
+    @property
+    def slots(self) -> Slots:
+        return slots_from_ir(self.ir)
+
+    @slots.setter
+    def slots(self, value: Slots) -> None:
+        self.ir = QueryIR.from_slots(value)
+
+    @property
+    def prev_slots(self) -> Slots:
+        return slots_from_ir(self.prev_ir)
+
+    @prev_slots.setter
+    def prev_slots(self, value: Slots) -> None:
+        self.prev_ir = QueryIR.from_slots(value)
 
     def to_dict(self) -> dict:
         return {
@@ -220,7 +242,7 @@ def reduce(events: list, session_id: str | None = None) -> SessionState:
                 field = pending.get("field")
                 if pending.get("partial_slots"):
                     # restore what we already understood before the ambiguity
-                    state.slots = Slots.model_validate(pending["partial_slots"])
+                    state.ir = QueryIR.from_slots(pending["partial_slots"])
                 state.clarifications.append({
                     "field": field,
                     "value": text,
@@ -228,37 +250,43 @@ def reduce(events: list, session_id: str | None = None) -> SessionState:
                     "candidates": pending.get("candidates", []),
                 })
                 if field and field not in {"unknown", "metric"}:
-                    state.slots.filters[field] = FilterSpec(op="eq", value=text)
+                    slots = state.slots
+                    slots.filters[field] = FilterSpec(op="eq", value=text)
+                    state.ir = QueryIR.from_slots(slots)
                     state.status = Status.GROUNDING
                 else:
                     state.status = Status.PARSING
                 state.pending = None
             else:
-                # Keep the previous turn's slots for follow-up inheritance,
-                # then start this turn from a clean slate.
-                state.prev_slots = state.slots.model_copy(deep=True)
+                # Keep the previous turn's IR for follow-up inheritance, then
+                # start this turn from a clean slate.  Slots are only a view.
+                state.prev_ir = state.ir
                 state.status = Status.PARSING
                 state.plan = None
-                state.slots = Slots()
                 state.ir = None
         elif t == "intent.classified":
             state.intent = p
         elif t == "query.normalized":
-            if p.get("notes"):
-                state.slots.notes = list(dict.fromkeys(state.slots.notes + p["notes"]))
+            if p.get("notes") and state.ir is not None:
+                state.ir = replace(
+                    state.ir,
+                    notes=tuple(dict.fromkeys(
+                        list(state.ir.notes) + list(p["notes"])
+                    )),
+                )
         elif t == "context.compiled":
             state.context = p
         elif t == "intent.parsed":
-            state.slots = _slots_from_payload(p, state.slots)
-            state.ir = QueryIR.from_slots(p.get("ir") or state.slots)
+            state.ir = QueryIR.from_slots(
+                p.get("ir") or p.get("slots") or state.slots
+            )
             state.interpretations = list(p.get("interpretations") or [])
             state.preferred_interpretation = p.get("preferred_interpretation")
             state.status = Status.GROUNDING
         elif t == "intent.repaired":
-            state.slots = Slots.model_validate(
+            state.ir = QueryIR.from_slots(
                 _normalize_slots_payload(p.get("slots") or {})
             )
-            state.ir = QueryIR.from_slots(state.slots)
             state.interpretations = []
             state.preferred_interpretation = None
             state.status = Status.GROUNDING
@@ -274,7 +302,7 @@ def reduce(events: list, session_id: str | None = None) -> SessionState:
             state.status = Status.DONE
         elif t == "subquestions.completed":
             if p.get("primary_slots"):
-                state.slots = Slots.model_validate(p["primary_slots"])
+                state.ir = QueryIR.from_slots(p["primary_slots"])
             state.status = Status.DONE
         elif t == "ambiguity.detected":
             state.status = Status.AWAITING_CLARIFICATION
@@ -284,18 +312,20 @@ def reduce(events: list, session_id: str | None = None) -> SessionState:
             state.pending = p
         elif t == "clarification.answered":
             state.clarifications.append(p)
+            slots = state.slots
             if p.get("dim") and p.get("ids"):
-                state.slots = _apply_grounding(state.slots, p)
+                slots = _apply_grounding(slots, p)
             elif p.get("slots_patch"):
-                state.slots = _slots_from_payload(p["slots_patch"], state.slots)
+                slots = _slots_from_payload(p["slots_patch"], slots)
+            state.ir = QueryIR.from_slots(slots)
             state.pending = None
             state.status = Status.GROUNDING
         elif t == "values.grounded":
             state.bindings = list(p.get("bindings", []))
-            state.slots = _apply_grounding(state.slots, p)
+            slots = _apply_grounding(state.slots, p)
             if p.get("notes"):
-                state.slots.notes = list(dict.fromkeys(state.slots.notes + p["notes"]))
-            state.ir = QueryIR.from_slots(state.slots)
+                slots.notes = list(dict.fromkeys(slots.notes + p["notes"]))
+            state.ir = QueryIR.from_slots(slots)
             state.status = Status.PLANNING
         elif t == "plan.compiled":
             state.plan = QueryPlan.model_validate(p.get("plan", p))

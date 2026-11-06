@@ -20,7 +20,7 @@ class EntityCountSpec(BaseModel):
     min_events: int = Field(default=1, ge=1)
 ```
 
-parser 输出 `entity_count`，而不是 `having` 或 `nested`。语义层加载时会把 `entity_count` 指标里的 entity/event 元数据展开成实体注册表，并为每个实体生成一个 `min_orders=1` 的实体指标。binder 优先绑定这个注册表里的指标；没有匹配实体时澄清，不回退到订单数。
+parser 输出 `entity_count`，而不是 `having` 或 `nested`。实体注册表和 `min_orders=1` 的实体指标在**发布期**由 `materialize_semantic` 生成并写入 `semantic.yaml`；运行时 `load_semantic` 只读取，不再发明实体或指标。binder 优先绑定已发布的实体指标；没有匹配实体时澄清，不回退到订单数。
 
 planner 将 `entity_count` 规范化为 `NestedSpec(min_orders=min_events)`。compiler 支持两种形态：
 
@@ -28,6 +28,10 @@ planner 将 `entity_count` 规范化为 `NestedSpec(min_orders=min_events)`。co
 - 有维度：按 `维度 + 实体` 分组、阈值过滤、外层按维度 `COUNT(*)`。
 
 validator 禁止实体计数使用全局 `HAVING`，并禁止 `nested` + 无分组维度。
+
+## 运行时状态
+
+`SessionState.ir` 是唯一查询状态；`state.slots` 只是从 IR 派生的兼容视图，供 UI、旧事件和旧 API 读取。新事件不再把 slots 当第二份真相写入 reducer；旧事件在 replay 边界转换成 IR。
 
 ## 边界
 

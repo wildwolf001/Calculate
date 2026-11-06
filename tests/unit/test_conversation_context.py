@@ -6,6 +6,7 @@ import json
 from app.core.context import apply_context_action, build_conversation_context
 from app.core.interfaces import ParseResult
 from app.core.state import SessionState, Slots
+from app.domain.query.ir import QueryIR
 from app.domain.semantic.loader import Dimension, Metric, SemanticLayer
 
 
@@ -79,7 +80,7 @@ def _state() -> SessionState:
         turn=2,
         last_result_id="r1",
         artifacts={"r1": artifact},
-        slots=Slots(metric="seller_count"),
+        ir=QueryIR.from_slots(Slots(metric="seller_count")),
         messages=[
             {"role": "user", "text": "坚果礼盒的商家数是多少？", "seq": 1},
             {"role": "assistant", "text": "2 个商家", "seq": 2},
