@@ -266,6 +266,25 @@ class Controller:
             return "当前数据源还没有可查询的指标，请先在数据管理页确认语义草稿。"
         return "可以问：" + "、".join(names) + "，并指定时间或维度。"
 
+    def _quality_fallback_text(self) -> str:
+        checks = [
+            item for item in ((self.quality or {}).get("checks") or [])
+            if item.get("severity") in {"warn", "error"}
+            and (item.get("count") or 0) > 0
+        ]
+        lines = [
+            "当前数据集没有可用于时间覆盖诊断的时间列，"
+            "因此无法给出按月的覆盖结论。"
+        ]
+        if checks:
+            lines.append("已检测到的数据质量问题：")
+            for item in checks[:8]:
+                lines.append(f"- {item.get('title')}（{item.get('count')}）")
+        lines.append(
+            "建议先确认日期列的格式和范围；修正后再做月份覆盖/趋势分析。"
+        )
+        return "\n".join(lines)
+
     def _semantic_status(self) -> str:
         return self.ctx.mode if self.ctx is not None else "published"
 
@@ -2158,6 +2177,15 @@ class Controller:
                     plan.degraded_reason = "；".join(dict.fromkeys(reasons)) or None
                     plan.degraded_kind = self._degraded_kind(report.degradations)
         except SemanticError as exc:
+            if ir.intent == "coverage" and self.quality is not None:
+                return events + [
+                    ("answer.composed", {
+                        "text": self._quality_fallback_text(),
+                        "result_id": None,
+                        "status": "quality_fallback",
+                    }),
+                    ("result.presented", {"result_id": None}),
+                ]
             message = f"{exc}\n\n{self._suggestions()}"
             return events + [
                 ("plan.rejected", {"reason": str(exc), "issues": [], "recoverable": False}),
