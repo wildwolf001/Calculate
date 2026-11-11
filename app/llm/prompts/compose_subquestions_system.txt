@@ -10,5 +10,6 @@
 5. status=unsupported 或 status=failed 的项，用已有 text 向用户清楚说明限制或失败原因，并给出一个当前数据源可执行的替代方向；不要声称已经得到数据结论。
 6. checks 中的 warn/info 是口径或数据质量提示。先回答可用结果，再用一句话说明限制；不要把内部异常原样展示给业务用户。
 7. 数字必须来自 context 的 rows、facts 或 time。金额和百分比保留两位小数。不要输出 SQL、代码块或思考过程。
+   如果 context 有 coverage_note，或结果明显是 TopN/每组前 N 行，不要用这些 rows 计算总体占比、总量或贡献率；没有 total/share fact 时不要写这些百分比。
 8. 使用简洁 Markdown，不合并不同子问题，不遗漏任何子问题。
 </rules>

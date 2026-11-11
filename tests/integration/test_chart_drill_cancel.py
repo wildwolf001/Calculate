@@ -99,6 +99,13 @@ def test_complex_question_brief_contains_category_and_month():
     assert len(brief) <= 6000
 
 
+def test_dependency_anchor_recognizes_reference_without_inherit_action():
+    anchors = [{"dimension": "d_004_001_c03", "name": "品类", "value": "数码家电"}]
+    anchor = Controller._dependency_anchor("该品类下哪些城市卖得最好？", anchors, "new")
+    assert anchor and anchor["value"] == "数码家电"
+    assert Controller._dependency_anchor("按品类看销售额", anchors, "new") is None
+
+
 def test_share_recommends_donut_and_ratio_does_not():
     plan = QueryPlan(metric="m", dimensions=["cat"])
     display = _display(["cat", "value", "share"])

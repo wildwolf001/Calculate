@@ -962,6 +962,139 @@ class Controller:
             }
         return {}
 
+    def _unsupported_period_text(self, question: str) -> str | None:
+        """Return a business-facing message when the question's year is absent."""
+        years = re.findall(r"(?<!\d)(20\d{2})(?!\d)", question or "")
+        if not years:
+            return None
+        lo = str(self.sem.time_range[0])[:4]
+        hi = str(self.sem.time_range[1])[:4]
+        outside = sorted({year for year in years if year < lo or year > hi})
+        if not outside:
+            return None
+        return (
+            f"当前数据只覆盖 {self.sem.time_range[0]} 至 {self.sem.time_range[1]}，"
+            f"问题涉及的 {'、'.join(outside)} 不在数据范围内，无法做同比。"
+            "可以改为当前覆盖期内的月度趋势或环比。"
+        )
+
+    @staticmethod
+    def _dependency_anchor(question: str, anchors: list[dict],
+                           action: str) -> dict | None:
+        """Find the previous result a follow-up refers to."""
+        if not anchors:
+            return None
+        # Root parses often label sibling follow-ups as "new" even when the
+        # wording points at the previous result ("该品类", "这个城市").
+        referential = bool(re.search(r"该|这个|这些|上述|上一|前一个", question or ""))
+        if action not in {"inherit", "refine", "reference_result"} and not referential:
+            return None
+        for anchor in reversed(anchors):
+            name = str(anchor.get("name") or "")
+            if name and name in question:
+                return anchor
+        if referential and len(anchors) == 1:
+            return anchors[-1]
+        return None
+
+    def _register_anchor(self, entry: dict, anchors: list[dict]) -> None:
+        """Expose a single-dimension result as an anchor for later subquestions."""
+        plan = entry.get("plan")
+        artifact = entry.get("artifact")
+        dimensions = list(getattr(plan, "dimensions", None) or [])
+        rows = list(getattr(artifact, "rows", None) or [])
+        if len(dimensions) != 1 or not rows:
+            return
+        dimension = dimensions[0]
+        value = rows[0][0]
+        if value is None:
+            return
+        name = dimension
+        item = self.sem.dimensions.get(dimension)
+        if item is not None:
+            name = str(item.raw.get("name_zh") or dimension)
+        anchors.append({
+            "dimension": dimension,
+            "name": name,
+            "value": str(value),
+        })
+
+    def _parse_subquestion_locally(self, state: SessionState, sub: dict,
+                                   question: str, anchors: list[dict],
+                                   events: list) -> tuple[dict | None, dict | None]:
+        """Re-parse one subquestion with its own brief and dependency hint.
+
+        The root parse is intentionally only a decomposer. This second pass is
+        the local semantic grounding: the brief is built from this subquestion,
+        not from the whole message, and it can carry the top-dimension anchor
+        from an already executed sibling.
+        """
+        action = str(sub.get("context_action") or "new")
+        anchor = self._dependency_anchor(question, anchors, action)
+        parse_text = question
+        if anchor:
+            parse_text = (
+                f"{question}\n\n"
+                f"[上一子问题已确定 {anchor['name']} = {anchor['value']}。"
+                "如果本问题使用“该/这个/上述”等指代，必须把这个值保留为筛选条件。]"
+            )
+        context = project_for_parser(
+            state,
+            dim_values_path=self.dim_values_path,
+        )
+        try:
+            parsed = self._call_with_retry(
+                "parse_subquestion",
+                lambda: self.parser.parse(parse_text, context),
+                state,
+                events,
+            )
+        except Exception:
+            return None, anchor
+        slots = dict(getattr(parsed, "slots", None) or {})
+        if not slots.get("metric") and not slots.get("metric_spec"):
+            return None, anchor
+        return slots, anchor
+
+    def _inject_anchor_filter(self, slots_payload: dict, question: str,
+                              anchor: dict | None, action: str) -> None:
+        if not anchor:
+            return
+        filters = dict(slots_payload.get("filters") or {})
+        dimension = anchor["dimension"]
+        if dimension and dimension not in filters:
+            filters[dimension] = {"op": "eq", "value": anchor["value"]}
+            slots_payload["filters"] = filters
+        # A local parse may mark "该品类" unresolved before it sees the anchor.
+        # Once the anchor is bound, that term is no longer unresolved.
+        unresolved = []
+        for term in slots_payload.get("unresolved") or []:
+            text = str(term)
+            if anchor["name"] in text or "该品类" in text:
+                continue
+            unresolved.append(term)
+        slots_payload["unresolved"] = unresolved
+
+    def _normalize_subquestion_scope(self, slots_payload: dict) -> None:
+        """Do not let a ranking limit truncate a trend or a full share result."""
+        dims = list(slots_payload.get("dimensions") or [])
+        try:
+            limit = int(slots_payload.get("limit", 100))
+        except (TypeError, ValueError):
+            limit = 100
+        time_dims = []
+        for dim in dims:
+            if dim == "month":
+                time_dims.append(dim)
+                continue
+            item = self.sem.dimensions.get(dim)
+            if item is not None and str(item.raw.get("kind") or "") == "time":
+                time_dims.append(dim)
+        if time_dims and limit < 100:
+            slots_payload["limit"] = 100
+        elif slots_payload.get("share") and dims and not slots_payload.get("limit_per_group") and limit <= 1:
+            slots_payload["limit"] = 100
+
     def _multi_question_events(self, state: SessionState,
                                result) -> list[tuple[str, dict]]:
         """Execute sub-questions, then compose all outcomes together."""
@@ -971,6 +1104,7 @@ class Controller:
         non_sql: list[dict] = []
         failures: list[dict] = []
         previous_slots: dict | None = None
+        anchors: list[dict] = []
         questions = list(result.subquestions[:MAX_SUBQUESTIONS])
 
         for index, sub in enumerate(questions, 1):
@@ -983,23 +1117,6 @@ class Controller:
                 "question": question,
                 "intent_type": intent_type,
             }))
-
-            if sub.get("error"):
-                reason = f"子问题槽位非法：{sub['error']}"
-                failures.append({"id": sid, "question": question, "reason": reason})
-                events.append(("subquestion.rejected", {
-                    "subquestion_id": sid,
-                    "status": "failed",
-                    "reason": reason,
-                }))
-                presentation_items.append({
-                    "id": sid,
-                    "index": index,
-                    "question": question,
-                    "status": "failed",
-                    "text": self._safe_subquestion_failure(reason),
-                })
-                continue
 
             if intent_type == "explain":
                 text = sub.get("explanation") or "这是一个口径解释问题。"
@@ -1024,12 +1141,53 @@ class Controller:
                 })
                 continue
 
-            slots_payload = dict(sub.get("slots") or {})
+            unsupported_period = self._unsupported_period_text(question)
+            if unsupported_period:
+                reason = "OUT_OF_RANGE_PERIOD"
+                failures.append({"id": sid, "question": question, "reason": reason})
+                events.append(("subquestion.rejected", {
+                    "subquestion_id": sid,
+                    "status": "unsupported",
+                    "reason": unsupported_period,
+                }))
+                presentation_items.append({
+                    "id": sid,
+                    "index": index,
+                    "question": question,
+                    "status": "unsupported",
+                    "text": unsupported_period,
+                })
+                continue
+
+            action = str(sub.get("context_action") or "new")
+            root_slots = dict(sub.get("slots") or {})
+            local_slots, anchor = self._parse_subquestion_locally(
+                state, sub, question, anchors, events,
+            )
+            slots_payload = local_slots or root_slots
+
+            if sub.get("error") and not local_slots:
+                reason = f"子问题槽位非法：{sub['error']}"
+                failures.append({"id": sid, "question": question, "reason": reason})
+                events.append(("subquestion.rejected", {
+                    "subquestion_id": sid,
+                    "status": "failed",
+                    "reason": reason,
+                }))
+                presentation_items.append({
+                    "id": sid,
+                    "index": index,
+                    "question": question,
+                    "status": "failed",
+                    "text": self._safe_subquestion_failure(reason),
+                })
+                continue
+
             if intent_type == "lookup":
                 dim = sub.get("lookup_dimension") or sub.get("list_dim")
                 slots_payload["intent"] = "lookup"
                 slots_payload["dimensions"] = [dim] if dim else []
-            if previous_slots and sub.get("context_action") in {"inherit", "refine"}:
+            if previous_slots and action in {"inherit", "refine"} and not local_slots:
                 inherited = dict(previous_slots)
                 inherited.update({
                     key: value
@@ -1041,6 +1199,8 @@ class Controller:
                     **(slots_payload.get("filters") or {}),
                 }
                 slots_payload = inherited
+            self._inject_anchor_filter(slots_payload, question, anchor, action)
+            self._normalize_subquestion_scope(slots_payload)
 
             try:
                 sub_events, entry = self._run_subquestion(
@@ -1090,6 +1250,7 @@ class Controller:
             events.extend(sub_events)
             previous_slots = dict(slots_payload)
             executed.append(entry)
+            self._register_anchor(entry, anchors)
             context = self._entry_context(entry)
             context["insights"] = build_insights(
                 entry["plan"],
@@ -1408,6 +1569,14 @@ class Controller:
             "columns": artifact.columns,
             "row_count": artifact.row_count,
             "truncated": artifact.truncated,
+            "limit": plan.limit,
+            "limit_per_group": plan.limit_per_group,
+            "coverage_note": (
+                "当前结果是 TopN/每组前 N 行，不是完整总体；"
+                "不要用这些行计算总体占比、总量或贡献率。"
+                if (plan.limit_per_group or (plan.limit and plan.limit < 100))
+                else None
+            ),
             "time": time,
             "comparison": comparison,
             "compare": bool(comparison or plan.compare),
