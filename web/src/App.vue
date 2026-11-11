@@ -4,16 +4,35 @@ import AnalysisDialog from './components/AnalysisDialog.vue'
 import ChatPanel from './components/ChatPanel.vue'
 import RecordDrawer from './components/RecordDrawer.vue'
 import ResultCanvas from './components/ResultCanvas.vue'
+import ManageApp from './manage/ManageApp.vue'
 import { useSessionStore } from './stores/session'
 
 const store = useSessionStore()
-const chatWidth = ref(404)
+const CHAT_WIDTH_KEY = 'mingzhang.chatWidth'
+const MIN_CHAT_WIDTH = 380
+const MAX_CHAT_WIDTH = 520
+const CHAT_WIDTH_RATIO = 0.28
+
+function preferredChatWidth(): number {
+  // The old fixed 404px looked wrong on both 1366px laptops and 1920px
+  // monitors. Scale with the viewport, then keep it inside a readable range.
+  const scaled = window.innerWidth * CHAT_WIDTH_RATIO
+  return Math.round(Math.min(MAX_CHAT_WIDTH, Math.max(MIN_CHAT_WIDTH, scaled)))
+}
+
+function savedChatWidth(): number | null {
+  const saved = Number(window.localStorage.getItem(CHAT_WIDTH_KEY) || 0)
+  return saved >= MIN_CHAT_WIDTH ? saved : null
+}
+
+const chatWidth = ref(savedChatWidth() ?? preferredChatWidth())
 const dragging = ref(false)
 
 onMounted(() => store.init())
 
 function resetWidth() {
-  chatWidth.value = 404
+  window.localStorage.removeItem(CHAT_WIDTH_KEY)
+  chatWidth.value = preferredChatWidth()
 }
 
 function startDrag(e: MouseEvent) {
@@ -23,10 +42,14 @@ function startDrag(e: MouseEvent) {
   const move = (ev: MouseEvent) => {
     // Chat sits on the right (row-reverse), so dragging left grows it.
     const next = startWidth - (ev.clientX - startX)
-    chatWidth.value = Math.max(160, Math.min(window.innerWidth - 320, next))
+    chatWidth.value = Math.max(
+      320,
+      Math.min(Math.round(window.innerWidth * 0.55), next),
+    )
   }
   const up = () => {
     dragging.value = false
+    window.localStorage.setItem(CHAT_WIDTH_KEY, String(chatWidth.value))
     window.removeEventListener('mousemove', move)
     window.removeEventListener('mouseup', up)
   }
@@ -77,5 +100,11 @@ function startDrag(e: MouseEvent) {
     <RecordDrawer />
     <AnalysisDialog />
     <div class="toast" :class="{ show: !!store.toast }">{{ store.toast }}</div>
+
+    <!-- Data management opens inside the app, so the conversation and its
+         results stay mounted and nothing is lost when the panel closes. -->
+    <div v-if="store.manageOpen" class="manage-layer">
+      <ManageApp embedded @close="store.closeManage()" />
+    </div>
   </div>
 </template>

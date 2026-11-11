@@ -129,7 +129,7 @@ function hasDiagnostics(m: any) {
           <span class="llm-hint">{{ store.meta?.llm.enabled ? '模型在线' : '离线规则' }}</span>
           <span>SESSION {{ sessionLabel }}</span>
           <span class="sbtns">
-            <a class="sbtn manage" href="/manage" target="_blank" title="管理数据源">管理</a>
+            <button class="sbtn manage" title="管理数据源" @click="store.openManage()">管理</button>
             <button class="sbtn" title="新建对话" @click="store.newChat()">＋</button>
             <button class="sbtn" title="对话记录" @click="store.toggleDrawer()">☰</button>
           </span>
@@ -141,7 +141,7 @@ function hasDiagnostics(m: any) {
       <div v-if="!store.datasetId" class="no-data">
         <b>还没有数据源</b>
         <p>导入 CSV/Excel、确认口径并发布后，这里就能开始问答。</p>
-        <a class="primary-link" href="/manage">去导入数据源 →</a>
+        <a class="primary-link" href="#" @click.prevent="store.openManage()">去导入数据源 →</a>
       </div>
       <div
         v-for="m in store.messages"

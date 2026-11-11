@@ -368,6 +368,8 @@ pre.sql::-webkit-scrollbar-thumb{background:#C9C1B0;border-radius:5px}
   width:22px;height:20px;border-radius:2px;font:11px var(--mono);line-height:1;padding:0;
 }
 .sbtn:hover{color:var(--accent);border-color:var(--accent)}
+/* Data management is mounted inside the chat app, not opened in a new tab. */
+.manage-layer{position:fixed;inset:0;z-index:90;background:var(--paper);overflow:hidden}
 .drawer-mask{position:fixed;inset:0;background:rgba(23,20,16,.22);z-index:40}
 .session-drawer{
   position:fixed;top:0;right:0;bottom:0;width:340px;background:var(--panel);z-index:50;

@@ -1,5 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
+
+// When mounted from the chat app it is an in-app overlay: the close control
+// emits an event instead of navigating away from the conversation.
+defineProps<{ embedded?: boolean }>()
+defineEmits<{ close: [] }>()
 import {
   analyzeUpload,
   applyDocumentation,
@@ -607,7 +612,8 @@ onUnmounted(() => {
         </div>
       </div>
       <div class="top-actions">
-        <a class="ghost" href="/">← 返回对话</a>
+        <button v-if="embedded" class="ghost" @click="$emit('close')">← 返回对话</button>
+        <a v-else class="ghost" href="/">← 返回对话</a>
       </div>
     </header>
 

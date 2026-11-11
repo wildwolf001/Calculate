@@ -114,6 +114,8 @@ interface State {
   messageSeq: number
   sessions: SessionSummary[]
   drawerOpen: boolean
+  // Data management is an in-app overlay, not a separate page/tab.
+  manageOpen: boolean
   repairs: any[]
   refusals: any[]
   diagnoses: any[]
@@ -164,6 +166,7 @@ export const useSessionStore = defineStore('session', {
     messageSeq: 0,
     sessions: [],
     drawerOpen: false,
+    manageOpen: false,
     repairs: [],
     refusals: [],
     diagnoses: [],
@@ -708,6 +711,13 @@ export const useSessionStore = defineStore('session', {
     },
     setTab(tab: 'table' | 'chart' | 'sql' | 'analysis') {
       this.tab = tab
+    },
+    openManage() {
+      this.manageOpen = true
+    },
+    closeManage() {
+      this.manageOpen = false
+      void this.refreshDatasets()
     },
     exportCurrent() {
       if (!this.result?.result_id) {
