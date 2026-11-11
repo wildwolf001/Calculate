@@ -13,6 +13,10 @@ import re
 from typing import Any
 
 REF_RE = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z0-9_]+)\b")
+# A rebuild re-derives auto/model drafts, so only semantics a human actually
+# edited, or that came from an uploaded definition document, are restored.
+# Publish records `confirmed_by`/`confirmed_at` but must not rewrite
+# `provenance`; otherwise every published machine draft becomes immortal.
 KEEP_PROVENANCE = {"human", "documentation"}
 METRIC_REF_FIELDS = (
     "expr", "numerator", "denominator", "grain_numerator", "grain_denominator",

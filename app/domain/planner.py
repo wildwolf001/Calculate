@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.config.settings import MAX_ROW_LIMIT
+from app.config.settings import MAX_ROW_LIMIT, RATIO_RANK_ROWS
 from app.core.state import Slots
 from app.domain.plan import (
     CompareSpec,
@@ -21,7 +21,7 @@ from app.domain.plan import (
     TimeRange,
 )
 from app.domain.query.ir import QueryIR
-from app.domain.semantic.graph import allowed_dimensions
+from app.domain.semantic.graph import allowed_dimensions, same_name_dimension
 from app.domain.semantic.loader import Metric, SemanticLayer, SemanticError
 
 
@@ -45,17 +45,40 @@ def degrade_unsupported_dimensions(
     removed = [d for d in plan.dimensions if d not in allowed]
     if not removed:
         return None
-    kept = [d for d in plan.dimensions if d in allowed]
-    names = "、".join(
-        sem.dimension(d).raw.get("name_zh", d) for d in removed
-    )
-    reason = f"指标「{metric.name}」不支持按「{names}」拆分，已退化为整体口径。"
+    remapped: dict[str, str] = {}
+    dropped: list[str] = []
+    for dim_id in removed:
+        target = None
+        if not plan.metric_spec:
+            target = same_name_dimension(sem, metric.id, dim_id)
+        if target and target not in plan.dimensions:
+            remapped[dim_id] = target
+        else:
+            dropped.append(dim_id)
+    if not remapped and not dropped:
+        return None
     degraded = plan.model_copy(deep=True)
-    degraded.dimensions = kept
-    degraded.degraded_reason = reason
+    degraded.dimensions = [
+        remapped.get(dim, dim) for dim in plan.dimensions
+        if dim not in dropped
+    ]
+    notes: list[str] = []
+    if remapped:
+        names = "、".join(
+            str(sem.dimension(dim).raw.get("name_zh", dim)) for dim in remapped
+        )
+        notes.append(f"已换用同名可拆分维度：{names}")
+    if dropped:
+        names = "、".join(
+            str(sem.dimension(dim).raw.get("name_zh", dim)) for dim in dropped
+        )
+        notes.append(
+            f"指标「{metric.name}」不支持按「{names}」拆分，已退化为整体口径。"
+        )
+    degraded.degraded_reason = "；".join(notes) or None
     degraded.degraded_kind = "dimension"
-    degraded.notes = list(degraded.notes) + [reason]
-    return degraded, removed
+    degraded.notes = list(degraded.notes) + notes
+    return degraded, dropped
 
 
 def member_list_plan(dim: str | None, slots: Slots, sem: SemanticLayer) -> QueryPlan:
@@ -277,6 +300,19 @@ def plan_from_ir(ir: QueryIR, sem: SemanticLayer) -> QueryPlan:
         limit = max(1, min(int(limit_per_group), MAX_ROW_LIMIT))
         limit_per_group = None
         notes.append("只有一个分组维度，按整体排序取前 N。")
+    if (
+        dims
+        and order_by
+        and not comparison
+        and (metric.type == "ratio" or ir.ratio_denominator)
+        and limit < max(1, RATIO_RANK_ROWS)
+    ):
+        # Fetch a few extra ratio rows: a 3/3 group must not silently outrank a
+        # 54/59 group. The promotion happens after execution (presentation).
+        limit = max(1, RATIO_RANK_ROWS)
+        notes.append(
+            f"比率排名额外取 {limit} 行，用于区分小样本异常值与稳定结论。"
+        )
 
     entity_count = ir.entity_count
     nested = (

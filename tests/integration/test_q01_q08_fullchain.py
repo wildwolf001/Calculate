@@ -83,7 +83,11 @@ def test_q01_q08_fullchain(tmp_path):
     assert q03[:3] == [14681.34, 12396.58, 2284.76]
     assert q03[3] == pytest.approx(0.184306, abs=1e-4)
     assert _rows(events["Q04"]) == [["数码家电", 8564.6]]
-    assert _rows(events["Q05"]) == [["岭南好物", 6, 7, pytest.approx(0.857143, abs=1e-5), 7]]
+    q05_rows = _rows(events["Q05"])
+    assert q05_rows[0] == ["岭南好物", 6, 7, pytest.approx(0.857143, abs=1e-5), 7]
+    # Ratio rankings now fetch extra rows for the minimum-sample policy; the
+    # first row must stay the adequate-sample winner.
+    assert len(q05_rows) >= 1
     q06 = {row[0]: row[1] for row in _rows(events["Q06"])}
     assert q06["延迟"] == pytest.approx(1.833333, abs=1e-4)
     assert q06["准时"] == pytest.approx(4.0, abs=1e-6)

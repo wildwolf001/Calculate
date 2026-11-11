@@ -92,6 +92,13 @@ MAX_ROW_LIMIT = int(os.getenv("MAX_ROW_LIMIT", "2000"))
 SQL_TIMEOUT_MS = int(os.getenv("SQL_TIMEOUT_MS", "8000"))
 DEFAULT_MONTH_WINDOW = int(os.getenv("DEFAULT_MONTH_WINDOW", "12"))
 
+# Ratio ranking policy: a 3/3=100% group must not silently outrank a 54/59
+# group. Ranking queries fetch a few extra rows; the first row whose denominator
+# reaches MIN_RATIO_DENOMINATOR is promoted, and the small-sample outliers stay
+# visible in the table plus a warning.
+MIN_RATIO_DENOMINATOR = int(os.getenv("MIN_RATIO_DENOMINATOR", "5"))
+RATIO_RANK_ROWS = int(os.getenv("RATIO_RANK_ROWS", "5"))
+
 # ---- Context / compaction ----
 CONTEXT_TOKEN_BUDGET = int(os.getenv("CONTEXT_TOKEN_BUDGET", "12000"))
 KEEP_RECENT_TURNS = int(os.getenv("KEEP_RECENT_TURNS", "4"))
@@ -99,3 +106,12 @@ KEEP_RECENT_TURNS = int(os.getenv("KEEP_RECENT_TURNS", "4"))
 # ---- Server ----
 HOST = os.getenv("HOST", "127.0.0.1")
 PORT = int(os.getenv("PORT", "8000"))
+
+# ---- Security ----
+# Optional shared token. When set, every /api (plus docs) call must send
+# `X-API-Token: <token>` or `Authorization: Bearer <token>`. Empty means the
+# local-only mode: the app refuses to bind a non-loopback address unless the
+# operator explicitly opts in.
+API_TOKEN = os.getenv("API_TOKEN", "")
+ALLOW_REMOTE = os.getenv("ALLOW_REMOTE", "").lower() in {"1", "true", "yes"}
+LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1", "[::1]"}

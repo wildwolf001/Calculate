@@ -60,7 +60,7 @@ from app.domain.plan import FilterSpec, HavingSpec, QueryPlan
 from app.domain.policy import PolicySet
 from app.domain.query.ir import QueryIR
 from app.domain import lookup as lookup_mod
-from app.domain.presentation import display_spec, summarize_rows
+from app.domain.presentation import display_spec, stabilize_ratio_ranking, summarize_rows
 from app.domain.repair import build_repair, repair_text
 from app.domain.rewrite import rewrite
 from app.domain.semantic.loader import SemanticLayer, SemanticError
@@ -2456,6 +2456,9 @@ class Controller:
             self.sem.version,
         )
         result.result_id = f"r{state.turn}-{result.fingerprint}"
+        policy = stabilize_ratio_ranking(plan, result)
+        if policy:
+            result.meta["ratio_sample_policy"] = policy
         self._results[(state.session_id, state.turn)] = result
         payload = result.as_dict()
         payload["question"] = self._last_user_text(state)
@@ -2581,6 +2584,16 @@ class Controller:
             self._results[(state.session_id, state.turn)] = result
         issues, facts = check(plan, self.sem, result,
                               db_path=self.warehouse, quality=self.quality)
+        policy = (result.meta or {}).get("ratio_sample_policy")
+        if policy:
+            issues.append(CheckIssue(
+                "LOW_SAMPLE_RANK", "warn", "样本量",
+                f"最高分组样本量不足：原首位只有 "
+                f"{policy.get('demoted_denominator')} 笔（低于 "
+                f"{policy.get('min_denominator')} 笔），已把样本充足组"
+                f"（{policy.get('promoted_denominator')} 笔）置顶；"
+                "小样本行仍保留在结果表中，不能当作稳定结论。",
+            ))
         if plan.filters and plan.metric and plan.metric in self.sem.metrics:
             filtered_metric = self.sem.metric(plan.metric)
             if filtered_metric.type == "aggregate":

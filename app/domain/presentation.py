@@ -7,6 +7,7 @@ so the canvas never has to guess (and never leaks internal columns such as
 """
 from __future__ import annotations
 
+from app.config.settings import MIN_RATIO_DENOMINATOR
 from app.domain.executor import ResultSet
 from app.domain.plan import QueryPlan
 from app.domain.semantic.loader import Metric, SemanticLayer
@@ -103,6 +104,55 @@ def display_spec(plan: QueryPlan, sem: SemanticLayer, result: ResultSet) -> dict
         "unit": unit,
         "provenance": plan.metric_source or "documented",
     }
+
+
+def stabilize_ratio_ranking(plan: QueryPlan, result: ResultSet,
+                            min_denominator: int = MIN_RATIO_DENOMINATOR) -> dict | None:
+    """Promote the best ratio group with an adequate denominator.
+
+    A ratio ranking like "延迟率最高的商家" is dominated by tiny groups
+    (3/3 = 100%). The row still exists and stays visible, but it must not be the
+    headline. The planner already fetched extra rows; this function moves the
+    first row whose denominator reaches the threshold to the top and returns the
+    evidence so the check/answer can state what happened.
+    """
+    if not plan.dimensions or not plan.order_by:
+        return None
+    if plan.compare or plan.comparison:
+        return None
+    if not any(getattr(item, "field", None) == "value" for item in plan.order_by):
+        return None
+    columns = list(result.columns)
+    if "denominator" not in columns or "value" not in columns:
+        return None
+    rows = result.rows
+    if len(rows) < 2:
+        return None
+    denom_idx = columns.index("denominator")
+    value_idx = columns.index("value")
+
+    def denominator(row):
+        value = row[denom_idx] if denom_idx < len(row) else None
+        return value if isinstance(value, (int, float)) else None
+
+    first = denominator(rows[0])
+    if first is None or first >= min_denominator:
+        return None
+    for idx in range(1, len(rows)):
+        candidate = denominator(rows[idx])
+        if candidate is None or candidate < min_denominator:
+            continue
+        demoted = rows[0]
+        promoted = rows.pop(idx)
+        rows.insert(0, promoted)
+        return {
+            "min_denominator": min_denominator,
+            "promoted_value": promoted[value_idx],
+            "promoted_denominator": candidate,
+            "demoted_value": demoted[value_idx],
+            "demoted_denominator": first,
+        }
+    return None
 
 
 def summarize_rows(rows: list, columns: list, dimensions: list[str],

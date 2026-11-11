@@ -7,6 +7,7 @@ it never contains SQL and never writes to the warehouse.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from typing import Any
@@ -15,6 +16,33 @@ from app.domain.semantic.loader import SemanticLayer
 
 INDEX_VERSION = 1
 MAX_DIM_VALUES = 50
+
+
+def semantic_fingerprint(sem: SemanticLayer) -> str:
+    """Content hash of the semantic layer.
+
+    `version` only changes on publish, but a draft edit can rename metrics or
+    change synonyms without bumping it. The fingerprint lets a loaded context
+    detect that its on-disk index no longer describes the YAML it just read.
+    Hash the effective layer (not the raw YAML text) so whitespace/order edits
+    do not invalidate the index.
+    """
+    payload = json.dumps(
+        {
+            "version": sem.version,
+            "tables": sem.tables,
+            "joins": sem.joins,
+            "time_axes": sem.time_axes,
+            "time_range": list(sem.time_range),
+            "metrics": {mid: metric.raw for mid, metric in sem.metrics.items()},
+            "dimensions": {did: dim.raw for did, dim in sem.dimensions.items()},
+            "entities": {eid: ent.raw for eid, ent in sem.entities.items()},
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        default=str,
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()[:16]
 
 
 def _read_json(path: Path | None) -> dict[str, Any]:
@@ -42,6 +70,17 @@ def _dimension_values(raw: dict[str, Any], dim_values: dict[str, Any]) -> list[s
     return out
 
 
+def _dimension_is_pii(raw: dict[str, Any], catalog: dict[str, Any]) -> bool:
+    ref = str(raw.get("column") or raw.get("filter_column") or "")
+    table, _, column = ref.partition(".")
+    if not table or not column:
+        return False
+    for meta in ((catalog.get("tables") or {}).get(table) or {}).get("columns") or []:
+        if str(meta.get("name")) == column:
+            return bool(meta.get("pii"))
+    return False
+
+
 def _columns(raw: dict[str, Any], catalog: dict[str, Any]) -> list[dict[str, Any]]:
     table = (catalog.get("tables") or {}).get(raw.get("id") or "") or {}
     columns = []
@@ -52,7 +91,8 @@ def _columns(raw: dict[str, Any], catalog: dict[str, Any]) -> list[dict[str, Any
             "type": column.get("type"),
             "distinct": column.get("distinct"),
             "null_rate": column.get("null_rate"),
-            "samples": column.get("samples") or [],
+            "pii": bool(column.get("pii")),
+            "samples": [] if column.get("pii") else (column.get("samples") or []),
         })
     return columns
 
@@ -112,6 +152,7 @@ def build_index(
     dimensions: dict[str, Any] = {}
     for dim_id, dim in sem.dimensions.items():
         raw = dim.raw
+        pii = _dimension_is_pii(raw, catalog)
         dimensions[dim_id] = {
             "name": raw.get("name_zh") or dim_id,
             "kind": dim.kind,
@@ -120,7 +161,10 @@ def build_index(
             "requires": raw.get("requires"),
             "labels": dict(raw.get("labels") or {}),
             "synonyms": list(raw.get("synonyms") or []),
-            "values": _dimension_values(raw, dim_values),
+            # PII values never leave the local warehouse, not even into a
+            # prompt: the model only needs the dimension's existence here.
+            "pii": pii,
+            "values": [] if pii else _dimension_values(raw, dim_values),
         }
 
     relations: list[dict[str, Any]] = []
@@ -151,6 +195,7 @@ def build_index(
         "dataset_id": dataset_id,
         "data_version": data_version,
         "semantic_version": int(semantic_version),
+        "semantic_fingerprint": semantic_fingerprint(sem),
         "tables": tables,
         "relations": sorted(relations, key=lambda item: (item["from"], item["to"])),
         "metrics": metrics,

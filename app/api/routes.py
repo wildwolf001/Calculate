@@ -189,6 +189,10 @@ def edit_dataset_draft(dataset_id: str, request: Request,
             metric["unit"] = edit.unit
         if edit.definition is not None:
             metric["definition"] = edit.definition
+        # A human touched this definition: record authorship so a rebuild does
+        # not silently replace it with a freshly generated draft.
+        metric["provenance"] = "human"
+        metric["edited_at"] = datetime.now().isoformat(timespec="seconds")
     for edit in body.dimensions or []:
         dim = dimensions.get(edit.id)
         if not dim:
@@ -197,6 +201,8 @@ def edit_dataset_draft(dataset_id: str, request: Request,
             dim["name_zh"] = edit.name_zh
         if edit.synonyms is not None:
             dim["synonyms"] = edit.synonyms
+        dim["provenance"] = "human"
+        dim["edited_at"] = datetime.now().isoformat(timespec="seconds")
 
     if body.time_column:
         table = str(body.time_column.get("table") or "")
@@ -289,6 +295,17 @@ def edit_dataset_draft(dataset_id: str, request: Request,
     write_manifest(ctx.root, manifest)
     service.registry.invalidate(dataset_id) if service.registry else None
     service.invalidate_dataset(dataset_id)
+    # The index is a published read model; a draft edit renames/synonyms can
+    # make it lie. Rebuild it now, best effort, so the chat agent never sees a
+    # brief that predates this edit.
+    try:
+        if service.registry is not None:
+            from app.datasets.index import build_index_for_context, write_index
+
+            fresh = service.registry.get(dataset_id)
+            write_index(fresh.index_path, build_index_for_context(fresh))
+    except Exception:
+        pass
     return {
         "dataset_id": dataset_id,
         "status": "draft",

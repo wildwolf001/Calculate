@@ -22,6 +22,7 @@ from app.domain.semantic.loader import Metric
 from app.domain.semantic.graph import (
     allowed_dimensions,
     build_capabilities,
+    same_name_dimension,
     time_axis_allowed,
 )
 
@@ -295,6 +296,19 @@ def assess_slots(slots: Any, sem: Any, policy: Any | None = None,
                 })
                 continue
             if dim_id not in supported:
+                # Same business dimension copied onto another fact table: use
+                # that copy when the metric can safely split by it.
+                remapped = same_name_dimension(sem, metric.id, dim_id)
+                if remapped:
+                    report.degradations.append({
+                        "kind": "dimension", "action": "replace",
+                        "dimension": dim_id, "to": remapped,
+                        "reason": (
+                            f"「{_dim_name(sem, dim_id)}」换用同名可拆分维度"
+                        ),
+                    })
+                    kept.append(remapped)
+                    continue
                 fanout = (
                     capability is not None
                     and dim_id in capability.fanout_dimensions
@@ -409,18 +423,27 @@ def assess_slots(slots: Any, sem: Any, policy: Any | None = None,
 
 
 def apply_degradations(slots: Any, report: CapabilityReport) -> Any:
-    """Return a copy of the slots with unsupported dimensions removed."""
+    """Return a copy of the slots with unsupported dimensions removed/replaced."""
     if not report.degradations:
         return slots
     dropped = {
         item.get("dimension") for item in report.degradations
         if item.get("action") == "drop" and item.get("kind") == "dimension"
     }
+    replaced = {
+        item.get("dimension"): item.get("to")
+        for item in report.degradations
+        if item.get("action") == "replace" and item.get("kind") == "dimension"
+    }
     clone = slots.model_copy(deep=True) if hasattr(slots, "model_copy") else slots
-    if dropped:
-        clone.dimensions = [
-            d for d in getattr(clone, "dimensions", []) if d not in dropped
+    if dropped or replaced:
+        remapped = [
+            replaced.get(dim, dim)
+            for dim in getattr(clone, "dimensions", [])
+            if dim not in dropped
         ]
+        # A replacement may equal a dimension that was already selected.
+        clone.dimensions = list(dict.fromkeys(remapped))
     for item in report.degradations:
         if item.get("kind") != "time" or item.get("action") != "clamp":
             continue

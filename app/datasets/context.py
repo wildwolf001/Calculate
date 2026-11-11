@@ -13,7 +13,7 @@ from typing import Any, Literal
 
 import yaml
 
-from app.datasets.index import load_index
+from app.datasets.index import load_index, semantic_fingerprint
 from app.domain.model.model import SemanticModel
 from app.domain.semantic.loader import SemanticLayer, load_semantic
 
@@ -120,6 +120,38 @@ def load_context(
         model = SemanticModel.from_layer(sem)
     except Exception:
         model = None
+    catalog = _read_json(catalog_path)
+    dim_values = _read_json(dim_values_path)
+    documentation = _read_json(documentation_path)
+    # An index that does not describe the YAML we just loaded is worse than no
+    # index: the parser would brief the model on renamed/removed objects.
+    index = load_index(index_path)
+    if index:
+        expected = index.get("semantic_fingerprint")
+        if expected:
+            if expected != semantic_fingerprint(sem):
+                index = {}
+        elif str(index.get("semantic_version")) != str(sem.version):
+            index = {}
+    if not index:
+        # Datasets published before the index existed have none on disk. Build
+        # one in memory so the parser still sees column labels, samples and
+        # supported dimensions; it is persisted on the next publish.
+        try:
+            from app.datasets.index import build_index
+
+            index = build_index(
+                dataset_id=dataset_id,
+                data_version=data_version,
+                semantic_version=sem.version,
+                sem=sem,
+                catalog=catalog,
+                dim_values=dim_values,
+                documentation=documentation,
+                capabilities=merged_caps,
+            )
+        except Exception:
+            index = {}
     return DatasetContext(
         dataset_id=dataset_id,
         name=name,
@@ -134,17 +166,17 @@ def load_context(
         mode=mode,
         data_version=data_version,
         sem=sem,
-        catalog=_read_json(catalog_path),
-        dim_values=_read_json(dim_values_path),
+        catalog=catalog,
+        dim_values=dim_values,
         quality=_read_json(quality_path),
         profile=_read_json(profile_path),
         source=_read_yaml(source_path),
-        documentation=_read_json(documentation_path),
+        documentation=documentation,
         readiness=_read_json(readiness_path),
         capabilities=merged_caps,
         model=model,
         status=status,
         engine=engine,
         index_path=index_path,
-        index=load_index(index_path),
+        index=index,
     )

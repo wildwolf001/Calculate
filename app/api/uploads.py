@@ -576,6 +576,13 @@ def apply_documentation_endpoint(dataset_id: str, request: Request):
     registry.refresh()
     if service is not None:
         service.invalidate_dataset(dataset_id)
+    try:
+        from app.datasets.index import build_index_for_context, write_index
+
+        fresh = registry.get(dataset_id)
+        write_index(fresh.index_path, build_index_for_context(fresh))
+    except Exception:
+        pass
     return result
 
 

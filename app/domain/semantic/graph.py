@@ -191,3 +191,27 @@ def allowed_dimensions(sem: SemanticLayer, metric_id: str) -> set[str]:
         metric = sem.metrics.get(metric_id)
         return set(metric.raw.get("supported_grain") or ["none"]) if metric else {"none"}
     return set(capability.allowed_dimensions) | {"none"}
+
+
+def same_name_dimension(sem: SemanticLayer, metric_id: str,
+                        dim_id: str) -> str | None:
+    """Find a safe published copy of the same business dimension.
+
+    Ingest copies a dimension onto every fact table that carries the column
+    (e.g. four dimensions literally named 订单状态). When a metric can only be
+    split by one of those copies, swapping to it preserves the user's intent
+    instead of silently dropping the dimension or refusing the question.
+    """
+    allowed = allowed_dimensions(sem, metric_id)
+    dim = sem.dimensions.get(dim_id)
+    if dim is None:
+        return None
+    label = str(dim.raw.get("name_zh") or dim_id)
+    candidates = [
+        other
+        for other in allowed
+        if other != dim_id
+        and other in sem.dimensions
+        and str(sem.dimensions[other].raw.get("name_zh") or other) == label
+    ]
+    return candidates[0] if len(candidates) == 1 else None
