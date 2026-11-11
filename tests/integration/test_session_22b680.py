@@ -256,6 +256,44 @@ def test_sum_question_replaces_unrelated_metric():
 
 
 @pytest.mark.skipif(not DATASET.exists(), reason="SESSION 22B680 dataset is not available")
+def test_new_metric_without_time_does_not_inherit_previous_month():
+    controller = object.__new__(Controller)
+    result = ParseResult(
+        intent_type="query",
+        slots={
+            "metric": "m_llm_已交付订单平均评分",
+            "time": {"start": "2025-05-01", "end": "2025-06-01"},
+            "comparison": {"label": "5月 vs 4月"},
+        },
+    )
+    controller._drop_spurious_inherited_time(
+        result,
+        "有评价的已送达订单中，延迟订单与准时订单的平均评分分别是多少？",
+        {"active_scope": {"metric": "m_llm_延迟交付率"}},
+    )
+    assert result.slots["time"] is None
+    assert result.slots["comparison"] is None
+
+
+@pytest.mark.skipif(not DATASET.exists(), reason="SESSION 22B680 dataset is not available")
+def test_new_metric_with_explicit_month_keeps_that_month():
+    controller = object.__new__(Controller)
+    result = ParseResult(
+        intent_type="query",
+        slots={
+            "metric": "m_llm_已交付订单平均评分",
+            "time": {"start": "2025-05-01", "end": "2025-06-01"},
+        },
+    )
+    controller._drop_spurious_inherited_time(
+        result,
+        "5月有评价的已交付订单平均评分是多少？",
+        {"active_scope": {"metric": "m_llm_延迟交付率"}},
+    )
+    assert result.slots["time"] == {"start": "2025-05-01", "end": "2025-06-01"}
+
+
+@pytest.mark.skipif(not DATASET.exists(), reason="SESSION 22B680 dataset is not available")
 def test_q8_schema_join_question_gets_deterministic_explanation(tmp_path):
     class UnsupportedParser:
         def parse(self, text, context):
@@ -281,3 +319,38 @@ def test_q8_schema_join_question_gets_deterministic_explanation(tmp_path):
     assert "order_payments" in answer
     assert "放大" in answer
     assert not any(event.type == "sql.executed" for event in events)
+
+
+def test_schema_join_explanation_does_not_invent_order_tables():
+    class Ctx:
+        model_card = {
+            "tables": {
+                "subscriptions": {
+                    "label": "subscriptions",
+                    "grain": ["account_id", "plan_id"],
+                },
+                "payments": {
+                    "label": "payments",
+                    "grain": ["account_id", "payment_id"],
+                },
+            }
+        }
+
+    class Sem:
+        tables = {"subscriptions": {}, "payments": {}}
+        dimensions: dict = {}
+
+    class FakeController:
+        ctx = Ctx()
+        sem = Sem()
+
+    FakeController._JOIN_EXPLANATION_RE = Controller._JOIN_EXPLANATION_RE
+    answer = Controller._schema_join_explanation(
+        FakeController(),
+        "直接将订阅表和支付表关联为什么会导致金额重复？",
+    )
+    assert answer
+    assert "order_items" not in answer
+    assert "order_payments" not in answer
+    assert "t_004" not in answer
+    assert "t_005" not in answer

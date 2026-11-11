@@ -526,16 +526,23 @@ class Controller:
 
         item = find(("order_items", "商品明细", "订单明细", "items"))
         payment = find(("order_payments", "支付表", "支付流水", "payments"))
-        item_id, item_meta = item if item else ("t_004", {})
-        pay_id, pay_meta = payment if payment else ("t_005", {})
+        if not item or not payment:
+            # Do not invent order-table names for a different dataset. A
+            # generic grain explanation is still useful and cannot mislabel
+            # tables as order_items/order_payments.
+            return (
+                "如果两张表不是同一粒度，直接按业务主键关联会产生笛卡尔组合："
+                "一边一个主键有多行，另一边也有多行，关联后的行数是两边行数的乘积。"
+                "此时对任一边的金额列求和都会被放大。\n\n"
+                "正确做法是先在各自事实表内聚合到共同业务粒度，再通过主表桥接，"
+                "不要让两个一对多/多对多事实表直接互连。"
+            )
+        item_id, item_meta = item
+        pay_id, pay_meta = payment
         item_label = str(item_meta.get("label") or item_id)
         pay_label = str(pay_meta.get("label") or pay_id)
         item_grain = "订单 + 明细行"
         pay_grain = "订单 + 支付流水"
-        if not item:
-            item_grain = " + ".join(str(x) for x in (item_meta.get("grain") or [])) or item_grain
-        if not payment:
-            pay_grain = " + ".join(str(x) for x in (pay_meta.get("grain") or [])) or pay_grain
         return (
             f"原因在于这两张表不是同一粒度：\n\n"
             f"1. **{item_label}** 的粒度是「{item_grain}」。一笔订单可以有多条商品明细，"
