@@ -13,6 +13,8 @@ from pathlib import Path
 from typing import Any, Callable
 
 MAX_FILE_BYTES = 200 * 1024 * 1024
+MAX_UNCOMPRESSED_BYTES = 512 * 1024 * 1024
+MAX_COMPRESSION_RATIO = 200
 MAX_ROWS = 1_000_000
 MAX_CELLS = 20_000_000
 
@@ -101,9 +103,35 @@ def _sniff_delimiter(text: str, suffix: str) -> str:
     return best
 
 
+def _check_xlsx_archive(path: Path) -> None:
+    """Reject zip bombs before openpyxl materialises the workbook.
+
+    The upload limit applies to the compressed file, so a 1 MB xlsx could still
+    declare gigabytes of sheet XML. Inspect the central directory first.
+    """
+    import zipfile
+
+    try:
+        with zipfile.ZipFile(path) as archive:
+            infos = archive.infolist()
+            total = sum(int(info.file_size) for info in infos)
+            compressed = sum(int(info.compress_size) for info in infos) or 1
+    except zipfile.BadZipFile as exc:
+        raise ValueError(f"不是有效的 Excel 文件: {path.name}") from exc
+    if total > MAX_UNCOMPRESSED_BYTES:
+        raise ValueError(
+            f"解压后体积 {total // (1024 * 1024)}MB 超过上限 "
+            f"{MAX_UNCOMPRESSED_BYTES // (1024 * 1024)}MB: {path.name}"
+        )
+    if total / compressed > MAX_COMPRESSION_RATIO:
+        raise ValueError(f"压缩比异常（疑似 zip bomb）: {path.name}")
+
+
 def open_workbook(path: Path):
     """Open an Excel workbook once; callers own the returned handle."""
     from openpyxl import load_workbook
+
+    _check_xlsx_archive(path)
     return load_workbook(path, read_only=True, data_only=True, keep_vba=False)
 
 

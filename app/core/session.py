@@ -16,6 +16,17 @@ from app.datasets.registry import DatasetError
 from app.domain.records import verify_record
 
 
+def _csv_cell(value):
+    """Neutralise spreadsheet formula injection on export.
+
+    A result cell is user data; Excel still evaluates any cell starting with
+    `=`, `+`, `-` or `@`, so prefix those with a single quote.
+    """
+    if isinstance(value, str) and value[:1] in ("=", "+", "-", "@", "\t", "\r"):
+        return "'" + value
+    return value
+
+
 class SessionService:
     """Session boundary. One controller per dataset, resolved per session.
 
@@ -144,7 +155,7 @@ class SessionService:
             raise KeyError("result_id 不存在")
         buf = io.StringIO()
         writer = csv.writer(buf)
-        writer.writerow(artifact.get("columns") or [])
+        writer.writerow([_csv_cell(c) for c in (artifact.get("columns") or [])])
         for row in artifact.get("rows") or []:
-            writer.writerow(row)
+            writer.writerow([_csv_cell(value) for value in row])
         return f"{result_id}.csv", buf.getvalue()
