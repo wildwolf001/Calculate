@@ -566,6 +566,26 @@ class LLMIntentParser:
         elif entity_count is not None:
             raise IntentParseError("entity_count 必须是对象")
 
+        order_by = []
+        raw_order = raw_slots.get("order_by") or []
+        if isinstance(raw_order, list):
+            for item in raw_order:
+                if not isinstance(item, dict):
+                    continue
+                field = str(item.get("field") or "").strip()
+                direction = str(item.get("direction") or "desc").lower()
+                if direction not in {"asc", "desc"}:
+                    direction = "desc"
+                if field in {metric, "value", "current", "baseline", "delta", "growth_rate"}:
+                    order_by.append({"field": field, "direction": direction})
+                elif field in dims:
+                    order_by.append({"field": field, "direction": direction})
+                elif field in {"dimension_id", "dimension", "group", "time"} and dims:
+                    # Models occasionally use a placeholder instead of the
+                    # selected dimension id. Treat it as the first grouping
+                    # column instead of failing the entire subquestion.
+                    order_by.append({"field": dims[0], "direction": direction})
+
         return {
             "metric": metric,
             "metric_spec": (
@@ -583,7 +603,7 @@ class LLMIntentParser:
             "having": raw_slots.get("having") or [],
             "compare": compare,
             "comparison": comparison,
-            "order_by": raw_slots.get("order_by") or [],
+            "order_by": order_by,
             "limit": int(raw_slots.get("limit", 100)),
             "limit_per_group": limit_per_group,
             "share": share,

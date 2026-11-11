@@ -16,9 +16,12 @@ from app.domain.resolver import RuleGrounder
 from app.domain.semantic.loader import Metric, SemanticLayer
 from app.domain.visualization import recommend_chart
 from app.llm.compose_answer import TemplateComposer
+from app.llm.semantic_brief import build_brief
 
 DATASET_ID = "ds_dd0addc20f5c"
 DATASET = Path(__file__).resolve().parents[2] / "data" / "datasets" / DATASET_ID
+COMPLEX_DATASET_ID = "ds_d7390c8574a4"
+COMPLEX_DATASET = Path(__file__).resolve().parents[2] / "data" / "datasets" / COMPLEX_DATASET_ID
 
 
 def _sem() -> SemanticLayer:
@@ -82,6 +85,18 @@ def test_many_categories_recommend_horizontal_bar():
     rows = [[f"c{i}", i] for i in range(12)]
     spec = recommend_chart(plan, _sem(), _display(["cat", "value"]), _result(["cat", "value"], rows))
     assert spec["recommended"] == "horizontal_bar"
+
+
+@pytest.mark.skipif(not COMPLEX_DATASET.exists(), reason="complex dataset is not available")
+def test_complex_question_brief_contains_category_and_month():
+    ctx = DatasetRegistry().get(COMPLEX_DATASET_ID)
+    brief = build_brief(
+        ctx.model_card,
+        "在所有商品中，销售额占比最高的是哪一类？哪些城市的哪些产品卖得最好？近几个月的变化趋势是什么？",
+    )
+    assert "d_004_001_c03" in brief
+    assert "\nmonth " in brief
+    assert len(brief) <= 6000
 
 
 def test_share_recommends_donut_and_ratio_does_not():

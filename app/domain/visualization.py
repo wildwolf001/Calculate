@@ -165,7 +165,7 @@ def recommend_chart(plan: QueryPlan, sem: SemanticLayer,
             x=dimensions[0], series=dimensions[1],
         )
     return spec(
-        "grouped_bar", ["stacked_bar", "bar", "table"],
-        "两个分类维度用分组柱/堆叠柱比较各组构成。",
+        "grouped_bar", ["stacked_bar", "heatmap", "bar", "table"],
+        "两个分类维度用分组柱/堆叠柱展示组合差异；组合较密时可切热力图。",
         x=dimensions[0], series=dimensions[1],
     )

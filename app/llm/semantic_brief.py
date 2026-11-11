@@ -23,11 +23,11 @@ MAX_CHARS = 6000
 MAX_TABLES = 8
 SCHEMA_BUDGET = 3400
 METRIC_BUDGET = 800
-DIM_BUDGET = 600
+DIM_BUDGET = 800
 REL_BUDGET = 300
 DOC_BUDGET = 250
 MAX_METRICS = 8
-MAX_DIMENSIONS = 8
+MAX_DIMENSIONS = 12
 
 
 def _tokens(text: str) -> list[str]:
@@ -317,6 +317,16 @@ def build_brief(source: dict[str, Any], question: str,
     ranked_dims = sorted(
         dimensions, key=lambda item: (-_score(item[1], question), item[0])
     )[:max_dimensions]
+    # A time dimension (month) has no column and often scores zero for natural
+    # phrases such as “近几个月”; still expose it so the LLM can choose a
+    # monthly plan when the question asks for a trend. This is schema
+    # availability, not a keyword-to-group-by rule.
+    ranked_ids = {did for did, _ in ranked_dims}
+    for item in dimensions:
+        did, dim = item
+        if did not in ranked_ids and str(dim.get("kind") or "") == "time":
+            ranked_dims.append(item)
+            ranked_ids.add(did)
 
     selected_tables = _pick_tables(source, question, ranked_metrics, ranked_dims)
     lines: list[str] = []

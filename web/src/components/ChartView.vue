@@ -55,6 +55,11 @@ const ALL_TYPES: { type: ChartType; label: string }[] = [
 
 function compatible(type: ChartType): boolean {
   const n = rows.value.length
+  const hasSeriesDim = !!props.chart?.series && props.chart.series !== 'period'
+  if ((type === 'bar' || type === 'horizontal_bar') && hasSeriesDim) {
+    // A one-dimensional bar would silently drop the second grouping column.
+    return false
+  }
   if (type === 'kpi') return n <= 1
   if (type === 'line' || type === 'area') return n >= 2
   if (type === 'donut' || type === 'pie') {
@@ -62,6 +67,9 @@ function compatible(type: ChartType): boolean {
   }
   if (type === 'scatter') return numericColumns.value.length >= 2 && n >= 2
   if (type === 'heatmap') return props.columns.length >= 3 && n >= 3
+  if (type === 'grouped_bar' || type === 'stacked_bar') {
+    return n > 1 && (props.compare || props.columns.length >= 3)
+  }
   if (type === 'waterfall') {
     return !!props.compare && props.columns.includes('delta')
   }
@@ -176,6 +184,67 @@ const barRows = computed(() => {
   const vi = valueIndex.value
   if (vi < 0 || props.compare) return rows.value
   return [...rows.value].sort((a, b) => Number(b[vi] || 0) - Number(a[vi] || 0))
+})
+
+const compareSeries = computed(() =>
+  !!props.compare && props.columns.includes('current') && props.columns.includes('baseline'),
+)
+
+const chartSeries = computed(() => {
+  const id = props.chart?.series
+  const idx = id ? props.columns.indexOf(id) : -1
+  return idx >= 1 ? idx : 1
+})
+
+const seriesGroups = computed(() => {
+  if (compareSeries.value) return { series: [] as string[], groups: [] as any[] }
+  if (props.columns.length < 3) return { series: [] as string[], groups: [] as any[] }
+  const si = chartSeries.value
+  const vi = valueIndex.value >= 0 ? valueIndex.value : props.columns.length - 1
+  if (si < 0 || si >= props.columns.length || si === vi) {
+    return { series: [] as string[], groups: [] as any[] }
+  }
+  const groupMap = new Map<string, { name: string; total: number; values: Map<string, number> }>()
+  const seriesTotals = new Map<string, number>()
+  for (const row of rows.value) {
+    const group = String(row[0] ?? '')
+    const series = String(row[si] ?? '')
+    const value = Number(row[vi] ?? 0)
+    if (!group || !series || !Number.isFinite(value)) continue
+    const entry = groupMap.get(group) || { name: group, total: 0, values: new Map<string, number>() }
+    entry.total += value
+    entry.values.set(series, (entry.values.get(series) || 0) + value)
+    groupMap.set(group, entry)
+    seriesTotals.set(series, (seriesTotals.get(series) || 0) + value)
+  }
+  const series = [...seriesTotals.entries()]
+    .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
+    .slice(0, 7)
+    .map(([name]) => name)
+  const groups = [...groupMap.values()]
+    .sort((a, b) => Math.abs(b.total) - Math.abs(a.total))
+    .slice(0, 10)
+  const max = Math.max(1, ...groups.flatMap((g) => series.map((s) => Math.abs(g.values.get(s) || 0))))
+  return {
+    series,
+    groups: groups.map((g) => {
+      const total = g.total || 1
+      return {
+        name: g.name,
+        total: g.total,
+        bars: series.map((s, idx) => {
+          const value = g.values.get(s) || 0
+          return {
+            name: s,
+            value,
+            color: pieColors[idx % pieColors.length],
+            pct: (Math.abs(value) / max) * 100,
+            stackPct: (Math.abs(value) / Math.abs(total)) * 100,
+          }
+        }),
+      }
+    }),
+  }
 })
 
 const groupedRows = computed(() => {
@@ -306,10 +375,42 @@ const kpiValues = computed(() =>
     </table>
 
     <div v-else-if="mode === 'grouped_bar' || mode === 'stacked_bar'" class="grouped-wrap">
-      <div class="legend"><span><i class="sw a"></i>本期</span><span><i class="sw b"></i>基期</span></div>
-      <div v-for="item in groupedRows" :key="item.name" class="grow">
-        <span class="gname">{{ item.name }}</span>
-        <div class="gtrack"><i class="gbar a" :style="{ width: item.pct + '%' }"></i><i class="gbar b" :style="{ width: item.pct2 + '%' }"></i></div>
+      <template v-if="compareSeries">
+        <div class="legend"><span><i class="sw a"></i>本期</span><span><i class="sw b"></i>基期</span></div>
+        <div v-for="item in groupedRows" :key="item.name" class="grow">
+          <span class="gname">{{ item.name }}</span>
+          <div class="gtrack"><i class="gbar a" :style="{ width: item.pct + '%' }"></i><i class="gbar b" :style="{ width: item.pct2 + '%' }"></i></div>
+        </div>
+      </template>
+      <template v-else-if="seriesGroups.series.length">
+        <div class="legend">
+          <span v-for="s in seriesGroups.series" :key="s">
+            <i class="sw" :style="{ background: pieColors[seriesGroups.series.indexOf(s) % pieColors.length] }"></i>{{ s }}
+          </span>
+        </div>
+        <div v-for="group in seriesGroups.groups" :key="group.name" class="g2row">
+          <span class="gname" :title="group.name">{{ group.name }}</span>
+          <div v-if="mode === 'stacked_bar'" class="g2stack">
+            <i
+              v-for="bar in group.bars.filter((b: any) => b.value !== 0)"
+              :key="bar.name"
+              :style="{ width: bar.stackPct + '%', background: bar.color }"
+              :title="`${group.name} / ${bar.name}: ${format(key, bar.value)}`"
+            ></i>
+          </div>
+          <div v-else class="g2bars">
+            <i
+              v-for="bar in group.bars.filter((b: any) => b.value !== 0)"
+              :key="bar.name"
+              :style="{ width: bar.pct + '%', background: bar.color }"
+              :title="`${group.name} / ${bar.name}: ${format(key, bar.value)}`"
+            ></i>
+          </div>
+          <span class="g2val">{{ format(key, group.total) }}</span>
+        </div>
+      </template>
+      <div v-else class="chart-empty">
+        这个结果没有第二分类维度，分组柱/堆叠柱无法展开；请切回表格或柱状图。
       </div>
     </div>
 
@@ -428,6 +529,13 @@ const kpiValues = computed(() =>
 .gbar { display:block; height:7px; border-radius:2px; }
 .gbar.a { background:var(--accent); }
 .gbar.b { background:#9C6C18; opacity:.75; }
+.g2row { display:flex; align-items:center; gap:10px; margin:7px 0; }
+.g2bars { flex:1; display:flex; flex-direction:column; gap:2px; }
+.g2bars i { display:block; height:7px; border-radius:2px; min-width:1px; }
+.g2stack { flex:1; display:flex; height:13px; gap:1px; background:#f0eadd; border-radius:2px; overflow:hidden; }
+.g2stack i { display:block; height:100%; min-width:1px; }
+.g2val { width:86px; text-align:right; font-size:10px; color:var(--ink-3); }
+.chart-empty { padding:24px 0; color:var(--ink-3); font-size:11px; }
 .areafill { fill:var(--accent); opacity:.13; }
 .scatter-dot { fill:var(--accent); opacity:.7; }
 .scatter-wrap { padding:10px 26px 30px; }
