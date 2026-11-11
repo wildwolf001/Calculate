@@ -286,7 +286,7 @@ function roleLabel(role: string) {
           @input="resize"
         ></textarea>
         <button
-          v-if="store.busy"
+          v-if="store.busy && store.meta?.features?.cancel"
           class="stop"
           :disabled="store.cancelling"
           title="停止本轮生成"

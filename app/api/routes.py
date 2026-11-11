@@ -20,6 +20,7 @@ from app.api.schemas import (
 )
 from app.api.sse import event_stream
 from app.config.settings import (
+    CANCEL_ENABLED,
     DEFAULT_DATASET_ID,
     LLM_BASE_URL,
     LLM_ENABLED,
@@ -89,6 +90,7 @@ def meta(request: Request, dataset_id: str | None = None):
             "base_url": LLM_BASE_URL if LLM_ENABLED else None,
         },
         "limits": {"max_rows": MAX_ROW_LIMIT},
+        "features": {"cancel": CANCEL_ENABLED},
         "warehouse": str(ctx.warehouse),
     }
 
@@ -670,6 +672,8 @@ def drill_result(session_id: str, body: DrillRequest, request: Request):
 
 @router.post("/sessions/{session_id}/cancel")
 def cancel_turn(session_id: str, request: Request):
+    if not CANCEL_ENABLED:
+        raise HTTPException(status_code=403, detail="取消功能暂未开放")
     service = get_service(request)
     if not service.store.exists(session_id):
         raise HTTPException(status_code=404, detail="会话不存在")

@@ -242,6 +242,7 @@ export interface Meta {
   quality: { id: string; severity: string; title: string; count: number }[]
   llm: { enabled: boolean; model?: string | null; base_url?: string | null }
   limits: { max_rows: number }
+  features?: { cancel?: boolean }
 }
 
 export interface InterpretationEntry {
