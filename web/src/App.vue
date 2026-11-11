@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import AnalysisDialog from './components/AnalysisDialog.vue'
 import ChatPanel from './components/ChatPanel.vue'
 import RecordDrawer from './components/RecordDrawer.vue'
@@ -35,6 +35,14 @@ const canvasOpen = computed(() => {
   if (store.layoutMode === 'balanced' || store.layoutMode === 'canvas') return true
   return !!store.result || store.busy
 })
+const canvasMenuOpen = ref(false)
+watch(canvasOpen, (open) => {
+  if (open) canvasMenuOpen.value = false
+})
+function restoreCanvas(mode: 'balanced' | 'canvas') {
+  store.setLayoutMode(mode)
+  canvasMenuOpen.value = false
+}
 const effectiveChatWidth = computed(() => {
   if (!canvasOpen.value) return Math.round(window.innerWidth)
   if (store.layoutMode === 'canvas') return Math.round(window.innerWidth * 0.28)
@@ -89,10 +97,20 @@ function startDrag(e: MouseEvent) {
       v-if="!canvasOpen"
       class="canvas-handle"
       title="打开结果工作台"
-      @click="store.setLayoutMode('balanced')"
+      @click="canvasMenuOpen = !canvasMenuOpen"
     >
       结果 <span>‹</span>
     </button>
+    <div v-if="!canvasOpen && canvasMenuOpen" class="canvas-menu-mask" @click="canvasMenuOpen = false"></div>
+    <div v-if="!canvasOpen && canvasMenuOpen" class="canvas-menu">
+      <div class="canvas-menu-head">打开结果工作台</div>
+      <button @click="restoreCanvas('balanced')">
+        <b>平衡视图</b><small>聊天 + 结果 3:2</small>
+      </button>
+      <button @click="restoreCanvas('canvas')">
+        <b>聚焦结果</b><small>结果区域放到最大</small>
+      </button>
+    </div>
 
     <div v-if="store.drawerOpen" class="drawer-mask" @click="store.drawerOpen = false"></div>
     <aside v-if="store.drawerOpen" class="session-drawer">

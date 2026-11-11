@@ -101,6 +101,7 @@ interface State {
   navStack: NavSnapshot[]
   chartType: 'auto' | ChartType
   layoutMode: 'auto' | 'chat' | 'balanced' | 'canvas'
+  lastCanvasLayout: 'balanced' | 'canvas'
   cancelling: boolean
   plan: PlanSummary | null
   checks: CheckIssue[]
@@ -156,6 +157,7 @@ export const useSessionStore = defineStore('session', {
     navStack: [],
     chartType: 'auto',
     layoutMode: 'auto',
+    lastCanvasLayout: 'balanced',
     cancelling: false,
     plan: null,
     checks: [],
@@ -668,6 +670,9 @@ export const useSessionStore = defineStore('session', {
       this.chartType = t
     },
     setLayoutMode(mode: 'auto' | 'chat' | 'balanced' | 'canvas') {
+      if (mode === 'balanced' || mode === 'canvas') {
+        this.lastCanvasLayout = mode
+      }
       this.layoutMode = mode
     },
     async drillCurrent(
