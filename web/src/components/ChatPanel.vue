@@ -286,15 +286,6 @@ function roleLabel(role: string) {
           @input="resize"
         ></textarea>
         <button
-          v-if="store.busy && store.meta?.features?.cancel"
-          class="stop"
-          :disabled="store.cancelling"
-          title="停止本轮生成"
-          @click="store.cancelCurrent()"
-        >
-          {{ store.cancelling ? '停止中…' : '■ 停止' }}
-        </button>
-        <button
           class="send"
           :disabled="!store.datasetId || store.busy || store.switching || !input.trim()"
           @click="send()"

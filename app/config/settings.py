@@ -77,11 +77,6 @@ LLM_MAX_RETRIES = int(os.getenv("LLM_MAX_RETRIES", "1"))
 # When no API key is configured the agent falls back to the deterministic
 # rule-based parser so the demo remains runnable offline.
 LLM_ENABLED = bool(LLM_API_KEY) and os.getenv("LLM_DISABLED", "").lower() not in {"1", "true"}
-
-# Interrupt/cancel is intentionally opt-in: the current synchronous LLM calls
-# cannot be interrupted mid-call, so the UI button is hidden by default until
-# the backend can stop promptly. Set CANCEL_ENABLED=true to expose it.
-CANCEL_ENABLED = os.getenv("CANCEL_ENABLED", "").lower() in {"1", "true", "yes"}
 # Ingest-time semantic drafting shares the same key/gateway but needs a larger
 # budget: reasoning models can spend thousands of tokens before any JSON text.
 LLM_SEMANTIC_DRAFT = os.getenv("LLM_SEMANTIC_DRAFT", "1").lower() not in {"0", "false", "no"}
