@@ -13,7 +13,11 @@ from app.core.event_store import EventStore
 from app.core.events import Event
 from app.core.state import SessionState
 from app.datasets.registry import DatasetError
+from app.domain.pipeline import check, execute_prepared, prepare
+from app.domain.plan import FilterSpec, QueryPlan
+from app.domain.presentation import display_spec
 from app.domain.records import verify_record
+from app.domain.visualization import recommend_chart
 
 
 def _csv_cell(value):
@@ -120,6 +124,13 @@ class SessionService:
             async for ev in controller.run_turn(session_id, text):
                 yield ev
 
+    def cancel(self, session_id: str) -> None:
+        state = self.store.replay(session_id)
+        if state.status.value in {"IDLE", "DONE", "FAILED", "AWAITING_CLARIFICATION"}:
+            return
+        controller = self._resolve(state.dataset_id)
+        controller.cancel(session_id)
+
     async def analysis(self, session_id: str, options: dict | None = None):
         async with self._lock(session_id):
             state = self.store.replay(session_id)
@@ -136,6 +147,85 @@ class SessionService:
     def result(self, session_id: str, result_id: str) -> dict | None:
         state = self.state(session_id)
         return state.artifacts.get(result_id)
+
+    def drill(self, session_id: str, result_id: str, action: str,
+              dimension: str | None = None, value: str | None = None,
+              next_dimension: str | None = None,
+              limit: int | None = None) -> dict:
+        """Apply a deterministic filter/group-by to an existing result.
+
+        Drilling must not re-run the LLM parser: the value the user clicked is
+        already exact, and rephrasing it can change the metric. This reuses the
+        stored result's plan, applies one explicit operation, and executes it.
+        """
+        if action not in {"filter", "group_by"}:
+            raise ValueError("不支持的 drill 操作")
+        state = self.state(session_id)
+        artifact = state.artifacts.get(result_id)
+        if not artifact:
+            raise KeyError("result_id 不存在")
+        event = next(
+            (
+                item for item in reversed(self.events(session_id))
+                if item.type == "sql.executed"
+                and (item.payload or {}).get("result_id") == result_id
+            ),
+            None,
+        )
+        if event is None or not (event.payload or {}).get("plan"):
+            raise KeyError("找不到该结果对应的查询计划")
+        plan = QueryPlan.model_validate(event.payload["plan"])
+        controller = self._resolve(state.dataset_id)
+        sem = controller.sem
+        if not dimension:
+            raise ValueError("缺少下钻维度")
+        if dimension not in sem.dimensions:
+            raise ValueError(f"未知维度: {dimension}")
+        if action == "filter":
+            plan.dimensions = []
+        else:
+            if not next_dimension:
+                raise ValueError("缺少下一层维度")
+            if next_dimension not in sem.dimensions:
+                raise ValueError(f"未知维度: {next_dimension}")
+            plan.dimensions = [next_dimension]
+        if not value:
+            raise ValueError("缺少下钻值")
+        plan.filters[dimension] = FilterSpec(op="eq", value=str(value))
+        plan.compare = None
+        plan.comparison = None
+        plan.having = []
+        plan.limit = max(1, min(int(limit or 100), 200))
+        compiled, _issues = prepare(plan, sem)
+        result = execute_prepared(compiled, db_path=controller.warehouse)
+        fingerprint = compiled.fingerprint(
+            int(sem.raw.get("compiler_version", 1)), sem.version,
+        )
+        result.fingerprint = fingerprint
+        result.result_id = f"drill-{uuid.uuid4().hex[:12]}"
+        checks, facts = check(
+            plan, sem, result, db_path=controller.warehouse,
+            quality=controller.quality,
+            catalog=getattr(controller.ctx, "catalog", None),
+        )
+        display = display_spec(plan, sem, result)
+        payload = result.as_dict()
+        payload.update({
+            "question": f"{dimension}={value}",
+            "display": display,
+            "chart": recommend_chart(plan, sem, display, result),
+            "plan": plan.model_dump(mode="json"),
+            "checks": [item.as_dict() for item in checks],
+            "facts": facts,
+            "field_map": controller._field_map(plan),
+            "drill": {
+                "action": action,
+                "dimension": dimension,
+                "value": value,
+                "next_dimension": next_dimension,
+            },
+        })
+        return payload
 
     def history(self, session_id: str) -> list[dict]:
         return self.store.history(session_id)

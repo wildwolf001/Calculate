@@ -46,6 +46,15 @@ class ClarificationRequest(BaseModel):
     value: str = Field(min_length=1, max_length=500)
 
 
+class DrillRequest(BaseModel):
+    result_id: str = Field(min_length=1, max_length=128)
+    action: str = Field(pattern="^(filter|group_by)$")
+    dimension: str | None = Field(default=None, max_length=128)
+    value: str | None = Field(default=None, max_length=500)
+    next_dimension: str | None = Field(default=None, max_length=128)
+    limit: int | None = Field(default=None, ge=1, le=200)
+
+
 class AnalysisRequest(BaseModel):
     sections: list[str] = Field(default_factory=list, max_length=12)
     custom_text: str | None = Field(default=None, max_length=500)

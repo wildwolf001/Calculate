@@ -14,6 +14,7 @@ from app.api.schemas import (
     CreateSessionRequest,
     CreateSessionResponse,
     DraftEditRequest,
+    DrillRequest,
     PublishRequest,
     TurnRequest,
 )
@@ -645,6 +646,35 @@ async def run_turn(session_id: str, body: TurnRequest, request: Request):
         "Connection": "keep-alive",
         "X-Accel-Buffering": "no",
     })
+
+
+@router.post("/sessions/{session_id}/drill")
+def drill_result(session_id: str, body: DrillRequest, request: Request):
+    """Deterministic filter/group-by on an existing result (no LLM)."""
+    service = get_service(request)
+    if not service.store.exists(session_id):
+        raise HTTPException(status_code=404, detail="会话不存在")
+    try:
+        return service.drill(
+            session_id, body.result_id, body.action,
+            dimension=body.dimension, value=body.value,
+            next_dimension=body.next_dimension, limit=body.limit,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"下钻失败：{exc}")
+
+
+@router.post("/sessions/{session_id}/cancel")
+def cancel_turn(session_id: str, request: Request):
+    service = get_service(request)
+    if not service.store.exists(session_id):
+        raise HTTPException(status_code=404, detail="会话不存在")
+    service.cancel(session_id)
+    return {"cancelled": session_id}
 
 
 @router.post("/sessions/{session_id}/analysis")

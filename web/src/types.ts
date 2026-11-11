@@ -145,6 +145,25 @@ export interface ResultArtifact {
   duration_ms: number
   question?: string
   meta?: Record<string, any>
+  display?: any
+  chart?: ChartSpec
+  checks?: CheckIssue[]
+  facts?: Record<string, any>
+  field_map?: any[]
+}
+
+export type ChartType =
+  | 'kpi' | 'line' | 'area' | 'bar' | 'horizontal_bar' | 'grouped_bar'
+  | 'stacked_bar' | 'donut' | 'pie' | 'scatter' | 'heatmap' | 'waterfall' | 'table'
+
+export interface ChartSpec {
+  recommended: ChartType
+  alternatives: ChartType[]
+  reason: string
+  source?: 'llm' | 'rule' | string
+  x?: string | null
+  y?: string | null
+  series?: string | null
 }
 
 export interface AnalysisModule {

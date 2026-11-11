@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import AnalysisView from './AnalysisView.vue'
 import ChartView from './ChartView.vue'
 import DataTable from './DataTable.vue'
@@ -18,6 +18,72 @@ const compare = computed(() => !!(store.activePlan?.compare || (store.activePlan
 const columns = computed(() => store.result?.columns || [])
 const rows = computed(() => store.result?.rows || [])
 const display = computed(() => (store.result as any)?.display || null)
+const chartSpec = computed(() => (store.result as any)?.chart || display.value?.chart || null)
+const metaOpen = ref(false)
+
+type DrillMenu = {
+  column: string
+  label: string
+  value: string
+  x: number
+  y: number
+}
+const drillMenu = ref<DrillMenu | null>(null)
+const nextDimension = ref('')
+
+const dimensionOptions = computed(() => {
+  let ids = (metric.value as any)?.supported_grain || []
+  if (!ids.length) {
+    ids = (store.meta?.dimensions || []).map((d) => d.id)
+  }
+  const current = drillMenu.value?.column
+  return ids
+    .filter((id: string) => !['none', 'month'].includes(id) && id !== current)
+    .map((id: string) => ({ id, label: dimName(id) }))
+    .sort((a: { label: string }, b: { label: string }) => {
+      const rank = (label: string) => {
+        if (label.includes('商品') || label.includes('产品')) return 0
+        if (label.includes('品类') || label.includes('类别')) return 1
+        if (label.includes('商家') || label.includes('卖家')) return 2
+        return 3
+      }
+      return rank(a.label) - rank(b.label) || a.label.localeCompare(b.label, 'zh-CN')
+    })
+    .slice(0, 12)
+})
+
+function openDrill(payload: {
+  column: string
+  label: string
+  value: string
+  x: number
+  y: number
+}) {
+  drillMenu.value = {
+    ...payload,
+    x: Math.min(payload.x, window.innerWidth - 286),
+    y: Math.min(payload.y, window.innerHeight - 238),
+  }
+  nextDimension.value = dimensionOptions.value[0]?.id || ''
+}
+
+function closeDrill() {
+  drillMenu.value = null
+}
+
+function drillFilter() {
+  const menu = drillMenu.value
+  if (!menu) return
+  void store.drillCurrent('filter', menu.column, menu.value)
+  closeDrill()
+}
+
+function drillGroup() {
+  const menu = drillMenu.value
+  if (!menu || !nextDimension.value) return
+  void store.drillCurrent('group_by', menu.column, menu.value, nextDimension.value)
+  closeDrill()
+}
 const provenance = computed(() => (display.value as any)?.provenance || 'documented')
 const provenanceLabel = computed(() => {
   if (provenance.value === 'inferred') return '推断口径'
@@ -119,15 +185,30 @@ const checkClass = computed(() =>
   store.checks.some((c) => c.severity === 'error') ? 'warn' : 'ok',
 )
 
-const topRow = computed(() => rows.value[0] || [])
+const topRowIndex = computed(() => {
+  if (!rows.value.length) return -1
+  const idx = columns.value.indexOf(compare.value ? 'current' : 'value')
+  if (idx < 0) return 0
+  let best = 0
+  let bestValue = -Infinity
+  rows.value.forEach((row, i) => {
+    const value = Number(row[idx])
+    if (Number.isFinite(value) && value > bestValue) {
+      best = i
+      bestValue = value
+    }
+  })
+  return best
+})
+const topRow = computed(() => rows.value[topRowIndex.value] || [])
 const valueIndex = computed(() => columns.value.indexOf('value'))
 const topValue = computed(() => {
   if (!rows.value.length) return null
   if (compare.value) {
     const i = columns.value.indexOf('current')
-    return i >= 0 ? rows.value[0][i] : null
+    return i >= 0 ? topRow.value[i] : null
   }
-  return valueIndex.value >= 0 ? rows.value[0][valueIndex.value] : null
+  return valueIndex.value >= 0 ? topRow.value[valueIndex.value] : null
 })
 
 const kpis = computed(() => {
@@ -179,12 +260,7 @@ const kpis = computed(() => {
   return out.slice(0, 5)
 })
 
-const drillable = computed(
-  () =>
-    dims.value.length === 1 &&
-    ['category', 'seller', 'product', 'state'].includes(dims.value[0]) &&
-    rows.value.length > 0,
-)
+const drillable = computed(() => dims.value.length > 0 && rows.value.length > 0)
 
 function fmt(col: string, value: any): string {
   if (value === null || value === undefined || value === '') return '—'
@@ -267,6 +343,12 @@ const metricCrumb = computed(() =>
         </template>
       </nav>
       <div class="top-actions">
+        <div class="layout-switch" title="调整结果区域">
+          <button :class="{ on: store.layoutMode === 'chat' }" @click="store.setLayoutMode('chat')">专注对话</button>
+          <button :class="{ on: store.layoutMode === 'balanced' || store.layoutMode === 'auto' }" @click="store.setLayoutMode('balanced')">平衡</button>
+          <button :class="{ on: store.layoutMode === 'canvas' }" @click="store.setLayoutMode('canvas')">聚焦结果</button>
+        </div>
+        <button class="ghost" @click="metaOpen = !metaOpen">{{ metaOpen ? '收起口径' : '口径说明' }}</button>
         <button class="ghost" @click="store.toggleHistory()">历史结果 ▾</button>
         <button v-if="!isAnalysisView" class="ghost" @click="store.exportCurrent()">导出 CSV</button>
       </div>
@@ -330,7 +412,7 @@ const metricCrumb = computed(() =>
     <AnalysisView v-if="isAnalysisView" />
 
     <template v-else-if="store.result">
-      <div class="meta">
+      <div v-show="metaOpen" class="meta">
         <div v-for="m in metaItems" :key="m.k" class="mitem">
           <div class="mlabel">{{ m.k }}</div>
           <div class="mval" :class="m.cls" :title="m.v">{{ m.v }}</div>
@@ -344,17 +426,30 @@ const metricCrumb = computed(() =>
         </div>
       </div>
 
-      <div v-show="store.tab === 'table'" class="view">
+      <div v-show="store.tab === 'table'" class="view result-view">
         <DataTable
           :columns="shownKeys"
           :rows="shownRows"
           :labels="labels"
           :format="fmt"
           :drillable="drillable"
+          :dimensions="dims"
           :row-count="store.result.row_count"
           :truncated="store.result.truncated"
-          @drill="store.drillRow"
+          @cell="openDrill"
         />
+        <div v-if="drillMenu" class="drill-menu" :style="{ left: drillMenu.x + 'px', top: drillMenu.y + 'px' }">
+          <div class="drill-head">{{ drillMenu.label }} · {{ drillMenu.value }}</div>
+          <button class="drill-action" @click="drillFilter">只看这个值</button>
+          <div class="drill-sub">按另一维度下钻</div>
+          <div class="drill-group">
+            <select v-model="nextDimension">
+              <option v-for="opt in dimensionOptions" :key="opt.id" :value="opt.id">{{ opt.label }}</option>
+            </select>
+            <button :disabled="!nextDimension" @click="drillGroup">下钻 →</button>
+          </div>
+          <button class="drill-close" @click="closeDrill">取消</button>
+        </div>
         <div v-if="store.checks.length" class="checklist">
           <div v-for="c in store.checks" :key="c.id + c.title" class="chk" :class="c.severity">
             <span class="sev">{{ c.severity }}</span>
@@ -374,6 +469,7 @@ const metricCrumb = computed(() =>
           :dim-label="isLookup ? '维度成员' : (dims.length ? dimName(dims[0]) : '数值')"
           :metric-type="metric?.type"
           :unit="unit"
+          :chart="chartSpec"
         />
       </div>
 

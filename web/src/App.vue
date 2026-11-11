@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import AnalysisDialog from './components/AnalysisDialog.vue'
 import ChatPanel from './components/ChatPanel.vue'
 import RecordDrawer from './components/RecordDrawer.vue'
@@ -30,6 +30,18 @@ function savedChatWidth(): number | null {
 const chatWidth = ref(savedChatWidth() ?? preferredChatWidth())
 const dragging = ref(false)
 
+const canvasOpen = computed(() => {
+  if (store.layoutMode === 'chat') return false
+  if (store.layoutMode === 'balanced' || store.layoutMode === 'canvas') return true
+  return !!store.result || store.busy
+})
+const effectiveChatWidth = computed(() => {
+  if (!canvasOpen.value) return Math.round(window.innerWidth)
+  if (store.layoutMode === 'canvas') return Math.round(window.innerWidth * 0.28)
+  if (store.layoutMode === 'balanced') return Math.round(window.innerWidth * 0.4)
+  return chatWidth.value
+})
+
 onMounted(() => store.init())
 
 function resetWidth() {
@@ -39,6 +51,7 @@ function resetWidth() {
 
 function startDrag(e: MouseEvent) {
   dragging.value = true
+  store.setLayoutMode('auto')
   const startX = e.clientX
   const startWidth = chatWidth.value
   const move = (ev: MouseEvent) => {
@@ -61,16 +74,25 @@ function startDrag(e: MouseEvent) {
 </script>
 
 <template>
-  <div class="app" :style="{ '--chat-w': chatWidth + 'px' }">
+  <div class="app" :class="{ 'canvas-closed': !canvasOpen }" :style="{ '--chat-w': effectiveChatWidth + 'px' }">
     <ChatPanel />
     <div
+      v-if="canvasOpen"
       class="splitter"
       :class="{ dragging }"
       title="拖动调整宽度 · 双击复位"
       @mousedown="startDrag"
       @dblclick="resetWidth"
     ></div>
-    <ResultCanvas />
+    <ResultCanvas v-show="canvasOpen" />
+    <button
+      v-if="!canvasOpen"
+      class="canvas-handle"
+      title="打开结果工作台"
+      @click="store.setLayoutMode('balanced')"
+    >
+      结果 <span>‹</span>
+    </button>
 
     <div v-if="store.drawerOpen" class="drawer-mask" @click="store.drawerOpen = false"></div>
     <aside v-if="store.drawerOpen" class="session-drawer">

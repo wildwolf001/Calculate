@@ -61,6 +61,7 @@ from app.domain.policy import PolicySet
 from app.domain.query.ir import QueryIR
 from app.domain import lookup as lookup_mod
 from app.domain.presentation import display_spec, stabilize_ratio_ranking, summarize_rows
+from app.domain.visualization import recommend_chart
 from app.domain.repair import build_repair, repair_text
 from app.domain.rewrite import rewrite
 from app.domain.semantic.loader import SemanticLayer, SemanticError
@@ -111,6 +112,11 @@ class Controller:
         self.policy = policy or PolicySet()
         self.tools = ToolHarness(self.sem, self.warehouse)
         self._results: dict[tuple[str, int], object] = {}
+        self._cancel_requested: set[str] = set()
+
+    def cancel(self, session_id: str) -> None:
+        """Request cancellation at the next state-machine boundary."""
+        self._cancel_requested.add(session_id)
 
     # ---------- public ----------
     async def run_turn(self, session_id: str, text: str) -> AsyncIterator[Event]:
@@ -145,6 +151,19 @@ class Controller:
 
         for _ in range(MAX_STEPS):
             state = self.store.replay(session_id)
+            if session_id in self._cancel_requested:
+                self._cancel_requested.discard(session_id)
+                yield self.store.append(session_id, "turn.cancelled", {
+                    "turn": turn,
+                    "stage": state.status.value,
+                    "message": "已停止本轮生成。",
+                }, trace_id=trace_id)
+                yield self.store.append(session_id, "answer.composed", {
+                    "text": "已停止本轮生成。可以继续问下一个问题。",
+                    "result_id": None,
+                    "status": "cancelled",
+                }, trace_id=trace_id)
+                break
             if state.status in {Status.DONE, Status.FAILED, Status.AWAITING_CLARIFICATION}:
                 break
             handler_name = HANDLERS.get(state.status)
@@ -1310,9 +1329,11 @@ class Controller:
         artifact.fingerprint = fingerprint
         artifact.result_id = f"r{state.turn}-{ident}-{fingerprint}"
         payload = artifact.as_dict()
+        display = display_spec(plan, self.sem, artifact)
         payload.update({
             "question": question,
-            "display": display_spec(plan, self.sem, artifact),
+            "display": display,
+            "chart": recommend_chart(plan, self.sem, display, artifact),
             "plan": plan.model_dump(mode="json"),
             "interpretation_id": ident,
             "interpretation_label": question[:32],
@@ -1961,9 +1982,11 @@ class Controller:
             artifact.result_id = f"r{state.turn}-{iid}-{artifact.fingerprint}"
             self._results[(state.session_id, state.turn, iid)] = artifact
             payload = artifact.as_dict()
+            display = display_spec(plan, self.sem, artifact)
             payload.update({
                 "question": question,
-                "display": display_spec(plan, self.sem, artifact),
+                "display": display,
+                "chart": recommend_chart(plan, self.sem, display, artifact),
                 "interpretation_id": iid,
                 "interpretation_label": interp.get("label"),
                 "preferred": is_pref,
@@ -2609,7 +2632,9 @@ class Controller:
         self._results[(state.session_id, state.turn)] = result
         payload = result.as_dict()
         payload["question"] = self._last_user_text(state)
-        payload["display"] = display_spec(plan, self.sem, result)
+        display = display_spec(plan, self.sem, result)
+        payload["display"] = display
+        payload["chart"] = recommend_chart(plan, self.sem, display, result)
         payload["plan"] = plan.model_dump(mode="json")
         payload["field_map"] = self._field_map(plan)
         return [("sql.executed", payload)]

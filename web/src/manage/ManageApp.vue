@@ -75,6 +75,67 @@ const cardSaving = ref(false)
 const briefQuestion = ref('')
 const briefResult = ref<any>(null)
 const briefBusy = ref(false)
+const collapsedPanels = ref<Record<string, boolean>>({
+  agent: true,
+  readiness: false,
+  summary: true,
+  model: false,
+  brief: true,
+  quality: true,
+  docs: true,
+  draft: false,
+  semantic: false,
+})
+const PANEL_STATE_KEY = 'mingzhang.manage.panels'
+try {
+  const saved = JSON.parse(window.localStorage.getItem(PANEL_STATE_KEY) || '{}')
+  collapsedPanels.value = { ...collapsedPanels.value, ...saved }
+} catch {
+  /* ignore malformed local state */
+}
+const expandedTables = ref<Record<string, boolean>>({})
+const summaryExpanded = ref(false)
+
+function persistPanels() {
+  window.localStorage.setItem(PANEL_STATE_KEY, JSON.stringify(collapsedPanels.value))
+}
+
+function togglePanel(id: string) {
+  collapsedPanels.value = {
+    ...collapsedPanels.value,
+    [id]: !collapsedPanels.value[id],
+  }
+  persistPanels()
+}
+
+function setAllPanels(collapsed: boolean) {
+  collapsedPanels.value = Object.fromEntries(
+    Object.keys(collapsedPanels.value).map((key) => [key, collapsed]),
+  )
+  persistPanels()
+}
+
+function toggleTable(tid: string) {
+  expandedTables.value = {
+    ...expandedTables.value,
+    [tid]: !expandedTables.value[tid],
+  }
+}
+
+function normalizeCardRoles(card: any) {
+  const timeTypes = new Set(['datetime', 'date', 'timestamp'])
+  for (const table of Object.values(card?.tables || {}) as any[]) {
+    for (const column of table.columns || []) {
+      if (column.role === 'key') column.role = 'pk'
+      else if (column.role === 'unknown') {
+        column.role = timeTypes.has(String(column.type).toLowerCase())
+          ? 'time'
+          : 'dimension'
+      }
+    }
+  }
+  return card
+}
 const railWidth = ref(300)
 const dragging = ref(false)
 let pollTimer: number | undefined
@@ -122,6 +183,9 @@ function startDrag(event: MouseEvent) {
 const current = computed(() => datasets.value.find((d) => d.dataset_id === selectedId.value))
 const isDraft = computed(() => (detail.value?.mode || current.value?.status) === 'draft')
 const profileTables = computed<any[]>(() => profile.value?.tables || [])
+const visibleProfileTables = computed(() =>
+  summaryExpanded.value ? profileTables.value : profileTables.value.slice(0, 3),
+)
 const overview = computed(() => profile.value?.overview || {})
 const quality = computed<any[]>(() =>
   (profile.value?.quality || detail.value?.quality || [])
@@ -263,7 +327,7 @@ async function saveModelCard() {
   cardSaving.value = true
   try {
     const result = await patchModelCard(selectedId.value, { tables })
-    if (result.model_card) modelCard.value = result.model_card
+    if (result.model_card) modelCard.value = normalizeCardRoles(result.model_card)
     cardDirty.value = {}
     notify('模型卡元数据已保存')
   } catch (err: any) {
@@ -316,7 +380,11 @@ async function selectDataset(datasetId: string) {
     ])
     if (d.status === 'fulfilled') detail.value = d.value
     if (p.status === 'fulfilled') profile.value = p.value
-    if (card.status === 'fulfilled') modelCard.value = card.value
+    if (card.status === 'fulfilled') {
+      modelCard.value = normalizeCardRoles(card.value)
+      const tables = Object.keys(card.value?.tables || {})
+      expandedTables.value = Object.fromEntries(tables.map((tid, index) => [tid, index === 0]))
+    }
     documentation.value = docs.status === 'fulfilled' ? docs.value : null
     readiness.value = ready.status === 'fulfilled' ? ready.value : null
     if (dr.status === 'fulfilled') {
@@ -857,7 +925,15 @@ onUnmounted(() => {
             </div>
           </section>
 
-          <section class="panel" v-if="agentJob || agentReview">
+          <div class="panel-toolbar">
+            <span>长页面可折叠 · 状态会保留在当前页面</span>
+            <span class="panel-toolbar-actions">
+              <button class="ghost sm" @click="setAllPanels(false)">全部展开</button>
+              <button class="ghost sm" @click="setAllPanels(true)">全部收起</button>
+            </span>
+          </div>
+
+          <section class="panel" :class="{ collapsed: collapsedPanels.agent }" v-if="agentJob || agentReview">
             <div class="panel-head">
               <h3>Agent 画像 / 审核</h3>
               <span class="pill" :class="agentJob?.status === 'succeeded' ? 'live' : 'draft'">
@@ -869,6 +945,7 @@ onUnmounted(() => {
               <button class="ghost sm" :disabled="!agentApplied" @click="materializeAgent">
                 生成数据集草稿
               </button>
+              <button class="fold-btn" :class="{ closed: collapsedPanels.agent }" title="展开/收起" @click="togglePanel('agent')">⌄</button>
             </div>
             <div v-if="agentJob" class="job">
               <div class="job-line">
@@ -919,7 +996,7 @@ onUnmounted(() => {
             </div>
           </section>
 
-          <section class="panel" v-if="readiness">
+          <section class="panel" :class="{ collapsed: collapsedPanels.readiness }" v-if="readiness">
             <div class="panel-head">
               <h3>可用性检查</h3>
               <span
@@ -928,6 +1005,7 @@ onUnmounted(() => {
               >
                 {{ readiness.status === 'ready' ? '可以发布' : '存在阻断项' }}
               </span>
+              <button class="fold-btn" :class="{ closed: collapsedPanels.readiness }" title="展开/收起" @click="togglePanel('readiness')">⌄</button>
             </div>
             <div class="cap-row">
               <span class="cap-chip">指标 {{ readiness.metrics?.length || 0 }}</span>
@@ -956,10 +1034,11 @@ onUnmounted(() => {
             </div>
           </section>
 
-          <section class="panel">
+          <section class="panel" :class="{ collapsed: collapsedPanels.summary }">
             <div class="panel-head">
               <h3>数据摘要</h3>
               <span class="hint">自动生成，数字来自物理画像</span>
+              <button class="fold-btn" :class="{ closed: collapsedPanels.summary }" title="展开/收起" @click="togglePanel('summary')">⌄</button>
             </div>
             <p v-if="profile?.summary" class="summary">{{ profile.summary }}</p>
             <p v-else class="summary">
@@ -967,7 +1046,7 @@ onUnmounted(() => {
               这是内置示例数据源，暂无自动画像文件。
             </p>
             <div v-if="profileTables.length" class="table-grid">
-              <div v-for="t in profileTables" :key="t.table_id" class="table-card">
+              <div v-for="t in visibleProfileTables" :key="t.table_id" class="table-card">
                 <div class="table-top">
                   <b>{{ t.label }}</b>
                   <span>{{ t.rows.toLocaleString('zh-CN') }} 行</span>
@@ -983,15 +1062,23 @@ onUnmounted(() => {
                 </div>
               </div>
             </div>
+            <button
+              v-if="profileTables.length > 3"
+              class="ghost sm summary-toggle"
+              @click="summaryExpanded = !summaryExpanded"
+            >
+              {{ summaryExpanded ? '收起' : `显示全部 ${profileTables.length} 张表` }}
+            </button>
           </section>
 
-          <section class="panel" v-if="modelCard">
+          <section class="panel" :class="{ collapsed: collapsedPanels.model }" v-if="modelCard">
             <div class="panel-head">
               <h3>模型卡</h3>
               <span class="hint">解析与校验消费的结构化 schema；可编辑描述、单位与角色</span>
               <button class="ghost sm" :disabled="cardSaving || !Object.keys(cardDirty).length" @click="saveModelCard">
                 {{ cardSaving ? '保存中…' : '保存元数据' }}
               </button>
+              <button class="fold-btn" :class="{ closed: collapsedPanels.model }" title="展开/收起" @click="togglePanel('model')">⌄</button>
             </div>
             <div v-if="modelCard" class="doc-note model-card-legend">
               表角色：事实表 fact = 可被聚合的业务明细；维度表 dimension = 用来关联/筛选的描述表。
@@ -1000,37 +1087,47 @@ onUnmounted(() => {
               鼠标移到角色上可看解释；修改后点「保存元数据」。
             </div>
             <div class="table-grid">
-              <div v-for="(t, tid) in modelCard.tables" :key="tid" class="table-card model-card">
-                <div class="table-top">
+              <div
+                v-for="(t, tid) in modelCard.tables"
+                :key="tid"
+                class="table-card model-card"
+                :class="{ 'card-collapsed': expandedTables[String(tid)] === false }"
+              >
+                <div class="table-top table-toggle" @click="toggleTable(String(tid))">
                   <b :title="`物理表：${t.label}`">{{ t.label }}</b>
-                  <span :title="roleTip(t.role)">{{ tableRoleZh(t.role) }} · {{ t.rows }} 行</span>
+                  <span :title="roleTip(t.role)">{{ tableRoleZh(t.role) }} · {{ t.rows }} 行
+                    <em class="fold-inline">{{ expandedTables[String(tid)] === false ? '展开 ▸' : '收起 ▾' }}</em>
+                  </span>
                 </div>
                 <div class="table-sub">
                   粒度 {{ (t.grain || []).join('、') || '—' }} · 时间 {{ t.time || '—' }}
                 </div>
-                <input class="meta-input" v-model="t.description" placeholder="表用途描述" @change="markCardDirty(tid)" />
-                <div class="meta-cols">
-                  <div v-for="c in t.columns" :key="c.name" class="meta-row">
-                    <code :title="`物理列：${t.label}.${c.name}`">{{ c.name }}</code>
-                    <span>{{ c.label }}</span>
-                    <em>{{ c.type }}</em>
-                    <select v-model="c.role" :title="roleTip(c.role)" @change="markCardDirty(tid)">
-                      <option v-for="role in ['pk', 'fk', 'time', 'measure', 'dimension']" :key="role" :value="role" :title="roleTip(role)">
-                        {{ roleZh(role) }}
-                      </option>
-                    </select>
-                    <input class="meta-input" v-model="c.unit" placeholder="单位" @change="markCardDirty(tid)" />
-                    <input class="meta-input wide" v-model="c.description" placeholder="列描述（可写中文含义）" @change="markCardDirty(tid)" />
+                <template v-if="expandedTables[String(tid)] !== false">
+                  <input class="meta-input" v-model="t.description" placeholder="表用途描述" @change="markCardDirty(tid)" />
+                  <div class="meta-cols">
+                    <div v-for="c in t.columns" :key="c.name" class="meta-row">
+                      <code :title="`物理列：${t.label}.${c.name}`">{{ c.name }}</code>
+                      <span>{{ c.label }}</span>
+                      <em>{{ c.type }}</em>
+                      <select v-model="c.role" :title="roleTip(c.role)" @change="markCardDirty(tid)">
+                        <option v-for="role in ['pk', 'fk', 'time', 'measure', 'dimension']" :key="role" :value="role" :title="roleTip(role)">
+                          {{ roleZh(role) }}
+                        </option>
+                      </select>
+                      <input class="meta-input" v-model="c.unit" placeholder="单位" @change="markCardDirty(tid)" />
+                      <input class="meta-input wide" v-model="c.description" placeholder="列描述（可写中文含义）" @change="markCardDirty(tid)" />
+                    </div>
                   </div>
-                </div>
+                </template>
               </div>
             </div>
           </section>
 
-          <section class="panel">
+          <section class="panel" :class="{ collapsed: collapsedPanels.brief }">
             <div class="panel-head">
               <h3>Brief 预览</h3>
               <span class="hint">解析器实际看到的 schema 文本、字符数与截断状态</span>
+              <button class="fold-btn" :class="{ closed: collapsedPanels.brief }" title="展开/收起" @click="togglePanel('brief')">⌄</button>
             </div>
             <div class="doc-row">
               <input class="text-input" v-model="briefQuestion" placeholder="输入问题，例如：有评价的已送达订单平均评分" />
@@ -1045,10 +1142,11 @@ onUnmounted(() => {
             <pre v-if="briefResult" class="brief-pre">{{ briefResult.text }}</pre>
           </section>
 
-          <section class="panel" v-if="detail">
+          <section class="panel" :class="{ collapsed: collapsedPanels.quality }" v-if="detail">
             <div class="panel-head">
               <h3>质量与限制</h3>
               <span class="hint">error 阻断结论，warn/info 随答案展示</span>
+              <button class="fold-btn" :class="{ closed: collapsedPanels.quality }" title="展开/收起" @click="togglePanel('quality')">⌄</button>
             </div>
             <div v-if="quality.length" class="quality-list">
               <div v-for="q in quality" :key="q.id" class="quality" :class="q.severity">
@@ -1060,10 +1158,11 @@ onUnmounted(() => {
             <div v-else class="muted">未发现需要关注的质量问题。</div>
           </section>
 
-          <section class="panel" v-if="detail">
+          <section class="panel" :class="{ collapsed: collapsedPanels.docs }" v-if="detail">
             <div class="panel-head">
               <h3>口径文档（权威口径）</h3>
               <span class="hint">支持 md / txt / json / yaml；先解析预览，再应用</span>
+              <button class="fold-btn" :class="{ closed: collapsedPanels.docs }" title="展开/收起" @click="togglePanel('docs')">⌄</button>
             </div>
             <div class="doc-row">
               <input type="file" accept=".md,.markdown,.txt,.json,.yaml,.yml" @change="onDocFile" />
@@ -1100,12 +1199,13 @@ onUnmounted(() => {
             </div>
           </section>
 
-          <section class="panel" v-if="draft">
+          <section class="panel" :class="{ collapsed: collapsedPanels.draft }" v-if="draft">
             <div class="panel-head">
               <h3>语义草稿与发布</h3>
               <span class="hint">
                 {{ draft.status === 'published' ? '已发布版本；可调整后重新发布' : '未确认口径只用于探索问答' }}
               </span>
+              <button class="fold-btn" :class="{ closed: collapsedPanels.draft }" title="展开/收起" @click="togglePanel('draft')">⌄</button>
             </div>
 
             <div class="draft-toolbar">
@@ -1217,10 +1317,11 @@ onUnmounted(() => {
             </div>
           </section>
 
-          <section class="panel" v-if="!draft">
+          <section class="panel" :class="{ collapsed: collapsedPanels.semantic }" v-if="!draft">
             <div class="panel-head">
               <h3>语义层</h3>
               <span class="hint">内置示例数据源，无自动草稿</span>
+              <button class="fold-btn" :class="{ closed: collapsedPanels.semantic }" title="展开/收起" @click="togglePanel('semantic')">⌄</button>
             </div>
             <div class="metric-list">
               <div v-for="m in detail.metrics" :key="m.id" class="metric-row">
@@ -1358,6 +1459,26 @@ onUnmounted(() => {
 .panel { border: 1px solid var(--rule); background: var(--card); border-radius: 3px; padding: 18px 20px; margin-bottom: 16px; }
 .panel-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 12px; }
 .panel-head h3 { margin: 0; font-family: var(--serif); font-size: 18px; font-weight: 500; }
+.panel.collapsed > :not(.panel-head) { display: none; }
+.panel.collapsed .panel-head { margin-bottom: 0; }
+.panel-toolbar {
+  display: flex; justify-content: space-between; align-items: center;
+  border: 1px solid var(--rule); background: #faf6ee; padding: 7px 10px;
+  margin-bottom: 10px; font: 10px var(--mono); color: var(--ink-3);
+}
+.panel-toolbar-actions { display: flex; gap: 5px; }
+.fold-btn {
+  flex: none; margin-left: auto; width: 22px; height: 22px; border: 1px solid var(--rule);
+  border-radius: 50%; background: var(--card); color: var(--ink-3); cursor: pointer;
+  font-size: 12px; line-height: 1; padding: 0;
+}
+.fold-btn.closed { transform: rotate(-90deg); }
+.fold-btn:hover { color: var(--accent-2); border-color: var(--accent-2); }
+.table-toggle { cursor: pointer; }
+.table-toggle:hover b { color: var(--accent-2); }
+.fold-inline { font-style: normal; color: var(--accent-2); font-size: 9px; margin-left: 6px; }
+.card-collapsed { padding-bottom: 8px; }
+.summary-toggle { margin-top: 9px; }
 .hint { font: 9px var(--mono); color: var(--ink-3); letter-spacing: .04em; }
 .summary { font-size: 13px; line-height: 1.8; color: var(--ink-2); margin: 0 0 14px; }
 .table-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }

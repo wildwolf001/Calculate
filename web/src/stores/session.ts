@@ -2,6 +2,8 @@ import { defineStore } from 'pinia'
 import {
   createSession,
   deleteSession,
+  drillResult,
+  cancelSessionTurn,
   exportUrl,
   getAnalysisHints,
   getAnalysisModules,
@@ -22,6 +24,7 @@ import type {
   AnalysisReport,
   ApiEvent,
   ChatMessage,
+  ChartType,
   CheckIssue,
   DatasetSummary,
   HistoryItem,
@@ -39,6 +42,7 @@ const GREETING =
   '你好，我是明账。已连接只读电商数仓，可以问订单、销售额、品类、商家、履约和评价类问题。'
 const NO_DATA_GREETING =
   '还没有可用的数据源。请先在「数据管理」页导入 CSV/Excel，确认口径并发布，然后回来提问。'
+let activeAbort: AbortController | null = null
 
 const SUGGESTIONS = [
   '2024年1月至2025年12月的商品销售额',
@@ -95,7 +99,9 @@ interface State {
   analysisDialogOpen: boolean
   activeResultId: string
   navStack: NavSnapshot[]
-  chartType: 'auto' | 'line' | 'bar' | 'pie'
+  chartType: 'auto' | ChartType
+  layoutMode: 'auto' | 'chat' | 'balanced' | 'canvas'
+  cancelling: boolean
   plan: PlanSummary | null
   checks: CheckIssue[]
   facts: Record<string, any>
@@ -149,6 +155,8 @@ export const useSessionStore = defineStore('session', {
     activeResultId: '',
     navStack: [],
     chartType: 'auto',
+    layoutMode: 'auto',
+    cancelling: false,
     plan: null,
     checks: [],
     facts: {},
@@ -396,18 +404,37 @@ export const useSessionStore = defineStore('session', {
       this.assistantBaseline = this.messages.filter((m) => m.role === 'assistant').length
       this.trace = []
       this.pending = null
+      const controller = new AbortController()
+      activeAbort = controller
       try {
-        for await (const ev of streamTurn(this.sessionId, content)) {
+        for await (const ev of streamTurn(this.sessionId, content, controller.signal)) {
           this.applyEvent(ev)
         }
       } catch (err: any) {
-        this.addAssistant(`请求失败：${err.message || err}`, 'error')
+        if (err?.name !== 'AbortError') {
+          this.addAssistant(`请求失败：${err.message || err}`, 'error')
+        }
       } finally {
+        activeAbort = null
         this.busy = false
+        this.cancelling = false
         this.stage = ''
         this.attachTrace()
         this.loadSessions()
       }
+    },
+    async cancelCurrent() {
+      if (!this.busy || !this.sessionId || this.cancelling) return
+      this.cancelling = true
+      // Abort the UI stream immediately. The cancel endpoint may not run until
+      // a synchronous LLM handler yields, so awaiting it would leave "停止中"
+      // stuck for seconds.
+      void cancelSessionTurn(this.sessionId).catch(() => {})
+      activeAbort?.abort()
+      this.busy = false
+      this.stage = ''
+      this.cancelling = false
+      this.addAssistant('已停止本轮生成。可以继续问下一个问题。')
     },
     async openAnalysisDialog() {
       if (this.busy || !this.sessionId) return
@@ -637,8 +664,62 @@ export const useSessionStore = defineStore('session', {
       this.results = []
       this.activeResultId = ''
     },
-    setChartType(t: 'auto' | 'line' | 'bar' | 'pie') {
+    setChartType(t: 'auto' | ChartType) {
       this.chartType = t
+    },
+    setLayoutMode(mode: 'auto' | 'chat' | 'balanced' | 'canvas') {
+      this.layoutMode = mode
+    },
+    async drillCurrent(
+      action: 'filter' | 'group_by',
+      dimension: string,
+      value: string,
+      nextDimension?: string | null,
+    ) {
+      if (!this.sessionId || !this.result) return
+      const result = this.result
+      const plan = this.plan
+      const snapshot: NavSnapshot = {
+        label: result.question || '上一结果',
+        question: result.question,
+        result,
+        checks: [...this.checks],
+        facts: { ...this.facts },
+        sql: this.sql,
+        plan,
+      }
+      try {
+        const drilled = await drillResult(this.sessionId, {
+          result_id: result.result_id,
+          action,
+          dimension,
+          value,
+          next_dimension: nextDimension || null,
+        })
+        this.navStack.push(snapshot)
+        if (this.navStack.length > 8) this.navStack.shift()
+        const entry: InterpretationEntry = {
+          id: 'drill',
+          label: action === 'group_by' ? '下钻结果' : '筛选结果',
+          preferred: true,
+          result: drilled as ResultArtifact,
+          checks: (drilled.checks || []) as CheckIssue[],
+          facts: drilled.facts || {},
+          plan: (drilled.plan || null) as PlanSummary | null,
+        }
+        this.results = [entry]
+        this.activeResultId = entry.id
+        this.result = entry.result
+        this.plan = entry.plan
+        this.checks = entry.checks
+        this.facts = entry.facts
+        this.sql = drilled.sql || ''
+        this.chartType = 'auto'
+        this.tab = 'table'
+        this.setToast(action === 'group_by' ? `已下钻到「${value}」` : `已筛选「${value}」`)
+      } catch (err: any) {
+        this.setToast(`下钻失败：${err.message || err}`)
+      }
     },
     submitClarification(value: string) {
       if (!value) return

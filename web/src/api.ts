@@ -361,6 +361,34 @@ export async function* streamTurn(
   yield* readEvents(resp)
 }
 
+export async function drillResult(
+  sessionId: string,
+  body: {
+    result_id: string
+    action: 'filter' | 'group_by'
+    dimension: string
+    value: string
+    next_dimension?: string | null
+    limit?: number
+  },
+): Promise<any> {
+  return json<any>(
+    await fetch(`${BASE}/api/sessions/${sessionId}/drill`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+  )
+}
+
+export async function cancelSessionTurn(sessionId: string): Promise<any> {
+  return json<any>(
+    await fetch(`${BASE}/api/sessions/${sessionId}/cancel`, {
+      method: 'POST',
+    }),
+  )
+}
+
 export async function* streamAnalysis(
   sessionId: string,
   options: AnalysisOptions,
