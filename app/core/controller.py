@@ -1491,7 +1491,18 @@ class Controller:
                 }
                 for entry in entries
             ],
-            "failures": failures,
+            "failures": [
+                {
+                    **failure,
+                    "title": re.sub(
+                        r"[（(]an\d+[）)]", "", str(failure.get("title") or "")
+                    ).strip(),
+                    "reason": str(failure.get("reason") or "").replace(
+                        "capability refused", "当前数据不支持该分析板块"
+                    ),
+                }
+                for failure in failures
+            ],
         }
         llm = self.analysis_writer.write(llm_context)
         report, core = self._build_analysis_report(
@@ -1634,7 +1645,13 @@ class Controller:
         if failures:
             lines.extend(["## 未完成的板块", ""])
             for failure in failures:
-                lines.append(f"- {failure['title']}：{failure['reason']}")
+                title = re.sub(
+                    r"[（(]an\d+[）)]", "", str(failure.get("title") or "")
+                ).strip()
+                reason = str(failure.get("reason") or "").replace(
+                    "capability refused", "当前数据不支持该分析板块"
+                )
+                lines.append(f"- {title}：{reason}")
             lines.append("")
         watchouts = (llm or {}).get("watchouts") or []
         if watchouts:
@@ -1842,12 +1859,14 @@ class Controller:
                 events.append(("result.presented", {"result_id": None}))
                 return events
             reason = next((item for item in rejections if item), "")
+            message = (
+                f"这几种理解都无法生成可执行的查询：{reason}"
+                if reason else "这几种理解都无法生成可执行的查询。"
+            )
+            message += "\n\n" + self._suggestions()
             events.append(("error.raised", {
                 "code": "NO_INTERPRETATION",
-                "message": (
-                    f"这几种理解都无法生成可执行的查询：{reason}"
-                    if reason else "这几种理解都无法生成可执行的查询。"
-                ),
+                "message": message,
                 "recoverable": False,
             }))
             return events

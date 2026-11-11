@@ -198,6 +198,20 @@ class LLMIntentParser:
         ))
         return result
 
+    def _postprocess_interpretations(
+        self, text: str, result: ParseResult, context: dict | None = None
+    ) -> ParseResult:
+        for interp in result.interpretations:
+            slots = dict(interp.get("slots") or {})
+            if not slots:
+                continue
+            sub = ParseResult(intent_type="query", slots=slots)
+            sub = self._apply_entity_count(text, sub, context)
+            sub = self._prefer_published_ratio(text, sub)
+            sub = self._apply_resolver(text, sub)
+            interp["slots"] = sub.slots
+        return result
+
     def _apply_resolver(self, text: str, result: ParseResult) -> ParseResult:
         if result.intent_type != "query":
             return result
@@ -673,6 +687,7 @@ class LLMIntentParser:
         result = self._prefer_published_ratio(text, result)
         result = self._apply_resolver(text, result)
         result = self._apply_semantic_tools(text, result)
+        result = self._postprocess_interpretations(text, result, context)
         result.notes = list(dict.fromkeys(
             result.notes + ["由工具辅助重新规划"]
         ))
@@ -707,6 +722,7 @@ class LLMIntentParser:
                     result = self._prefer_published_ratio(text, result)
                     result = self._apply_resolver(text, result)
                     result = self._apply_semantic_tools(text, result)
+                    result = self._postprocess_interpretations(text, result, context)
                     result.notes = list(dict.fromkeys(result.notes + ["由模型解析意图"]))
                     return result
                 except (LLMError, LLMUnavailable, IntentParseError, ValueError) as exc:
@@ -718,6 +734,7 @@ class LLMIntentParser:
             fallback = self._prefer_published_ratio(text, fallback)
             fallback = self._apply_resolver(text, fallback)
             fallback = self._apply_semantic_tools(text, fallback)
+            fallback = self._postprocess_interpretations(text, fallback, context)
             fallback.notes = list(dict.fromkeys(
                 fallback.notes + [
                     f"模型解析失败，已使用规则解析：{last_error}",
@@ -729,5 +746,6 @@ class LLMIntentParser:
         result = self._prefer_published_ratio(text, result)
         result = self._apply_resolver(text, result)
         result = self._apply_semantic_tools(text, result)
+        result = self._postprocess_interpretations(text, result, context)
         result.notes = list(dict.fromkeys(result.notes + ["离线规则解析"]))
         return result
