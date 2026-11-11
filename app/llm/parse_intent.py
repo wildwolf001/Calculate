@@ -304,6 +304,52 @@ class LLMIntentParser:
                 return dim.id
         raise IntentParseError(f"未知维度: {value}")
 
+    def _resolve_operand_ref(self, ref: str) -> str:
+        """Map a logical `table.column` from the model onto real ids.
+
+        The model sees column labels (review_score) but the warehouse uses
+        physical ids (t_006.c03). Resolve by unique column label; never guess
+        when more than one column shares the label.
+        """
+        text = str(ref or "").strip()
+        if "." not in text:
+            return text
+        table, _, column = text.partition(".")
+        if table in self.sem.tables:
+            return text
+        tables = (self._index or {}).get("tables") or {}
+        matches: list[tuple[str, str]] = []
+        for table_id, meta in tables.items():
+            for col in meta.get("columns") or []:
+                label = str(col.get("label") or "")
+                name = str(col.get("name") or "")
+                if column in {label, name}:
+                    matches.append((table_id, name))
+        if len(matches) == 1:
+            return f"{matches[0][0]}.{matches[0][1]}"
+        return text
+
+    def _resolve_metric_expr(self, spec: dict) -> dict:
+        if not self._index:
+            return spec
+        resolved = dict(spec)
+        for key in ("operand",):
+            if resolved.get(key):
+                resolved[key] = self._resolve_operand_ref(str(resolved[key]))
+        fact = str(resolved.get("fact") or "")
+        if fact and fact not in self.sem.tables and "." in str(resolved.get("operand") or ""):
+            resolved["fact"] = str(resolved["operand"]).partition(".")[0]
+        time_via = resolved.get("time_via")
+        if time_via:
+            resolved["time_via"] = self._resolve_operand_ref(str(time_via))
+        scope = resolved.get("scope")
+        if isinstance(scope, dict):
+            resolved["scope"] = {
+                self._resolve_operand_ref(str(key)): value
+                for key, value in scope.items()
+            }
+        return resolved
+
     def _validate_slots(self, raw_slots: dict) -> dict:
         if not isinstance(raw_slots, dict):
             raise IntentParseError("slots 不是对象")
@@ -317,6 +363,7 @@ class LLMIntentParser:
         if metric_expr is not None:
             if not isinstance(metric_expr, dict):
                 raise IntentParseError("metric_expr 必须是对象")
+            metric_expr = self._resolve_metric_expr(metric_expr)
             try:
                 metric_spec = MetricSpec.from_input(
                     metric_expr, self.sem, label=metric_expr.get("label")

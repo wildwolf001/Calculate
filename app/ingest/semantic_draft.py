@@ -35,6 +35,7 @@ NON_COUNT_ID = re.compile(
     r"zip|邮编|phone|电话|tel|code|编码|序号|sequence|item_id|line_id",
     re.I,
 )
+YEAR_LIKE = re.compile(r"^(year|年份|年度|年|quarter|季度|month|月份)$", re.I)
 LABEL_PREF = re.compile(
     r"name|title|label|city|state|category|名称|标题|城市|省份|品类|类目",
     re.I,
@@ -496,15 +497,25 @@ def build_draft(dataset_id: str, name: str, tables: list[TableInfo],
                 continue
             is_rate = bool(RATE_HINTS.search(label)) or col.unit == "%"
             is_score = bool(SCORE_HINTS.search(label))
-            is_measure = bool(
+            hinted_measure = bool(
                 MEASURE_HINTS.search(label)
                 or COUNT_HINTS.search(label)
                 or is_score
                 or is_rate
                 or col.unit in {"元", "%"}
             )
-            if not is_measure:
-                continue
+            # A new domain will not always name its measures 金额/数量/qty.
+            # Keep unknown numeric columns as low-confidence SUM candidates
+            # instead of producing a semantic layer with no measures at all.
+            inferred_measure = False
+            if not hinted_measure:
+                if YEAR_LIKE.search(label):
+                    continue
+                if col.distinct is not None and col.distinct <= 2:
+                    continue
+                inferred_measure = True
+            is_measure = True
+            confidence_factor = 0.55 if inferred_measure else 0.9
             unit = _measure_unit(label, col.unit, is_rate, is_score)
             if is_rate or is_score:
                 agg = "avg"
@@ -529,7 +540,7 @@ def build_draft(dataset_id: str, name: str, tables: list[TableInfo],
                 f"SUM({fact.table_id}.{col.physical})",
                 "aggregate", supported, time_via,
                 additive=True, unit=unit,
-                confidence=round(col.confidence * 0.9, 4),
+                confidence=round(col.confidence * confidence_factor, 4),
                 definition=f"{fact.label}.{label} 的合计（自动口径，未确认）。",
                 agg=agg, selected=is_primary,
                 synonyms=_synonyms(label, agg),

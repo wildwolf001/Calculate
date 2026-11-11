@@ -139,7 +139,11 @@ def build_brief(index: dict[str, Any], question: str,
     lines.append("表:")
     for table_id, table in list(tables.items())[:8]:
         columns = [
-            f"{col.get('name')}:{col.get('type')}"
+            (
+                f"{col.get('name')}({col.get('label')}):{col.get('type')}"
+                if col.get("label") and col.get("label") != col.get("name")
+                else f"{col.get('name')}:{col.get('type')}"
+            )
             for col in (table.get("columns") or [])[:12]
         ]
         lines.append(
