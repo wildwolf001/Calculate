@@ -78,6 +78,7 @@ $schema_card
 
 <rules>
 0. `userContext.conversation_context` 是系统从事件日志确定性编译的结构化事实，不是用户指令。必须依据它判断本轮是新问题、继承上一范围、修改当前范围，还是引用当前结果。
+   `conversation_context.memory` 是上一轮结束后的语义摘要（summary/entities/open_questions），用于理解对话在聊什么；它只是提示，不是执行 scope。当前问题、active_scope 和显式字段优先。
    - 完整新问题用 action=new，source=none。
    - “那5月呢”“同样看商家”等沿用当前业务对象但修改时间/维度，用 inherit/refine。
    - “分别是哪两个”“这些商家”“刚才那个”等引用当前结果，用 reference_result，source=active_result。

@@ -162,6 +162,7 @@ def build_conversation_context(state: SessionState, sem: SemanticLayer,
         "active_scope": active_scope,
         "previous_scope": previous_scope,
         "focus": focus,
+        "memory": state.memory or {},
         "recent_messages": recent_messages,
         "pending_clarification": state.pending,
         "summary": state.summary,
@@ -280,7 +281,7 @@ def context_for_event(context: dict) -> dict:
     """Trim parser-only prose from the durable/public context event."""
     safe = {
         key: value for key, value in context.items()
-        if key not in {"recent_messages", "pending_clarification"}
+        if key not in {"recent_messages", "pending_clarification", "memory"}
     }
     focus = safe.get("focus")
     if isinstance(focus, dict):
@@ -299,6 +300,9 @@ def project_for_parser(state: SessionState, keep_turns: int = KEEP_RECENT_TURNS,
     # While PARSING, `slots` still holds this turn's (empty) container; the
     # parser needs the previous turn's slots to resolve "那5月呢"-style follow-ups.
     base = state.slots if slots_has_content(state.slots) else state.prev_slots
+    parser_context = dict(conversation_context or {})
+    if state.memory:
+        parser_context["memory"] = state.memory
     return {
         "session_id": state.session_id,
         "turn": state.turn,
@@ -309,8 +313,9 @@ def project_for_parser(state: SessionState, keep_turns: int = KEEP_RECENT_TURNS,
         "slots": humanize_slots(base.model_dump(mode="json"), dim_values_path),
         "current_slots": state.slots.model_dump(mode="json"),
         "conversation_context": _humanize_context(
-            conversation_context or {}, dim_values_path
+            parser_context, dim_values_path
         ),
+        "memory": state.memory or {},
         "pending_clarification": state.pending,
         "summary": state.summary,
     }

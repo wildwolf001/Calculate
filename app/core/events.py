@@ -46,6 +46,7 @@ EVENT_TYPES = {
     "answer.composed",
     "result.presented",
     "context.compacted",
+    "memory.compressed",
     "session.summary",
     "llm.retry",
     "error.raised",

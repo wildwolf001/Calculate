@@ -106,6 +106,7 @@ class SessionState:
     messages: list[dict] = field(default_factory=list)
     intent: dict = field(default_factory=dict)
     summary: str | None = None
+    memory: dict | None = None
     clarifications: list[dict] = field(default_factory=list)
     subquestions: list[str] = field(default_factory=list)
     analysis: dict | None = None
@@ -390,6 +391,8 @@ def reduce(events: list, session_id: str | None = None) -> SessionState:
             state.status = Status.DONE
         elif t == "context.compacted":
             pass
+        elif t == "memory.compressed":
+            state.memory = dict(p)
         elif t == "session.summary":
             state.summary = p.get("summary")
         elif t == "llm.retry":

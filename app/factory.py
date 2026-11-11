@@ -4,6 +4,7 @@ from __future__ import annotations
 from app.config.settings import USE_SEMANTIC_BRIEF
 from app.core.controller import Controller
 from app.core.event_store import EventStore
+from app.core.memory import MemoryCompressor
 from app.core.session import SessionService
 from app.core.trace import Tracer
 from app.datasets.context import DatasetContext
@@ -37,6 +38,7 @@ def build_controller(ctx: DatasetContext, store: EventStore,
         tracer=Tracer(enabled=with_trace),
         ctx=ctx,
         analysis_writer=LLMAnalysisWriter(client=client),
+        memory_compressor=MemoryCompressor(client=client, sem=ctx.sem),
     )
 
 

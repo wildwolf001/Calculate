@@ -5,6 +5,7 @@ iteration (`reduce`), so an in-memory object can never drift from history.
 """
 from __future__ import annotations
 
+import json
 import re
 import traceback
 from dataclasses import replace
@@ -27,6 +28,7 @@ from app.core.event_store import EventStore
 from app.core.events import Event
 from app.core.interfaces import AnswerComposer, IntentParser, ValueGrounder
 from app.core.logging import log_event, logger
+from app.core.memory import MemoryCompressor
 from app.core.state import SessionState, Slots, Status
 from app.core.trace import Tracer, new_trace_id
 from app.domain.capability import (
@@ -94,7 +96,8 @@ class Controller:
                  parser: IntentParser, grounder: ValueGrounder,
                  composer: AnswerComposer, tracer: Tracer | None = None,
                  ctx=None, analysis_writer: LLMAnalysisWriter | None = None,
-                 policy: PolicySet | None = None):
+                 policy: PolicySet | None = None,
+                 memory_compressor: MemoryCompressor | None = None):
         self.store = store
         self.sem = ctx.sem if ctx is not None else sem
         self.parser = parser
@@ -110,6 +113,7 @@ class Controller:
         self.quality = ctx.quality if ctx is not None else None
         self.analysis_writer = analysis_writer or LLMAnalysisWriter()
         self.policy = policy or PolicySet()
+        self.memory_compressor = memory_compressor
         self.tools = ToolHarness(self.sem, self.warehouse)
         self._results: dict[tuple[str, int], object] = {}
         self._cancel_requested: set[str] = set()
@@ -195,6 +199,15 @@ class Controller:
             }, trace_id=trace_id)
 
         final = self.store.replay(session_id)
+        memory = self._memory_payload(final)
+        if memory:
+            # Memory is durable state, not a user-facing stream event. Keeping
+            # it out of SSE avoids leaking internal summaries into the answer
+            # stream while still making it available to the next turn.
+            self.store.append(
+                session_id, "memory.compressed", memory,
+                trace_id=trace_id,
+            )
         yield self.store.append(session_id, "turn.completed",
                                 {"status": final.status.value, "turn": turn},
                                 trace_id=trace_id)
@@ -498,6 +511,51 @@ class Controller:
         re.I,
     )
 
+    def _memory_payload(self, state: SessionState) -> dict | None:
+        if self.memory_compressor is None:
+            return None
+        user = next(
+            (m.get("text", "") for m in reversed(state.messages)
+             if m.get("role") == "user"),
+            "",
+        )
+        answer = next(
+            (m.get("text", "") for m in reversed(state.messages)
+             if m.get("role") == "assistant"),
+            "",
+        )
+        if not user or not answer:
+            return None
+        artifact = state.artifacts.get(state.last_result_id or "") or {}
+        plan = state.plan
+        if plan is None and artifact.get("plan"):
+            try:
+                from app.domain.plan import QueryPlan
+                plan = QueryPlan.model_validate(artifact["plan"])
+            except Exception:
+                plan = None
+        try:
+            payload = self.memory_compressor.compress(
+                previous=state.memory,
+                question=user,
+                answer=answer,
+                plan=plan,
+                artifact=artifact,
+                recent_messages=state.messages[-8:],
+                turn=state.turn,
+                pending=state.pending,
+            )
+        except Exception as exc:
+            log_event(
+                logger, "memory.compress_failed",
+                error=f"{type(exc).__name__}: {exc}",
+            )
+            return None
+        if not isinstance(payload, dict) or not payload.get("summary"):
+            return None
+        payload["turn"] = state.turn
+        return payload
+
     def _schema_join_explanation(self, question: str) -> str | None:
         """Answer a schema/join grain question without treating it as a query.
 
@@ -563,6 +621,27 @@ class Controller:
     )
     _TIME_ANAPHORA_RE = re.compile(r"这个|上述|这些|该|同样|那|再按|前面|刚才|上面")
 
+    def _clear_spurious_time_slots(self, slots: dict, question: str,
+                                  conversation_context: dict | None) -> bool:
+        if slots.get("time") is None and slots.get("comparison") is None:
+            return False
+        text = str(question or "")
+        if self._EXPLICIT_TIME_RE.search(text) or self._TIME_ANAPHORA_RE.search(text):
+            return False
+        context = conversation_context or {}
+        previous = context.get("active_scope") or context.get("previous_scope") or {}
+        previous_metric = previous.get("metric")
+        if not slots.get("metric") or not previous_metric:
+            return False
+        if str(slots.get("metric")) == str(previous_metric):
+            return False
+        slots["time"] = None
+        slots["comparison"] = None
+        notes = list(slots.get("notes") or [])
+        notes.append("新指标未沿用上一轮时间范围")
+        slots["notes"] = list(dict.fromkeys(notes))
+        return True
+
     def _drop_spurious_inherited_time(self, result, question: str,
                                       conversation_context: dict | None) -> None:
         """A new metric without a time word must not inherit the prior month.
@@ -570,28 +649,59 @@ class Controller:
         The model sometimes copies the previous scope into a brand-new metric
         question (e.g. Q5 is May delay rate, Q6 asks average rating without
         saying May). ``apply_context_action`` only fills missing fields; it
-        cannot undo a time the model already emitted. Correct that here.
+        cannot undo a time the model already emitted. Correct that here, and
+        also clean the alternative interpretations so the answer cannot show
+        a stale May interpretation beside the full-period one.
         """
         if result.intent_type not in {"query", "lookup"}:
             return
-        slots = result.slots
-        if slots.get("time") is None and slots.get("comparison") is None:
+        self._clear_spurious_time_slots(result.slots, question, conversation_context)
+        interps = list(getattr(result, "interpretations", None) or [])
+        if not interps:
             return
-        text = str(question or "")
-        if self._EXPLICIT_TIME_RE.search(text) or self._TIME_ANAPHORA_RE.search(text):
-            return
-        context = conversation_context or {}
-        previous = context.get("active_scope") or context.get("previous_scope") or {}
-        previous_metric = previous.get("metric")
-        if not slots.get("metric") or not previous_metric:
-            return
-        if str(slots.get("metric")) == str(previous_metric):
-            return
-        slots["time"] = None
-        slots["comparison"] = None
-        notes = list(slots.get("notes") or [])
-        notes.append("新指标未沿用上一轮时间范围")
-        slots["notes"] = list(dict.fromkeys(notes))
+        cleaned = []
+        seen = set()
+        for interp in interps:
+            slots = dict(interp.get("slots") or {})
+            original_time = slots.get("time")
+            changed = self._clear_spurious_time_slots(
+                slots, question, conversation_context
+            )
+            key = json.dumps(
+                {
+                    "metric": slots.get("metric"),
+                    "dimensions": slots.get("dimensions"),
+                    "filters": slots.get("filters"),
+                    "time": slots.get("time"),
+                    "comparison": slots.get("comparison"),
+                },
+                sort_keys=True,
+                ensure_ascii=False,
+                default=str,
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            cleaned.append({
+                **interp,
+                "slots": slots,
+                "_original_time": original_time,
+                "_time_was_cleared": changed,
+            })
+        if len(cleaned) < len(interps):
+            # Prefer the interpretation that already represented the full
+            # period over the one whose inherited month was cleared.
+            preferred = None
+            for interp in cleaned:
+                if not interp.get("_time_was_cleared"):
+                    preferred = interp
+                    break
+            preferred = preferred or cleaned[0]
+            result.interpretations = [{k: v for k, v in i.items()
+                                       if not k.startswith("_")}
+                                      for i in cleaned]
+            result.preferred_interpretation = preferred.get("id")
+            result.slots = dict(preferred.get("slots") or {})
 
     def _handle_parsing(self, state: SessionState) -> list[tuple[str, dict]]:
         original = self._last_user_text(state)
@@ -1406,6 +1516,7 @@ class Controller:
             "kind": "subquestions",
             "question_count": len(questions),
             "subquestions": presentation_items,
+            "memory": state.memory or {},
         }
         try:
             text = self._call_with_retry(
@@ -3360,6 +3471,7 @@ class Controller:
             "metric_type": metric.type if metric else "aggregate",
             "time_axis": metric.raw.get("time_axis") if metric else None,
             "definition": metric.raw.get("definition") if metric else None,
+            "memory": state.memory or {},
             "dimension_labels": [self.sem.dimension(d).raw.get("name_zh", d)
                                  for d in (plan.dimensions if plan else [])],
             "filters_label": "、".join(
