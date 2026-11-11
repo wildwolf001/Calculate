@@ -491,6 +491,101 @@ class Controller:
             }
         return None
 
+    _JOIN_EXPLANATION_RE = re.compile(
+        r"(?:直接|把|将).{0,24}(?:关联|连接|join|联表).{0,40}"
+        r"(?:为什么|导致).{0,24}(?:重复|放大|笛卡尔|一对多|多对多)"
+        r"|为什么.{0,32}(?:关联|连接|join).{0,32}(?:重复|放大)",
+        re.I,
+    )
+
+    def _schema_join_explanation(self, question: str) -> str | None:
+        """Answer a schema/join grain question without treating it as a query.
+
+        This is a deterministic explanation path for questions such as
+        “直接关联商品明细和支付表为什么会导致金额重复？”. It is not a
+        substitute for a data query: it uses table grains and the known join
+        graph, and intentionally emits no SQL.
+        """
+        if not self._JOIN_EXPLANATION_RE.search(question or ""):
+            return None
+        card = getattr(self.ctx, "model_card", None) or {}
+        tables = dict(card.get("tables") or {})
+        if not tables:
+            tables = {tid: {} for tid in self.sem.tables}
+
+        def find(terms: tuple[str, ...]) -> tuple[str, dict] | None:
+            for tid, meta in tables.items():
+                hay = " ".join([
+                    str(tid),
+                    str(meta.get("label") or ""),
+                    str(meta.get("description") or ""),
+                ]).lower()
+                if any(term.lower() in hay for term in terms):
+                    return tid, meta
+            return None
+
+        item = find(("order_items", "商品明细", "订单明细", "items"))
+        payment = find(("order_payments", "支付表", "支付流水", "payments"))
+        item_id, item_meta = item if item else ("t_004", {})
+        pay_id, pay_meta = payment if payment else ("t_005", {})
+        item_label = str(item_meta.get("label") or item_id)
+        pay_label = str(pay_meta.get("label") or pay_id)
+        item_grain = "订单 + 明细行"
+        pay_grain = "订单 + 支付流水"
+        if not item:
+            item_grain = " + ".join(str(x) for x in (item_meta.get("grain") or [])) or item_grain
+        if not payment:
+            pay_grain = " + ".join(str(x) for x in (pay_meta.get("grain") or [])) or pay_grain
+        return (
+            f"原因在于这两张表不是同一粒度：\n\n"
+            f"1. **{item_label}** 的粒度是「{item_grain}」。一笔订单可以有多条商品明细，"
+            f"每条明细各有一个 `price`；\n"
+            f"2. **{pay_label}** 的粒度是「{pay_grain}」。一笔订单也可以有多条支付流水，"
+            f"每条流水各有一个 `payment_value`。\n\n"
+            "如果只按 `order_id` 把两张表直接关联，数据库会生成两边行数的组合："
+            "一笔订单有 2 条明细和 2 条支付流水时，关联结果就是 2 × 2 = 4 行，"
+            "`SUM(price)` 和 `SUM(payment_value)` 都会被放大。\n\n"
+            "正确做法是先在各自事实表内按 `order_id` 聚合到订单粒度，"
+            "再与 `orders` 关联，或者分别聚合后再用订单表做桥接，"
+            "不要让两个一对多事实表直接互连。"
+        )
+
+    _EXPLICIT_TIME_RE = re.compile(
+        r"\d{4}\s*年|\d{1,2}\s*月|本月|上月|今年|去年|上半年|下半年|近|最近|同比|环比|Q[1-4]",
+        re.I,
+    )
+    _TIME_ANAPHORA_RE = re.compile(r"这个|上述|这些|该|同样|那|再按|前面|刚才|上面")
+
+    def _drop_spurious_inherited_time(self, result, question: str,
+                                      conversation_context: dict | None) -> None:
+        """A new metric without a time word must not inherit the prior month.
+
+        The model sometimes copies the previous scope into a brand-new metric
+        question (e.g. Q5 is May delay rate, Q6 asks average rating without
+        saying May). ``apply_context_action`` only fills missing fields; it
+        cannot undo a time the model already emitted. Correct that here.
+        """
+        if result.intent_type not in {"query", "lookup"}:
+            return
+        slots = result.slots
+        if slots.get("time") is None and slots.get("comparison") is None:
+            return
+        text = str(question or "")
+        if self._EXPLICIT_TIME_RE.search(text) or self._TIME_ANAPHORA_RE.search(text):
+            return
+        context = conversation_context or {}
+        previous = context.get("active_scope") or context.get("previous_scope") or {}
+        previous_metric = previous.get("metric")
+        if not slots.get("metric") or not previous_metric:
+            return
+        if str(slots.get("metric")) == str(previous_metric):
+            return
+        slots["time"] = None
+        slots["comparison"] = None
+        notes = list(slots.get("notes") or [])
+        notes.append("新指标未沿用上一轮时间范围")
+        slots["notes"] = list(dict.fromkeys(notes))
+
     def _handle_parsing(self, state: SessionState) -> list[tuple[str, dict]]:
         original = self._last_user_text(state)
         rw = rewrite(original)
@@ -518,6 +613,22 @@ class Controller:
                 "text": concept["message"],
                 "result_id": None,
                 "options": concept["options"],
+            }))
+            events.append(("result.presented", {"result_id": None}))
+            return events
+
+        join_explanation = self._schema_join_explanation(original)
+        if join_explanation:
+            events.append(("intent.classified", {
+                "intent_type": "explain",
+                "tier": "B",
+                "confidence": 0.9,
+                "rewritten_question": original,
+                "context_action": "new",
+            }))
+            events.append(("answer.composed", {
+                "text": join_explanation,
+                "result_id": None,
             }))
             events.append(("result.presented", {"result_id": None}))
             return events
@@ -564,6 +675,7 @@ class Controller:
             return events
 
         apply_context_action(result, conversation_context, self._last_user_text(state))
+        self._drop_spurious_inherited_time(result, original, conversation_context)
         self._salvage_derived_filter(original, result.slots)
         self._salvage_time_axis(original, result.slots)
         self._salvage_share(original, result.slots)

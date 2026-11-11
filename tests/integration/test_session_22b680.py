@@ -253,3 +253,31 @@ def test_sum_question_replaces_unrelated_metric():
     )
     parsed = parser._apply_resolver("销售额是多少", result)
     assert parsed.slots["metric"] == "m_sum"
+
+
+@pytest.mark.skipif(not DATASET.exists(), reason="SESSION 22B680 dataset is not available")
+def test_q8_schema_join_question_gets_deterministic_explanation(tmp_path):
+    class UnsupportedParser:
+        def parse(self, text, context):
+            return ParseResult(intent_type="unsupported", tier="C", confidence=0.1)
+
+    ctx = DatasetRegistry().get(DATASET_ID)
+    controller = Controller(
+        EventStore(tmp_path / "q8-events"),
+        ctx.sem, UnsupportedParser(), RuleGrounder(ctx.sem, ctx.dim_values_path),
+        TemplateComposer(), ctx=ctx,
+    )
+
+    async def run():
+        return [
+            event async for event in controller.run_turn(
+                "q8", "直接关联商品明细和支付表为什么会导致金额重复？"
+            )
+        ]
+
+    events = asyncio.run(run())
+    answer = next(event.payload["text"] for event in events if event.type == "answer.composed")
+    assert "order_items" in answer
+    assert "order_payments" in answer
+    assert "放大" in answer
+    assert not any(event.type == "sql.executed" for event in events)
