@@ -63,7 +63,8 @@ def execute_prepared(compiled: Compiled, db_path=WAREHOUSE_PATH) -> ResultSet:
 
 
 def check(plan: QueryPlan, sem: SemanticLayer, result: ResultSet,
-          db_path=WAREHOUSE_PATH, quality: dict | None = None):
+          db_path=WAREHOUSE_PATH, quality: dict | None = None,
+          catalog: dict | None = None):
     if plan.kind == "member_list":
         return run_member_list_checks(plan, result, quality=quality)
     if plan.metric_spec:
@@ -75,11 +76,12 @@ def check(plan: QueryPlan, sem: SemanticLayer, result: ResultSet,
     if plan.kind == "coverage":
         return run_coverage_checks(plan, metric, result, quality=quality)
     return run_checks(plan, metric, result, sem,
-                      db_path=db_path, quality=quality)
+                      db_path=db_path, quality=quality, catalog=catalog)
 
 
 def run_query(plan: QueryPlan, sem: SemanticLayer,
-              db_path=WAREHOUSE_PATH, quality: dict | None = None) -> QueryOutcome:
+              db_path=WAREHOUSE_PATH, quality: dict | None = None,
+              catalog: dict | None = None) -> QueryOutcome:
     try:
         compiled, issues = prepare(plan, sem)
     except PipelineError as exc:
@@ -91,7 +93,8 @@ def run_query(plan: QueryPlan, sem: SemanticLayer,
         return QueryOutcome(ok=False, plan=plan, compiled=compiled,
                             plan_issues=issues, error=str(exc))
 
-    checks, facts = check(plan, sem, result, db_path=db_path, quality=quality)
+    checks, facts = check(plan, sem, result, db_path=db_path,
+                          quality=quality, catalog=catalog)
     blocked = any(c.severity == "error" for c in checks)
     return QueryOutcome(
         ok=not blocked,

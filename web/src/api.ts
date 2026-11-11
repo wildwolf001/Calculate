@@ -68,6 +68,35 @@ export async function getDatasetDraft(datasetId: string): Promise<any> {
   )
 }
 
+export async function getModelCard(datasetId: string): Promise<any> {
+  return json<any>(
+    await fetch(`${BASE}/api/datasets/${encodeURIComponent(datasetId)}/model-card`),
+  )
+}
+
+export async function patchModelCard(
+  datasetId: string,
+  body: Record<string, any>,
+): Promise<any> {
+  return json<any>(
+    await fetch(`${BASE}/api/datasets/${encodeURIComponent(datasetId)}/model-card`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+  )
+}
+
+export async function getDatasetBrief(
+  datasetId: string,
+  question: string,
+): Promise<any> {
+  const query = `?q=${encodeURIComponent(question)}`
+  return json<any>(
+    await fetch(`${BASE}/api/datasets/${encodeURIComponent(datasetId)}/brief${query}`),
+  )
+}
+
 export async function publishDataset(
   datasetId: string,
   metrics?: string[],

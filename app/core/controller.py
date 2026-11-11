@@ -386,6 +386,92 @@ class Controller:
         )
 
     # ---------- handlers ----------
+    def _is_vague_analysis(self, text: str) -> bool:
+        """Do not turn "卖得怎么样" into a 12-query analysis report.
+
+        An explicit "分析/报告/诊断/复盘" request still runs the report; a
+        vague performance question gets a scope clarification with concrete
+        next questions instead.
+        """
+        explicit = (
+            "分析", "报告", "经营分析", "诊断", "复盘", "评估",
+            "洞察", "趋势分析", "对比分析", "概览", "总结", "拆解",
+        )
+        if any(marker in text for marker in explicit):
+            return False
+        subject = any(
+            marker in text for marker in ("卖得", "生意", "经营", "业绩", "销售")
+        )
+        vague = any(
+            marker in text for marker in ("怎么样", "如何", "好不好", "什么情况")
+        )
+        return subject and vague
+
+    def _unsupported_concept(self, text: str) -> dict | None:
+        """Explain out-of-scope business concepts without generic word soup.
+
+        Prediction and profit are common questions whose honest answer is
+        "the data cannot answer this". Returning a tailored explanation and
+        historical alternatives is more useful than "没有识别出...指标".
+        """
+        value = str(text or "")
+        if "为什么" in value and any(
+            marker in value for marker in ("不能", "无法", "没有")
+        ):
+            return None
+        concepts: list[set[str]] = []
+        for metric in self.sem.metrics.values():
+            concepts.append({str(metric.name), *map(str, metric.synonyms)})
+        for dim in self.sem.dimensions.values():
+            concepts.append({str(dim.raw.get("name_zh") or dim.id)})
+        known = " ".join(" ".join(item) for item in concepts)
+        lo, hi = self.sem.time_range
+        range_text = f"{lo} ~ {hi}" if lo and hi else "当前历史区间"
+
+        forecast = bool(re.search(
+            r"(预测|预估|推算).{0,24}(卖|销售|销量|订单|营收|收入|多少)"
+            r"|(下个?月|明年|未来).{0,24}(卖|销售|销量|订单|营收|收入)"
+            r"|能.{0,8}预测",
+            value,
+        ))
+        if forecast and "预测" not in known:
+            return {
+                "kind": "forecast",
+                "message": (
+                    "我不能用这组数据预测下个月能卖多少。\n\n"
+                    "这里只有已经发生的订单、支付和评价，没有预测模型、"
+                    "促销/季节性假设或外部变量；直接外推一个未来数字并不可靠，"
+                    "所以我不编造。\n\n"
+                    f"当前数据覆盖历史区间（{range_text}）。"
+                    "如果你要做判断，我可以先给你历史基线："
+                ),
+                "options": [
+                    "2025年逐月商品销售额和订单数",
+                    "2025年各品类商品销售额",
+                    "2025年12月商品销售额环比",
+                ],
+            }
+
+        profit_terms = ("利润", "毛利", "净利", "利润率", "成本", "采购价", "费用")
+        if any(term in value for term in profit_terms) and not any(
+            term in known for term in profit_terms
+        ):
+            return {
+                "kind": "profit",
+                "message": (
+                    "这组数据里没有成本、采购价或费用字段，"
+                    "所以无法计算利润或利润率；商品销售额也不等于利润。\n\n"
+                    "能查的是规模类指标：商品销售额、运费合计、支付金额、"
+                    "订单数、复购客户数。你可以先看这些，但不能把它们当利润。"
+                ),
+                "options": [
+                    "商品销售额是多少？",
+                    "运费合计是多少？",
+                    "2025年逐月商品销售额是多少？",
+                ],
+            }
+        return None
+
     def _handle_parsing(self, state: SessionState) -> list[tuple[str, dict]]:
         original = self._last_user_text(state)
         rw = rewrite(original)
@@ -397,6 +483,23 @@ class Controller:
 
         if rw.kind == "smalltalk":
             events.append(("answer.composed", {"text": SMALLTALK_TEXT, "result_id": None}))
+            events.append(("result.presented", {"result_id": None}))
+            return events
+
+        concept = self._unsupported_concept(original)
+        if concept is not None:
+            events.append(("intent.classified", {
+                "intent_type": "unsupported",
+                "tier": "C",
+                "confidence": 0.9,
+                "rewritten_question": original,
+                "context_action": "new",
+            }))
+            events.append(("answer.composed", {
+                "text": concept["message"],
+                "result_id": None,
+                "options": concept["options"],
+            }))
             events.append(("result.presented", {"result_id": None}))
             return events
         if rw.kind == "lookup" and self.sem.parser == "ecommerce":
@@ -441,7 +544,7 @@ class Controller:
             }))
             return events
 
-        apply_context_action(result, conversation_context)
+        apply_context_action(result, conversation_context, self._last_user_text(state))
         self._salvage_derived_filter(original, result.slots)
         self._salvage_time_axis(original, result.slots)
         self._salvage_share(original, result.slots)
@@ -464,6 +567,28 @@ class Controller:
             return events
 
         if result.intent_type == "analysis":
+            if self._is_vague_analysis(original):
+                events.append(("ambiguity.detected", {
+                    "field": "analysis_scope",
+                    "term": original,
+                    "candidates": [
+                        "2025年逐月商品销售额和订单数",
+                        "2025年12月商品销售额环比",
+                        "2025年各品类商品销售额",
+                        "2025年各城市商品销售额",
+                    ],
+                    "message": (
+                        "「卖得怎么样」可以看好几个角度，我先确认一下你想看哪一类：\n"
+                        "- 整体趋势（月度销售额/订单数）\n"
+                        "- 最近一个月（环比）\n"
+                        "- 品类或城市结构\n"
+                        "- 配送/口碑等体验指标\n\n"
+                        "你选一个，我直接查具体数据，不生成整份经营报告。"
+                    ),
+                    "kind": "scope",
+                    "partial_slots": result.slots,
+                }))
+                return events
             return events + self._analysis_events(state, None)
 
         if result.intent_type == "critique_response":
@@ -585,10 +710,11 @@ class Controller:
 
         if result.unresolved:
             repair = build_repair(
-                self.sem, self._repair_slots(state, result.slots), unknown=result.unresolved
+                self.sem, self._repair_slots(state, result.slots), unknown=result.unresolved,
+                model_card=getattr(self.ctx, "model_card", None),
             )
             message = (
-                f"没有识别出「{result.unresolved[0]}」对应的指标或维度。\n\n"
+                f"「{result.unresolved[0]}」不是当前数据源的指标或维度。\n\n"
                 f"{repair_text(repair)}"
             )
             events.append(("ambiguity.detected", {
@@ -1197,6 +1323,7 @@ class Controller:
             payload["analysis_section"] = analysis_section
         if analysis_item:
             payload["analysis_item"] = analysis_item
+        payload["field_map"] = self._field_map(plan)
         events.append(("sql.executed", payload))
 
         issues_checked, facts = check(
@@ -1264,9 +1391,10 @@ class Controller:
             "comparison": comparison,
             "compare": bool(comparison or plan.compare),
             "filters_label": self._plan_filters_label(plan),
-            "checks": entry["issues"],
+            "checks": self._humanize_checks(entry["issues"], self._field_map(plan)),
             "facts": entry["facts"],
             "meta": artifact.meta,
+            "field_map": self._field_map(plan),
         }
 
     def _analysis_events(self, state: SessionState,
@@ -1791,6 +1919,22 @@ class Controller:
                         "message": str(exc),
                     }))
                     continue
+            except Exception as exc:
+                # A bad model-generated interpretation must not turn the whole
+                # turn into "system internal error". Other interpretations can
+                # still answer (SESSION 2FF8B7 Turn 11).
+                log_event(
+                    logger, "interpretation.error",
+                    interpretation_id=iid,
+                    error=f"{type(exc).__name__}: {exc}",
+                    detail=traceback.format_exc()[:2000],
+                )
+                events.append(("interpretation.rejected", {
+                    "interpretation_id": iid,
+                    "label": interp.get("label"),
+                    "message": str(exc),
+                }))
+                continue
             events.append(("sql.compiled", {
                 "sql": compiled.sql,
                 "params": [str(p) for p in compiled.params],
@@ -1825,9 +1969,11 @@ class Controller:
                 "preferred": is_pref,
                 "plan": plan.model_dump(mode="json"),
             })
+            payload["field_map"] = self._field_map(plan)
             events.append(("sql.executed", payload))
             issues, facts = check(plan, self.sem, artifact,
-                                  db_path=self.warehouse, quality=self.quality)
+                                  db_path=self.warehouse, quality=self.quality,
+                                  catalog=getattr(self.ctx, "catalog", None))
             events.extend(self._enrich_count_members(plan, artifact, facts))
             events.append(("checks.completed", {
                 "result_id": artifact.result_id,
@@ -1941,13 +2087,14 @@ class Controller:
     def _compose(self, ctx: dict, state: SessionState) -> str:
         events: list[tuple[str, dict]] = []
         try:
-            return self._call_with_retry(
+            text = self._call_with_retry(
                 "compose_answer", lambda: self.composer.compose(ctx), state, events
             )
         except Exception as exc:
             from app.llm.compose_answer import TemplateComposer
             log_event(logger, "composer fallback", error=str(exc))
-            return TemplateComposer().compose(ctx)
+            text = TemplateComposer().compose(ctx)
+        return self._humanize_fields(text, ctx.get("field_map") or [])
 
     def _handle_grounding(self, state: SessionState) -> list[tuple[str, dict]]:
         ctx = project_for_parser(state, dim_values_path=self.dim_values_path)
@@ -2464,7 +2611,35 @@ class Controller:
         payload["question"] = self._last_user_text(state)
         payload["display"] = display_spec(plan, self.sem, result)
         payload["plan"] = plan.model_dump(mode="json")
+        payload["field_map"] = self._field_map(plan)
         return [("sql.executed", payload)]
+
+    def _numeric_columns_hint(self, plan: QueryPlan) -> str:
+        card = getattr(self.ctx, "model_card", {}) or {}
+        spec = plan.metric_spec or {}
+        fact = str(spec.get("fact") or "")
+        if not fact:
+            match = re.search(
+                r"\(\s*([A-Za-z_][A-Za-z0-9_]*)\.[A-Za-z0-9_]+",
+                str(spec.get("expr") or ""),
+            )
+            if match:
+                fact = match.group(1)
+        table = (card.get("tables") or {}).get(fact) or {}
+        measures = [
+            col for col in table.get("columns") or []
+            if str(col.get("role")) == "measure"
+        ][:5]
+        if not measures:
+            return ""
+        parts = []
+        for column in measures:
+            detail = f"{column.get('name')}({column.get('label')}, {column.get('type')}"
+            if column.get("min") is not None:
+                detail += f", {column.get('min')}..{column.get('max')}"
+            detail += ")"
+            parts.append(detail)
+        return f"同表（{fact}）可用的数值列：" + "、".join(parts)
 
     def _recover_or_refuse(self, state: SessionState, plan: QueryPlan,
                            exc: BaseException, code: str, friendly: str
@@ -2476,7 +2651,7 @@ class Controller:
             "attempt": state.policy.attempts + 1,
             "detail": f"{type(exc).__name__}: {exc}"[:300],
         })]
-        if state.policy.can_attempt():
+        if state.policy.can_attempt() and code != "TYPE_MISMATCH":
             for candidate in candidates_for_failure(plan, self.sem):
                 try:
                     prepare(candidate.plan, self.sem)
@@ -2520,6 +2695,12 @@ class Controller:
             text += (
                 "\n\n这通常意味着语义层和数据库不一致：数据可能被重新导入或列被删除。"
                 "建议在数据管理页重建或重新发布数据集。"
+            )
+        elif code == "TYPE_MISMATCH":
+            hint = self._numeric_columns_hint(plan)
+            text += (
+                "\n\n这不是时间或维度问题，而是指标用错了列：聚合的列类型不支持该运算。"
+                + (f"\n{hint}" if hint else "请改用同表的数值度量列。")
             )
         elif code == "TIMEOUT":
             text += "\n\n查询超时，可以缩小时间范围或减少维度后重试。"
@@ -2583,7 +2764,8 @@ class Controller:
             result.result_id = f"r{state.turn}-{result.fingerprint}"
             self._results[(state.session_id, state.turn)] = result
         issues, facts = check(plan, self.sem, result,
-                              db_path=self.warehouse, quality=self.quality)
+                              db_path=self.warehouse, quality=self.quality,
+                              catalog=getattr(self.ctx, "catalog", None))
         policy = (result.meta or {}).get("ratio_sample_policy")
         if policy:
             issues.append(CheckIssue(
@@ -2697,10 +2879,163 @@ class Controller:
         events.append(("result.presented", {"result_id": state.last_result_id}))
         return events
 
+    def _field_map(self, plan: QueryPlan | None) -> list[dict]:
+        """Technical column -> business label mapping for this query.
+
+        The answer prose must not contain `customer_unique_id`; the mapping is
+        shown in the chat's "处理过程与数据说明" block instead.
+        """
+        if plan is None:
+            return []
+        card = getattr(self.ctx, "model_card", {}) or {}
+        tables = card.get("tables") or {}
+        metric = self._metric_for_plan(plan)
+        raw = metric.raw if metric is not None else {}
+
+        def refs(value):
+            return re.findall(
+                r"\b(t_[A-Za-z0-9]+)\.([A-Za-z0-9_]+)\b", str(value or "")
+            )
+
+        ordered: list[dict] = []
+
+        def add(found) -> None:
+            for table, column in found:
+                field = f"{table}.{column}"
+                if all(item["field"] != field for item in ordered):
+                    ordered.append({"field": field, "table": table, "column": column})
+
+        for key in (
+            "expr", "numerator", "denominator", "grain_numerator",
+            "grain_denominator", "operand", "time_via", "entity",
+            "count_orders", "default_time_axis",
+        ):
+            add(refs(raw.get(key)))
+        add(refs(list((raw.get("scope") or {}).keys())))
+        add(refs(plan.time_axis))
+
+        dim_labels: dict[str, str] = {}
+        for dim in self.sem.dimensions.values():
+            name = str(dim.raw.get("name_zh") or dim.id)
+            for table, column in (
+                refs(dim.raw.get("column")) + refs(dim.raw.get("expr"))
+            ):
+                dim_labels.setdefault(f"{table}.{column}", name)
+        for dim_id in list(plan.dimensions) + list(plan.filters):
+            dim = self.sem.dimensions.get(dim_id)
+            if dim is None:
+                continue
+            name = str(dim.raw.get("name_zh") or dim_id)
+            for table, column in (
+                refs(dim.raw.get("column")) + refs(dim.raw.get("expr"))
+            ):
+                dim_labels[f"{table}.{column}"] = name
+                add([(table, column)])
+
+        axis_labels = {
+            str(axis.get("ref")): str(axis.get("name_zh") or axis.get("label") or "")
+            for axis in (self.sem.time_axes or [])
+            if axis.get("ref")
+        }
+
+        metric_label = metric.name if metric is not None else ""
+        if metric_label.startswith("平均"):
+            metric_label = metric_label[2:]
+        if raw.get("type") == "entity_count" and metric_label.endswith("数"):
+            metric_label = metric_label[:-1]
+        entity_refs = {
+            f"{table}.{column}" for table, column in refs(raw.get("entity"))
+        }
+        metric_refs = {
+            f"{table}.{column}"
+            for key in (
+                "expr", "numerator", "denominator", "grain_numerator",
+                "grain_denominator", "operand",
+            )
+            for table, column in refs(raw.get(key))
+        }
+        field_zh = {
+            "order_id": "订单号",
+            "review_id": "评价编号",
+            "customer_id": "客户编号",
+            "customer_unique_id": "客户唯一标识",
+            "order_status": "订单状态",
+            "purchase_at": "下单时间",
+            "approved_at": "支付时间",
+            "shipped_at": "发货时间",
+            "delivered_at": "送达时间",
+            "estimated_delivery_at": "预计送达时间",
+            "review_score": "评分",
+            "payment_value": "支付金额",
+            "product_id": "商品编号",
+            "seller_id": "商家编号",
+        }
+
+        out: list[dict] = []
+        for item in ordered:
+            card_column = next(
+                (
+                    column for column in (tables.get(item["table"]) or {}).get("columns") or []
+                    if str(column.get("name")) == item["column"]
+                ),
+                {},
+            )
+            technical = str(card_column.get("label") or item["column"])
+            description = str(card_column.get("description") or "")
+            if item["field"] in entity_refs:
+                metric_name_label = metric_label
+            elif item["field"] in metric_refs:
+                metric_name_label = metric_label
+            else:
+                metric_name_label = ""
+            label = (
+                dim_labels.get(item["field"])
+                or axis_labels.get(item["field"])
+                or metric_name_label
+                or field_zh.get(technical)
+                or description
+                or technical
+            )
+            out.append({
+                "field": item["field"],
+                "label": label,
+                "technical": technical,
+                "role": str(card_column.get("role") or ""),
+                "description": description,
+            })
+        return out
+
+    def _humanize_checks(self, checks, field_map: list[dict]) -> list[dict]:
+        out: list[dict] = []
+        for check in checks or []:
+            item = dict(check)
+            if item.get("detail"):
+                item["detail"] = self._humanize_fields(
+                    str(item["detail"]), field_map,
+                )
+            out.append(item)
+        return out
+
+    def _humanize_fields(self, text: str, field_map: list[dict] | None) -> str:
+        for item in field_map or []:
+            label = str(item.get("label") or "")
+            technical = str(item.get("technical") or "")
+            if not label:
+                continue
+            if technical and len(technical) > 4 and technical != label:
+                text = re.sub(
+                    rf"(?<![\w]){re.escape(technical)}(?![\w])", label, text,
+                )
+            field = str(item.get("field") or "")
+            if field:
+                text = text.replace(field, label)
+        return text
+
     def _composer_context(self, state: SessionState) -> dict:
         plan = state.plan
         metric = self._metric_for_plan(plan)
         ctx = project_for_composer(state)
+        field_map = self._field_map(plan)
         metric_name = metric.name if metric else plan.metric
         if plan is not None and plan.entity_count is not None:
             metric_name = plan.entity_count.entity
@@ -2722,8 +3057,9 @@ class Controller:
             "compare": bool(plan and (plan.compare or plan.comparison)),
             "comparison": plan.comparison.model_dump(mode="json") if plan and plan.comparison else None,
             "degraded_reason": plan.degraded_reason if plan else None,
-            "checks": state.checks,
+            "checks": self._humanize_checks(state.checks, field_map),
             "facts": state.facts,
+            "field_map": field_map,
         })
         return ctx
 

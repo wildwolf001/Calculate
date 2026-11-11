@@ -75,8 +75,57 @@ def _filter_context(sem: SemanticLayer, filters: dict) -> list[tuple[str, str, s
     return out
 
 
+def _column_options(model_card: dict | None, slots: dict,
+                    requested, unknown: list[str] | None = None
+                    ) -> list[str]:
+    """When the unknown term is a field/column, offer concrete value columns."""
+    if not model_card:
+        return []
+    terms = " ".join(str(item) for item in (unknown or []))
+    all_labels = [
+        str(column.get("label") or column.get("name") or "")
+        for table in (model_card.get("tables") or {}).values()
+        for column in table.get("columns") or []
+    ]
+    field_markers = (
+        "字段", "列", "评分", "价格", "金额", "运费", "数量",
+        "时长", "成本", "编号", "score", "price", "amount",
+    )
+    looks_like_field = any(marker in terms for marker in field_markers) or any(
+        label and label in terms for label in all_labels
+    )
+    if not looks_like_field:
+        return []
+    fact = ""
+    spec = slots.get("metric_spec")
+    if isinstance(spec, dict):
+        fact = str(spec.get("fact") or "")
+    if not fact and requested is not None:
+        fact = str((requested.raw or {}).get("fact") or "")
+    tables = model_card.get("tables") or {}
+    candidates = []
+    if fact and fact in tables:
+        candidates = [tables[fact]]
+    else:
+        candidates = [t for t in tables.values() if t.get("role") == "fact"][:2]
+    options: list[str] = []
+    for table in candidates:
+        for column in table.get("columns") or []:
+            if str(column.get("role")) != "measure":
+                continue
+            label = str(column.get("description") or column.get("label") or "")
+            if not any("\u4e00" <= char <= "\u9fff" for char in label):
+                # Do not offer English physical names as example questions.
+                continue
+            options.append(f"{label}的平均值是多少？")
+            if len(options) >= 3:
+                return options
+    return options
+
+
 def build_repair(sem: SemanticLayer, slots,
-                 unknown: list[str] | None = None) -> dict:
+                 unknown: list[str] | None = None,
+                 model_card: dict | None = None) -> dict:
     data = _as_dict(slots)
     filters = data.get("filters") or {}
     period = time_label(data.get("time"))
@@ -107,10 +156,12 @@ def build_repair(sem: SemanticLayer, slots,
             options.append(f"{prefix}{metric.name}是多少？")
 
     options = list(dict.fromkeys(options))[:4]
+    column_options = _column_options(model_card, data, requested, unknown)
+    if column_options:
+        options = list(dict.fromkeys(column_options + options))[:4]
 
     if unknown:
-        terms = "、".join(unknown)
-        note = f"数据里没有「{terms}」这个指标或字段。"
+        note = "它可能是业务概念、计算口径或外部数据，不能直接查询。"
     else:
         note = "当前口径下这个指标不能按所问维度计算。"
 

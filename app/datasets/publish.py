@@ -313,6 +313,16 @@ def publish_dataset(registry: DatasetRegistry, dataset_id: str,
         registry.invalidate(dataset_id)
         probe_ctx = registry.get(dataset_id)
         readiness = build_readiness(probe_ctx, keep_metrics, keep_dims)
+        axes = sorted({
+            str(metric.get("time_via"))
+            for metric in new_metrics.values()
+            if metric.get("time_via")
+        })
+        if len(axes) > 1:
+            readiness.setdefault("warnings", []).append(
+                "该数据集存在多个时间轴：" + "、".join(axes)
+                + "；跨指标的同月对比需要确认按哪个时间轴归属。"
+            )
         if readiness.get("status") == "blocked":
             _write_atomic(semantic_path, old_text)
             detail = "；".join(readiness.get("blockers", [])[:5])
@@ -323,6 +333,28 @@ def publish_dataset(registry: DatasetRegistry, dataset_id: str,
     except Exception as exc:
         _write_atomic(semantic_path, old_text)
         raise PublishError(f"就绪检查失败，已回滚: {type(exc).__name__}: {exc}") from exc
+
+    # The model card is the contract consumed by the brief, the type guard and
+    # the admin UI. A non-numeric SUM/AVG operand is a publish blocker.
+    try:
+        from app.datasets.model_card import refresh_model_card, validate_model_card
+
+        registry.invalidate(dataset_id)
+        card_ctx = registry.get(dataset_id)
+        card = refresh_model_card(card_ctx)
+        blocking = [
+            issue for issue in validate_model_card(card) if "需要数值列" in issue
+        ]
+        if blocking:
+            _write_atomic(semantic_path, old_text)
+            raise PublishError(
+                "模型卡校验失败，已回滚: " + "；".join(blocking[:3])
+            )
+    except PublishError:
+        raise
+    except Exception:
+        # The card is rebuildable; never fail a publish on it.
+        pass
 
     try:
         if cap_sem is not None and capability_payload:

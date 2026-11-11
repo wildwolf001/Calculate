@@ -168,8 +168,21 @@ def build_conversation_context(state: SessionState, sem: SemanticLayer,
     }
 
 
-def apply_context_action(result, context: dict | None) -> None:
-    """Apply a parser's explicit context decision without lexical guessing."""
+ANAPHORA_MARKERS = (
+    "这个", "上述", "这些", "其中", "该", "它", "他们", "那",
+    "再按", "再", "同比", "环比", "前面", "刚才", "同样", "上面",
+)
+
+
+def apply_context_action(result, context: dict | None,
+                         question: str = "") -> None:
+    """Apply a parser's explicit context decision without lexical guessing.
+
+    Time/comparison are only inherited when the turn clearly continues the
+    previous question: same metric, or an anaphora such as "那 3 月呢" /
+    "上述商家". A brand-new metric with no time words must not silently
+    inherit the previous month (SESSION EC51E4, turn 8).
+    """
     if context is None or result.intent_type not in {"query", "lookup"}:
         return
     action = result.context_action or "new"
@@ -208,9 +221,26 @@ def apply_context_action(result, context: dict | None) -> None:
             slots["comparison"] = None
         return
 
+    text = str(question or "")
+    anaphora = any(marker in text for marker in ANAPHORA_MARKERS)
+    # A turn without its own metric is a follow-up: it inherits the metric and
+    # may keep the scope. A turn with a *different* metric is a new question
+    # unless it uses an anaphora ("那 3 月呢", "上述商家").
+    same_metric = (not slots.get("metric")) or slots.get("metric") == base.get("metric")
+    allow_scope = same_metric or anaphora
+
+    inherited: list[str] = []
+    skipped: list[str] = []
     for key in ("metric", "time", "comparison"):
-        if slots.get(key) is None and base.get(key) is not None:
-            slots[key] = base[key]
+        if slots.get(key) is not None:
+            continue
+        if base.get(key) is None:
+            continue
+        if key in {"time", "comparison"} and not allow_scope:
+            skipped.append(key)
+            continue
+        slots[key] = base[key]
+        inherited.append(key)
     if (
         slots.get("metric") == base.get("metric")
         and slots.get("entity_count") is None
@@ -219,13 +249,21 @@ def apply_context_action(result, context: dict | None) -> None:
         slots["entity_count"] = base["entity_count"]
         if slots.get("nested") is None and base.get("nested") is not None:
             slots["nested"] = base["nested"]
-    if action in {"inherit", "refine"} and not slots.get("dimensions"):
+    if action in {"inherit", "refine", "reference_result"} and not slots.get("dimensions") and allow_scope:
         slots["dimensions"] = list(base.get("dimensions") or [])
-    if action == "reference_result" and not slots.get("dimensions"):
-        slots["dimensions"] = list(base.get("dimensions") or [])
-    inherited_filters = dict(base.get("filters") or {})
-    inherited_filters.update(slots.get("filters") or {})
-    slots["filters"] = inherited_filters
+    if allow_scope:
+        inherited_filters = dict(base.get("filters") or {})
+        inherited_filters.update(slots.get("filters") or {})
+        slots["filters"] = inherited_filters
+    notes = list(slots.get("notes") or [])
+    if inherited:
+        labels = {"metric": "指标", "time": "时间范围", "comparison": "比较口径"}
+        notes.append("沿用上一轮" + "、".join(labels[key] for key in inherited))
+    if skipped:
+        labels = {"time": "时间范围", "comparison": "比较口径"}
+        notes.append("未沿用上一轮" + "、".join(labels[key] for key in skipped))
+    if notes:
+        slots["notes"] = list(dict.fromkeys(notes))
 
 
 def _humanize_context(context: dict, dim_values_path) -> dict:

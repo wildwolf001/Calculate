@@ -8,14 +8,16 @@ import ManageApp from './manage/ManageApp.vue'
 import { useSessionStore } from './stores/session'
 
 const store = useSessionStore()
-const CHAT_WIDTH_KEY = 'mingzhang.chatWidth'
-const MIN_CHAT_WIDTH = 380
-const MAX_CHAT_WIDTH = 520
-const CHAT_WIDTH_RATIO = 0.28
+// v2 invalidates widths saved before the 3:2 layout change.
+const CHAT_WIDTH_KEY = 'mingzhang.chatWidth.v2'
+const MIN_CHAT_WIDTH = 420
+const MAX_CHAT_WIDTH = 720
+// Left (result canvas) : right (chat) ≈ 3 : 2 → chat is 40% of the viewport.
+const CHAT_WIDTH_RATIO = 0.4
 
 function preferredChatWidth(): number {
-  // The old fixed 404px looked wrong on both 1366px laptops and 1920px
-  // monitors. Scale with the viewport, then keep it inside a readable range.
+  // Fixed pixel defaults looked wrong across laptop/monitor widths. Scale with
+  // the viewport (3:2 split) and keep the chat inside a readable range.
   const scaled = window.innerWidth * CHAT_WIDTH_RATIO
   return Math.round(Math.min(MAX_CHAT_WIDTH, Math.max(MIN_CHAT_WIDTH, scaled)))
 }
@@ -43,8 +45,8 @@ function startDrag(e: MouseEvent) {
     // Chat sits on the right (row-reverse), so dragging left grows it.
     const next = startWidth - (ev.clientX - startX)
     chatWidth.value = Math.max(
-      320,
-      Math.min(Math.round(window.innerWidth * 0.55), next),
+      360,
+      Math.min(Math.round(window.innerWidth * 0.65), next),
     )
   }
   const up = () => {

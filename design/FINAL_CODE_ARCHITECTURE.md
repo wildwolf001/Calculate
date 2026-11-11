@@ -1,5 +1,8 @@
 # 明账最终代码架构与增删改清单
 
+> **已过时（historical）**：本文件仅作历史参考，不再作为实现或验收依据；以源码、`tests/`、运行会话/日志为准。
+
+
 > 版本：2026-10-29 v1
 > 关联：PROJECT_ARCHITECTURE_TARGET.md、REFACTOR_PLAN.md、INGEST_AGENT_DESIGN.md
 > 标记：A=新增，M=修改，D=删除，R=移动/重命名，K=保留

@@ -159,6 +159,116 @@ def get_dataset_index(dataset_id: str, request: Request):
     return build_index_for_context(ctx)
 
 
+@router.get("/datasets/{dataset_id}/model-card")
+def get_dataset_model_card(dataset_id: str, request: Request):
+    service = get_service(request)
+    try:
+        ctx = service.context(dataset_id)
+    except DatasetError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    if ctx.model_card:
+        return ctx.model_card
+    from app.datasets.model_card import build_model_card_for_context
+
+    return build_model_card_for_context(ctx)
+
+
+@router.patch("/datasets/{dataset_id}/model-card")
+def patch_dataset_model_card(dataset_id: str, request: Request, body: dict):
+    """Edit human-facing column metadata (label/description/unit/role).
+
+    The generated card is never edited; edits go to model_overrides.json and are
+    merged on the next load/publish. Only existing tables/columns are accepted.
+    """
+    service = get_service(request)
+    try:
+        ctx = service.context(dataset_id)
+    except DatasetError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    card = ctx.model_card or {}
+    tables = card.get("tables") or {}
+    from app.datasets.model_card import load_overrides, model_card_fingerprint
+
+    overrides = load_overrides(Path(ctx.root))
+    all_roles = {"pk", "fk", "measure", "time", "dimension"}
+    for table_id, table_patch in (body.get("tables") or {}).items():
+        if table_id not in tables:
+            raise HTTPException(status_code=400, detail=f"未知表: {table_id}")
+        table_override = overrides.setdefault("tables", {}).setdefault(table_id, {})
+        if not isinstance(table_patch, dict):
+            raise HTTPException(status_code=400, detail=f"表 {table_id} 的修改必须是对象")
+        for field in ("label", "description"):
+            if field in table_patch:
+                table_override[field] = str(table_patch[field] or "")
+        known_columns = {
+            str(col.get("name")) for col in (tables.get(table_id) or {}).get("columns") or []
+        }
+        for column, column_patch in (table_patch.get("columns") or {}).items():
+            if column not in known_columns:
+                raise HTTPException(
+                    status_code=400, detail=f"未知列: {table_id}.{column}"
+                )
+            if not isinstance(column_patch, dict):
+                raise HTTPException(
+                    status_code=400, detail=f"列 {table_id}.{column} 的修改必须是对象"
+                )
+            column_override = table_override.setdefault("columns", {}).setdefault(column, {})
+            for field in ("label", "description", "unit"):
+                if field in column_patch:
+                    column_override[field] = str(column_patch[field] or "")
+            if "role" in column_patch:
+                role = str(column_patch["role"] or "")
+                if role not in all_roles:
+                    raise HTTPException(status_code=400, detail=f"未知列角色: {role}")
+                column_override["role"] = role
+    path = Path(ctx.root) / "model_overrides.json"
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(overrides, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.replace(path)
+    if service.registry is not None:
+        service.registry.invalidate(dataset_id)
+    service.invalidate_dataset(dataset_id)
+    try:
+        fresh = service.context(dataset_id)
+        from app.datasets.model_card import refresh_model_card
+
+        refreshed = refresh_model_card(fresh)
+    except Exception:
+        refreshed = {}
+    return {
+        "dataset_id": dataset_id,
+        "overrides": overrides,
+        "model_card": refreshed,
+        "fingerprint": model_card_fingerprint(ctx.sem, overrides),
+    }
+
+
+@router.get("/datasets/{dataset_id}/brief")
+def get_dataset_brief(dataset_id: str, request: Request, q: str = "",
+                      max_chars: int = 6000):
+    """Debug projection: exactly what the intent parser would see."""
+    service = get_service(request)
+    try:
+        ctx = service.context(dataset_id)
+    except DatasetError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    from app.llm.semantic_brief import build_brief
+
+    text = build_brief(ctx.model_card or ctx.index, q, max_chars=max_chars)
+    tables = [
+        line.split()[1] for line in text.splitlines()
+        if line.startswith("- t_")
+    ]
+    return {
+        "dataset_id": dataset_id,
+        "question": q,
+        "chars": len(text),
+        "truncated": "预算不足" in text or "已截断" in text,
+        "tables": tables,
+        "text": text,
+    }
+
+
 @router.patch("/datasets/{dataset_id}/draft")
 def edit_dataset_draft(dataset_id: str, request: Request,
                        body: DraftEditRequest):

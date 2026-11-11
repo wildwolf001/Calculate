@@ -14,7 +14,12 @@ from app.domain.entity_count import apply_entity_count
 from app.domain.plan import ComparisonSpec, EntityCountSpec
 from app.domain.query.metric import MetricSpec
 from app.domain.semantic.loader import SemanticLayer
-from app.domain.semantic.resolver import SemanticResolver
+from app.domain.semantic.resolver import (
+    SemanticResolver,
+    measure_kind,
+    metric_text_support,
+    requested_measure,
+)
 from app.agent.contracts import ToolContext
 from app.chat.agent.tools import DescribeMetricTool, SearchSemanticsTool
 from app.llm.client import LLMClient, LLMError, LLMUnavailable
@@ -38,7 +43,8 @@ class LLMIntentParser:
                  fallback: RuleParser | None = None,
                  dim_values_path=DIM_VALUES_PATH,
                  index: dict | None = None,
-                 use_brief: bool = True):
+                 use_brief: bool = True,
+                 model_card: dict | None = None):
         self.sem = sem
         self.client = client or LLMClient()
         self.fallback = fallback or RuleParser(sem, dim_values_path)
@@ -46,7 +52,8 @@ class LLMIntentParser:
         self._user = _template("parse_intent_user.txt")
         self._schema_card = build_schema_card(sem, dim_values_path=dim_values_path)
         self._index = index or {}
-        self._use_brief = bool(use_brief and self._index)
+        self._model_card = model_card or {}
+        self._use_brief = bool(use_brief and (self._model_card or self._index))
         self.resolver = SemanticResolver(sem)
 
     def _tool_context(self, text: str) -> ToolContext:
@@ -171,14 +178,25 @@ class LLMIntentParser:
 
     def _system_for(self, text: str):
         card = self._schema_card
-        if self._use_brief:
-            brief = build_brief(self._index, text)
+        source = self._model_card or self._index
+        if self._use_brief and source:
+            brief = build_brief(source, text)
             if brief:
                 card = brief
         hint = self._candidate_hint(text)
         if hint:
             card = f"{card}\n\n{hint}"
         return self._system.substitute(schema_card=card)
+
+    def _column_type(self, table: str, column: str) -> str | None:
+        """Look a column type up in the model card (preferred) or index."""
+        for source in (self._model_card, self._index):
+            tables = (source or {}).get("tables") or {}
+            table_meta = tables.get(table) or {}
+            for item in table_meta.get("columns") or []:
+                if str(item.get("name")) == column:
+                    return str(item.get("type") or "") or None
+        return None
 
     def _apply_entity_count(
         self, text: str, result: ParseResult, context: dict | None = None
@@ -212,6 +230,28 @@ class LLMIntentParser:
             interp["slots"] = sub.slots
         return result
 
+    def _compatible_metrics(self, text: str,
+                            requested: str | None) -> list[tuple[int, object]]:
+        """Published metrics whose measure kind matches the question.
+
+        A lexical resolver cannot distinguish a measure ("平均评分") from a
+        grouping label ("延迟订单"). When the question names an aggregation,
+        only metrics of that kind are eligible to override the LLM's choice.
+        """
+        if not requested:
+            return []
+        out: list[tuple[int, object]] = []
+        for metric in self.sem.metrics.values():
+            if measure_kind(metric) != requested:
+                continue
+            if not metric_text_support(metric, text):
+                continue
+            score, _matched = self.resolver._score(metric, text)
+            if score >= 40:
+                out.append((score, metric))
+        out.sort(key=lambda item: (-item[0], item[1].id))
+        return out
+
     def _apply_resolver(self, text: str, result: ParseResult) -> ParseResult:
         if result.intent_type != "query":
             return result
@@ -224,6 +264,7 @@ class LLMIntentParser:
             return result
         resolution = self.resolver.resolve(text)
         current = slots.get("metric")
+        requested = requested_measure(text)
         if current:
             # The LLM already chose a published metric. Do not turn a merely
             # ambiguous resolver result into "unknown term" clarification; and
@@ -238,6 +279,58 @@ class LLMIntentParser:
                 term for term in (slots.get("unresolved") or [])
                 if str(term) not in known
             ]
+            current_metric = self.sem.metrics.get(str(current))
+            if current_metric is not None and requested:
+                current_kind = measure_kind(current_metric)
+                supported = metric_text_support(current_metric, text)
+                # The LLM's metric is literally named in the question and its
+                # measure kind matches: this is not a lexical ambiguity to
+                # overrule. SESSION 22B680 Turn 6 was broken here.
+                if supported and current_kind == requested:
+                    result.slots = slots
+                    return result
+                compatible = self._compatible_metrics(text, requested)
+                if compatible:
+                    _score, chosen = compatible[0]
+                    if chosen.id != current:
+                        slots["metric"] = chosen.id
+                        slots["metric_source"] = "resolved"
+                        result.notes = list(dict.fromkeys(
+                            result.notes + [
+                                f"按度量类型（{requested}）修正指标："
+                                f"{current} → {chosen.id}",
+                            ]
+                        ))
+                    result.slots = slots
+                    return result
+                # No compatible metric with a literal name match: allow the
+                # lexical resolver only when its top candidate has the same
+                # measure kind the question asked for. A count metric must not
+                # win an average/ratio question just because a word matched.
+                if resolution.status == "unique" and resolution.selected:
+                    top_metric = self.sem.metrics.get(str(resolution.selected))
+                    if top_metric is not None and measure_kind(top_metric) == requested:
+                        scores = {
+                            item.metric_id: item.score
+                            for item in resolution.candidates
+                        }
+                        top = resolution.candidates[0]
+                        current_score = scores.get(str(current), 0)
+                        if (
+                            top.metric_id != current
+                            and top.score >= 40
+                            and top.score - current_score >= 10
+                        ):
+                            slots["metric"] = top.metric_id
+                            slots["metric_source"] = "resolved"
+                            result.notes = list(dict.fromkeys(
+                                result.notes + [
+                                    f"按度量类型（{requested}）与词面匹配覆盖指标："
+                                    f"{current} → {top.metric_id}",
+                                ]
+                            ))
+                result.slots = slots
+                return result
             if resolution.status == "unique" and resolution.selected:
                 scores = {item.metric_id: item.score for item in resolution.candidates}
                 top = resolution.candidates[0]
@@ -256,6 +349,19 @@ class LLMIntentParser:
                     ))
             result.slots = slots
             return result
+        if requested:
+            compatible = self._compatible_metrics(text, requested)
+            if compatible:
+                _score, chosen = compatible[0]
+                slots["metric"] = chosen.id
+                slots["metric_source"] = "resolved"
+                result.slots = slots
+                result.notes = list(dict.fromkeys(
+                    result.notes + [
+                        f"按度量类型（{requested}）选择指标：{chosen.id}",
+                    ]
+                ))
+                return result
         if resolution.status == "unique" and resolution.selected:
             slots["metric"] = resolution.selected
             slots["metric_source"] = "resolved"
@@ -366,7 +472,8 @@ class LLMIntentParser:
             metric_expr = self._resolve_metric_expr(metric_expr)
             try:
                 metric_spec = MetricSpec.from_input(
-                    metric_expr, self.sem, label=metric_expr.get("label")
+                    metric_expr, self.sem, label=metric_expr.get("label"),
+                    type_of=self._column_type,
                 )
             except Exception as exc:
                 raise IntentParseError(f"metric_expr 非法: {exc}") from exc

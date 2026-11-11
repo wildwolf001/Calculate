@@ -205,7 +205,7 @@ def test_brief_matches_partial_chinese_metric_name():
     }
     brief = build_brief(index, "5月已送达订单不少于3笔的商家中，延迟率最高的是谁？")
     assert "m_delay" in brief
-    assert "m_doc_delay=延迟订单" in brief
+    assert "m_doc_delay 延迟订单" in brief
 
 
 def test_parser_can_use_brief(tmp_path):

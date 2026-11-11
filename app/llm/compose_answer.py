@@ -26,6 +26,32 @@ def fmt_number(value, unit: str | None = None) -> str:
     return f"{value:,}" if isinstance(value, int) else str(value)
 
 
+def fmt_metric_value(value, unit: str | None, metric_name: str,
+                     metric_type: str = "") -> str:
+    """Rounded display plus the raw value for averages/scores.
+
+    A review score of 4.018816 should read "4.02（原始值 4.018816）": the
+    rounded number is the business presentation, the raw value is the
+    verifiable result. Percentages stay as percentages.
+    """
+    text = fmt_number(value, unit)
+    is_average = (
+        isinstance(value, float)
+        and unit != "%"
+        and (
+            unit == "分"
+            or "平均" in str(metric_name or "")
+            or "评分" in str(metric_name or "")
+            or metric_type == "aggregate"
+        )
+    )
+    if is_average:
+        raw = f"{float(value):.6f}".rstrip("0").rstrip(".")
+        if raw and raw != text.replace(",", ""):
+            return f"{text}（原始值 {raw}）"
+    return text
+
+
 def _time_label(ctx: dict) -> str:
     t = ctx.get("time")
     if not t:
@@ -191,7 +217,10 @@ class TemplateComposer:
                 num = fmt_number(first[cols.index("numerator")], None)
                 den = fmt_number(first[cols.index("denominator")], None)
                 extra = f"（{num}/{den}）"
-            parts.append(f"{scope}{metric_name}为 {fmt_number(value, unit)}{extra}。")
+            parts.append(
+                f"{scope}{metric_name}为 "
+                f"{fmt_metric_value(value, unit, metric_name, mtype)}{extra}。"
+            )
         elif ctx.get("per_group_top") and len(dims) >= 2:
             group_label = dims[0]
             item_index = len(dims) - 1
@@ -200,7 +229,7 @@ class TemplateComposer:
             for i, row in enumerate(ctx["per_group_top"], 1):
                 item = row[item_index] if len(row) > item_index else ""
                 val = (
-                    fmt_number(row[value_idx], unit)
+                    fmt_metric_value(row[value_idx], unit, metric_name, mtype)
                     if value_idx is not None else ""
                 )
                 display.append(f"{i}. {row[0]}：{item}（{val}）")
@@ -223,7 +252,7 @@ class TemplateComposer:
                     if share_value is not None:
                         share_txt = f"（占比 {float(share_value) * 100:.2f}%）"
                 display.append(
-                    f"{i}. {name}：{fmt_number(value, unit)}{share_txt}"
+                    f"{i}. {name}：{fmt_metric_value(value, unit, metric_name, mtype)}{share_txt}"
                 )
             more = f"（共 {ctx.get('row_count')} 组，展示前 {min(5, len(rows))} 组）"
             parts.append(

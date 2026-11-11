@@ -120,6 +120,7 @@ interface State {
   refusals: any[]
   diagnoses: any[]
   failures: any[]
+  fieldMap: any[]
 }
 
 export const useSessionStore = defineStore('session', {
@@ -171,6 +172,7 @@ export const useSessionStore = defineStore('session', {
     refusals: [],
     diagnoses: [],
     failures: [],
+    fieldMap: [],
   }),
   getters: {
     suggestions: (s) => {
@@ -283,6 +285,7 @@ export const useSessionStore = defineStore('session', {
       this.verifying = false
       this.tab = 'table'
       this.messageSeq = 0
+      this.fieldMap = []
     },
     async loadSessions() {
       try {
@@ -482,6 +485,7 @@ export const useSessionStore = defineStore('session', {
           this.refusals = []
           this.diagnoses = []
           this.failures = []
+          this.fieldMap = []
           break
         case 'subquestions.planned':
           this.hasSubquestions = (p.items || p.questions || []).length > 1
@@ -514,6 +518,7 @@ export const useSessionStore = defineStore('session', {
           if (idx >= 0) this.results[idx] = entry
           else this.results.push(entry)
           this.sql = p.sql || this.sql
+          this.fieldMap = (p.field_map || []) as any[]
           if (!this.activeResultId || entry.preferred || this.results.length === 1) {
             this.selectResult(entry.id)
           }
@@ -551,6 +556,7 @@ export const useSessionStore = defineStore('session', {
           if (this.repairs.length) message.repairs = [...this.repairs]
           if (this.refusals.length) message.refusals = [...this.refusals]
           if (this.diagnoses.length) message.diagnoses = [...this.diagnoses]
+          if (this.fieldMap.length) message.fieldMap = [...this.fieldMap]
           const warnings = this.checks
             .filter((c) => ['DATA_HEALTH', 'EMPTY_DIAGNOSIS', 'DEGRADED_DIMENSION', 'DATA_QUALITY'].includes(c.id))
             .map((c) => c.detail || c.title)

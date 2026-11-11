@@ -257,4 +257,11 @@ export interface ChatMessage {
   refusals?: any[]
   diagnoses?: any[]
   dataWarnings?: string[]
+  fieldMap?: {
+    field: string
+    label: string
+    technical?: string
+    role?: string
+    description?: string
+  }[]
 }

@@ -14,6 +14,12 @@ from typing import Any, Literal
 import yaml
 
 from app.datasets.index import load_index, semantic_fingerprint
+from app.datasets.model_card import (
+    build_model_card,
+    load_model_card,
+    load_overrides,
+    model_card_fingerprint,
+)
 from app.domain.model.model import SemanticModel
 from app.domain.semantic.loader import SemanticLayer, load_semantic
 
@@ -65,6 +71,8 @@ class DatasetContext:
     engine: str = "duckdb"
     index_path: Path | None = None
     index: dict[str, Any] = field(default_factory=dict, repr=False)
+    model_card_path: Path | None = None
+    model_card: dict[str, Any] = field(default_factory=dict, repr=False)
 
     @property
     def coverage(self) -> dict[str, Any] | None:
@@ -123,6 +131,7 @@ def load_context(
     catalog = _read_json(catalog_path)
     dim_values = _read_json(dim_values_path)
     documentation = _read_json(documentation_path)
+    profile = _read_json(profile_path)
     # An index that does not describe the YAML we just loaded is worse than no
     # index: the parser would brief the model on renamed/removed objects.
     index = load_index(index_path)
@@ -152,6 +161,27 @@ def load_context(
             )
         except Exception:
             index = {}
+    model_card_path = root / "model_card.json"
+    overrides = load_overrides(root)
+    card = load_model_card(model_card_path)
+    expected_sem, expected_over = model_card_fingerprint(sem, overrides)
+    if (
+        not card
+        or str(card.get("semantic_fingerprint")) != expected_sem
+        or str(card.get("overrides_hash")) != expected_over
+    ):
+        try:
+            card = build_model_card(
+                dataset_id=dataset_id,
+                sem=sem,
+                catalog=catalog,
+                profile=profile,
+                overrides=overrides,
+                documentation=documentation,
+                data_version=data_version,
+            )
+        except Exception:
+            card = {}
     return DatasetContext(
         dataset_id=dataset_id,
         name=name,
@@ -169,7 +199,7 @@ def load_context(
         catalog=catalog,
         dim_values=dim_values,
         quality=_read_json(quality_path),
-        profile=_read_json(profile_path),
+        profile=profile,
         source=_read_yaml(source_path),
         documentation=documentation,
         readiness=_read_json(readiness_path),
@@ -179,4 +209,6 @@ def load_context(
         engine=engine,
         index_path=index_path,
         index=index,
+        model_card_path=model_card_path,
+        model_card=card,
     )

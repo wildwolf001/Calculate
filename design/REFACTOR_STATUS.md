@@ -1,5 +1,8 @@
 # 重构进度：第一阶段
 
+> **已过时（historical）**：本文件仅作历史参考，不再作为实现或验收依据；以源码、`tests/`、运行会话/日志为准。
+
+
 > 日期：2026-10-29
 > 关联：REFACTOR_PLAN.md、FINAL_CODE_ARCHITECTURE.md
 

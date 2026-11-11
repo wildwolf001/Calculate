@@ -26,6 +26,12 @@ def classify_error(exc: BaseException) -> tuple[str, str]:
         return "TIMEOUT", "查询超时或资源不足"
     if "does not have a column named" in text:
         return "SCHEMA_MISMATCH", "指标依赖的列在数据库里不存在（语义层与数据不一致）"
+    # avg(VARCHAR) / sum(VARCHAR) is a metric definition error, not a bad
+    # dimension combination; repairing it by dropping filters cannot help.
+    if (
+        "no function matches" in text and ("avg(" in text or "sum(" in text)
+    ) or "avg(varchar" in text or "sum(varchar" in text or "cannot cast" in text:
+        return "TYPE_MISMATCH", "指标的操作数列类型与聚合方式不匹配"
     if "binder" in text or "catalog" in text or "not found" in text or "referenced column" in text:
         return "UNSUPPORTED_PLAN", "查询引擎无法解析这个维度组合"
     if "conversion" in text or "type" in text:

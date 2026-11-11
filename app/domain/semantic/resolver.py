@@ -22,6 +22,67 @@ def _common_len(term: str, text: str) -> int:
     return best
 
 
+AVG_MARKERS = ("平均", "均值", "评分", "平均分", "客单价", "均价")
+RATIO_MARKERS = ("率", "占比", "比例", "百分比")
+SUM_MARKERS = (
+    "合计", "总额", "总和", "总金额", "销售额", "销售金额",
+    "金额", "营收", "收入", "支出", "花费", "费用", "成本",
+)
+COUNT_MARKERS = (
+    "多少", "数量", "笔数", "个数", "单数", "次数",
+    "人数", "家数", "件数", "条数",
+)
+
+
+def requested_measure(text: str) -> str | None:
+    """Infer the aggregation the question asks for, if it is explicit.
+
+    ``多少`` is deliberately checked last: "平均评分是多少" asks for an
+    average, not a count, even though it contains a generic question word.
+    """
+    value = str(text or "")
+    if any(marker in value for marker in AVG_MARKERS):
+        return "avg"
+    if any(marker in value for marker in RATIO_MARKERS):
+        return "ratio"
+    if any(marker in value for marker in SUM_MARKERS):
+        return "sum"
+    if any(marker in value for marker in COUNT_MARKERS):
+        return "count"
+    return None
+
+
+def measure_kind(metric) -> str:
+    """Classify a metric as avg/sum/count/ratio/other from its expression."""
+    raw = getattr(metric, "raw", {}) or {}
+    metric_type = str(getattr(metric, "type", "") or raw.get("type") or "")
+    if metric_type == "ratio":
+        return "ratio"
+    if metric_type == "entity_count":
+        return "count"
+    aggregation = str(raw.get("aggregation") or "").upper()
+    if aggregation in {"AVG", "SUM", "COUNT"}:
+        return aggregation.lower()
+    expr = str(raw.get("expr") or "").upper()
+    if "AVG(" in expr:
+        return "avg"
+    if "SUM(" in expr:
+        return "sum"
+    if "COUNT(" in expr:
+        return "count"
+    if "/" in expr and "NULLIF" in expr:
+        return "ratio"
+    return "other"
+
+
+def metric_text_support(metric, text: str) -> bool:
+    """True when a full metric name or synonym literally appears in the text."""
+    if metric is None:
+        return False
+    terms = [getattr(metric, "name", ""), *getattr(metric, "synonyms", [])]
+    return any(term and str(term) in str(text or "") for term in terms)
+
+
 @dataclass(frozen=True)
 class MetricCandidate:
     metric_id: str

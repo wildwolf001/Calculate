@@ -1,5 +1,8 @@
 # 明账目标代码架构：双 Agent + 确定性执行内核
 
+> **已过时（historical）**：本文件仅作历史参考，不再作为实现或验收依据；以源码、`tests/`、运行会话/日志为准。
+
+
 > 版本：2026-10-29 v1
 > 关联：REFACTOR_PLAN.md、INGEST_AGENT_DESIGN.md
 > 结论：对话部分也要调整，但不是推倒重来；把“语义解析”抽成 Chat Agent，把“执行”留在 domain。

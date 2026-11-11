@@ -14,14 +14,17 @@ import {
   deleteDataset,
   editDatasetDraft,
   getDataset,
+  getDatasetBrief,
   getDatasetDraft,
   getDatasetProfile,
   getDatasetReadiness,
   getDocumentation,
   getJob,
   getJobReview,
+  getModelCard,
   materializeAgentJob,
   listDatasets,
+  patchModelCard,
   publishDataset,
   rebuildDataset,
   startAgentProfile,
@@ -66,6 +69,12 @@ const editMode = ref(false)
 const metricEdits = ref<Record<string, { name_zh: string; synonyms: string }>>({})
 const dimEdits = ref<Record<string, { name_zh: string; synonyms: string }>>({})
 const timeColumnValue = ref('')
+const modelCard = ref<any>(null)
+const cardDirty = ref<Record<string, boolean>>({})
+const cardSaving = ref(false)
+const briefQuestion = ref('')
+const briefResult = ref<any>(null)
+const briefBusy = ref(false)
 const railWidth = ref(300)
 const dragging = ref(false)
 let pollTimer: number | undefined
@@ -189,6 +198,93 @@ function notify(text: string) {
   }, 2800)
 }
 
+function markCardDirty(tableId: string | number) {
+  cardDirty.value = { ...cardDirty.value, [String(tableId)]: true }
+}
+
+const ROLE_ZH: Record<string, string> = {
+  pk: '主键',
+  fk: '外键',
+  time: '时间列',
+  measure: '数值度量',
+  dimension: '分组维度',
+}
+const ROLE_TIP: Record<string, string> = {
+  pk: '主键：唯一标识一行，例如 order_id',
+  fk: '外键：指向另一张表的主键，用来关联',
+  time: '时间列：用于按月/按时间段筛选',
+  measure: '数值度量：可以求和、平均或做比率的数值列',
+  dimension: '分组维度：用于按它拆分结果，例如城市、品类',
+}
+const TABLE_ROLE_ZH: Record<string, string> = {
+  fact: '事实表',
+  dimension: '维度表',
+  standalone: '独立表',
+}
+
+function roleZh(role: string) {
+  return ROLE_ZH[role] || role
+}
+
+function roleTip(role: string) {
+  return ROLE_TIP[role] || role
+}
+
+function tableRoleZh(role: string) {
+  return TABLE_ROLE_ZH[role] || role
+}
+
+async function saveModelCard() {
+  const card = modelCard.value
+  if (!card || !selectedId.value || cardSaving.value) return
+  const tables: Record<string, any> = {}
+  for (const tableId of Object.keys(cardDirty.value)) {
+    const table = (card.tables || {})[tableId]
+    if (!table) continue
+    const columns: Record<string, any> = {}
+    for (const column of table.columns || []) {
+      columns[column.name] = {
+        label: column.label,
+        description: column.description || '',
+        unit: column.unit || '',
+        role: column.role,
+      }
+    }
+    tables[tableId] = {
+      label: table.label,
+      description: table.description || '',
+      columns,
+    }
+  }
+  if (!Object.keys(tables).length) {
+    notify('没有修改需要保存')
+    return
+  }
+  cardSaving.value = true
+  try {
+    const result = await patchModelCard(selectedId.value, { tables })
+    if (result.model_card) modelCard.value = result.model_card
+    cardDirty.value = {}
+    notify('模型卡元数据已保存')
+  } catch (err: any) {
+    error.value = err.message || String(err)
+  } finally {
+    cardSaving.value = false
+  }
+}
+
+async function previewBrief() {
+  if (!selectedId.value || briefBusy.value) return
+  briefBusy.value = true
+  try {
+    briefResult.value = await getDatasetBrief(selectedId.value, briefQuestion.value)
+  } catch (err: any) {
+    error.value = err.message || String(err)
+  } finally {
+    briefBusy.value = false
+  }
+}
+
 async function loadDatasets(select?: string) {
   const data = await listDatasets()
   datasets.value = data.datasets
@@ -204,18 +300,23 @@ async function selectDataset(datasetId: string) {
   detail.value = null
   profile.value = null
   draft.value = null
+  modelCard.value = null
+  cardDirty.value = {}
+  briefResult.value = null
   selectedMetrics.value = []
   selectedDims.value = []
   try {
-    const [d, p, dr, docs, ready] = await Promise.allSettled([
+    const [d, p, dr, docs, ready, card] = await Promise.allSettled([
       getDataset(datasetId),
       getDatasetProfile(datasetId),
       getDatasetDraft(datasetId),
       getDocumentation(datasetId),
       getDatasetReadiness(datasetId),
+      getModelCard(datasetId),
     ])
     if (d.status === 'fulfilled') detail.value = d.value
     if (p.status === 'fulfilled') profile.value = p.value
+    if (card.status === 'fulfilled') modelCard.value = card.value
     documentation.value = docs.status === 'fulfilled' ? docs.value : null
     readiness.value = ready.status === 'fulfilled' ? ready.value : null
     if (dr.status === 'fulfilled') {
@@ -884,6 +985,66 @@ onUnmounted(() => {
             </div>
           </section>
 
+          <section class="panel" v-if="modelCard">
+            <div class="panel-head">
+              <h3>模型卡</h3>
+              <span class="hint">解析与校验消费的结构化 schema；可编辑描述、单位与角色</span>
+              <button class="ghost sm" :disabled="cardSaving || !Object.keys(cardDirty).length" @click="saveModelCard">
+                {{ cardSaving ? '保存中…' : '保存元数据' }}
+              </button>
+            </div>
+            <div v-if="modelCard" class="doc-note model-card-legend">
+              表角色：事实表 fact = 可被聚合的业务明细；维度表 dimension = 用来关联/筛选的描述表。
+              列角色：主键 pk、外键 fk、时间列 time、数值度量 measure、分组维度 dimension。
+              表名/列名来自源文件，可能为英文；可在“表用途描述/列描述”里补中文，解析和字段对照会优先使用。
+              鼠标移到角色上可看解释；修改后点「保存元数据」。
+            </div>
+            <div class="table-grid">
+              <div v-for="(t, tid) in modelCard.tables" :key="tid" class="table-card model-card">
+                <div class="table-top">
+                  <b :title="`物理表：${t.label}`">{{ t.label }}</b>
+                  <span :title="roleTip(t.role)">{{ tableRoleZh(t.role) }} · {{ t.rows }} 行</span>
+                </div>
+                <div class="table-sub">
+                  粒度 {{ (t.grain || []).join('、') || '—' }} · 时间 {{ t.time || '—' }}
+                </div>
+                <input class="meta-input" v-model="t.description" placeholder="表用途描述" @change="markCardDirty(tid)" />
+                <div class="meta-cols">
+                  <div v-for="c in t.columns" :key="c.name" class="meta-row">
+                    <code :title="`物理列：${t.label}.${c.name}`">{{ c.name }}</code>
+                    <span>{{ c.label }}</span>
+                    <em>{{ c.type }}</em>
+                    <select v-model="c.role" :title="roleTip(c.role)" @change="markCardDirty(tid)">
+                      <option v-for="role in ['pk', 'fk', 'time', 'measure', 'dimension']" :key="role" :value="role" :title="roleTip(role)">
+                        {{ roleZh(role) }}
+                      </option>
+                    </select>
+                    <input class="meta-input" v-model="c.unit" placeholder="单位" @change="markCardDirty(tid)" />
+                    <input class="meta-input wide" v-model="c.description" placeholder="列描述（可写中文含义）" @change="markCardDirty(tid)" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h3>Brief 预览</h3>
+              <span class="hint">解析器实际看到的 schema 文本、字符数与截断状态</span>
+            </div>
+            <div class="doc-row">
+              <input class="text-input" v-model="briefQuestion" placeholder="输入问题，例如：有评价的已送达订单平均评分" />
+              <button class="ghost" :disabled="briefBusy" @click="previewBrief">
+                {{ briefBusy ? '生成中…' : '预览' }}
+              </button>
+            </div>
+            <div v-if="briefResult" class="doc-note">
+              字符 {{ briefResult.chars }} · 表 {{ (briefResult.tables || []).join('、') || '—' }} ·
+              {{ briefResult.truncated ? '已截断' : '未截断' }}
+            </div>
+            <pre v-if="briefResult" class="brief-pre">{{ briefResult.text }}</pre>
+          </section>
+
           <section class="panel" v-if="detail">
             <div class="panel-head">
               <h3>质量与限制</h3>
@@ -1291,6 +1452,24 @@ onUnmounted(() => {
   border: 1px solid rgba(23,94,88,.2); padding: 2px 6px; border-radius: 2px;
 }
 
+.model-card { grid-column: 1 / -1; }
+.meta-cols { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+.meta-row {
+  display: grid; grid-template-columns: 58px 120px 64px 88px 80px minmax(0, 1fr);
+  gap: 6px; align-items: center; font-size: 11px;
+}
+.meta-row code { font-family: var(--mono); font-size: 10px; color: var(--ink-3); }
+.meta-row em { font-style: normal; font-size: 10px; color: var(--ink-3); }
+.meta-row select { font-size: 10px; padding: 2px; border: 1px solid var(--rule); background: var(--card); }
+.meta-input {
+  width: 100%; min-width: 0; border: 1px solid var(--rule); border-radius: 2px;
+  background: var(--card); color: var(--ink); font-size: 11px; padding: 3px 6px;
+}
+.brief-pre {
+  max-height: 360px; overflow: auto; margin: 8px 0 0; padding: 10px;
+  border: 1px solid var(--rule); background: var(--card); border-radius: 2px;
+  font: 10px/1.55 var(--mono); white-space: pre-wrap; word-break: break-word;
+}
 @media (max-width: 1000px) {
   .layout { flex-direction: column; overflow-y: auto; }
   .rail {

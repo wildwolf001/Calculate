@@ -37,7 +37,7 @@ class UnresolvedParser:
                 "filters": {"product": {"op": "eq", "value": "纯棉四件套15款"}},
                 "time": T,
             },
-            unresolved=["利润"],
+            unresolved=["退款金额"],
         )
 
 
@@ -155,9 +155,9 @@ def test_handler_exception_is_not_leaked_to_user(tmp_path, sem):
 
 
 def test_unresolved_answer_offers_clickable_options(tmp_path, sem):
-    events = run(tmp_path, sem, UnresolvedParser(), "纯棉四件套15款的利润是多少")
+    events = run(tmp_path, sem, UnresolvedParser(), "纯棉四件套15款的退款金额是多少")
     payload = next(e.payload for e in events if e.type == "ambiguity.detected")
     assert payload["candidates"]
     assert any("商品销售额" in q for q in payload["candidates"])
-    assert "数据里没有" in payload["message"]
+    assert "不是当前数据源的指标或维度" in payload["message"]
     assert payload["partial_slots"]["filters"]["product"]["value"] == "纯棉四件套15款"

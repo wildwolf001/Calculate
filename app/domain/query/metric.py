@@ -17,6 +17,15 @@ from app.domain.semantic.loader import SemanticError, SemanticLayer
 
 AGGREGATIONS = {"SUM", "AVG", "COUNT", "MIN", "MAX"}
 
+NUMERIC_TYPES = {
+    "integer", "int", "bigint", "smallint", "tinyint", "hugeint",
+    "decimal", "numeric", "float", "double", "real",
+}
+
+
+def is_numeric_type(value: Any) -> bool:
+    return str(value or "").strip().lower() in NUMERIC_TYPES
+
 
 def _normalize_time_via(ref: Any, sem: SemanticLayer, fact: str) -> str | None:
     text = str(ref or "").strip() or str((sem.tables.get(fact) or {}).get("time") or "").strip()
@@ -69,8 +78,13 @@ class MetricSpec(BaseModel):
 
     @classmethod
     def from_input(cls, spec: dict[str, Any], sem: SemanticLayer,
-                   label: str | None = None) -> "MetricSpec":
-        """LLM shape: {aggregation, operand, fact, scope, time_via, label}."""
+                   label: str | None = None,
+                   type_of: Any | None = None) -> "MetricSpec":
+        """LLM shape: {aggregation, operand, fact, scope, time_via, label}.
+
+        ``type_of(table, column)`` lets the caller reject SUM/AVG on a
+        non-numeric column before any SQL exists (e.g. AVG(order_id)).
+        """
         if not isinstance(spec, dict):
             raise SemanticError("metric_expr 必须是对象")
         if spec.get("expr") and not spec.get("aggregation"):
@@ -87,6 +101,13 @@ class MetricSpec(BaseModel):
         available = (sem.tables.get(table) or {}).get("columns") or []
         if available and column not in available:
             raise SemanticError(f"未知列: {table}.{column}")
+        if aggregation in {"SUM", "AVG"} and type_of is not None:
+            measured = type_of(table, column)
+            if measured and not is_numeric_type(measured):
+                raise SemanticError(
+                    f"{aggregation} 需要数值列，{table}.{column} 是 {measured}；"
+                    "请改用同表的数值度量列"
+                )
         sem.column(f"{table}.{column}")
         expr = (
             f"COUNT(DISTINCT {table}.{column})"

@@ -88,7 +88,25 @@ function actionLabel(action: string) {
 }
 
 function hasDiagnostics(m: any) {
-  return !!(m.repairs?.length || m.refusals?.length || m.diagnoses?.length || m.dataWarnings?.length)
+  return !!(
+    m.repairs?.length
+    || m.refusals?.length
+    || m.diagnoses?.length
+    || m.dataWarnings?.length
+    || m.fieldMap?.length
+  )
+}
+
+const ROLE_LABELS: Record<string, string> = {
+  pk: '主键',
+  fk: '外键',
+  time: '时间列',
+  measure: '数值度量',
+  dimension: '分组维度',
+}
+
+function roleLabel(role: string) {
+  return ROLE_LABELS[role] || role
 }
 </script>
 
@@ -206,6 +224,17 @@ function hasDiagnostics(m: any) {
             <b>数据提示</b>
             <ul>
               <li v-for="(w, i) in m.dataWarnings" :key="`warn-${m.id}-${i}`">{{ w }}</li>
+            </ul>
+          </div>
+          <div v-if="m.fieldMap?.length" class="diag-block">
+            <b>字段对照</b>
+            <ul>
+              <li v-for="(f, i) in m.fieldMap" :key="`field-${m.id}-${i}`">
+                {{ f.label }}
+                <span v-if="f.technical && f.technical !== f.label">（{{ f.technical }}）</span>
+                <span v-if="f.role"> · {{ roleLabel(f.role) }}</span>
+                <span v-if="f.description">：{{ f.description }}</span>
+              </li>
             </ul>
           </div>
         </details>

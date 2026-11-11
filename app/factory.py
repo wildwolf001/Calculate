@@ -24,6 +24,7 @@ def build_controller(ctx: DatasetContext, store: EventStore,
         dim_values_path=ctx.dim_values_path,
         index=ctx.index,
         use_brief=USE_SEMANTIC_BRIEF,
+        model_card=ctx.model_card,
     )
     grounder = RuleGrounder(ctx.sem, ctx.dim_values_path)
     composer = LLMComposer(client=client)

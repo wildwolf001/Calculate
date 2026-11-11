@@ -6,6 +6,7 @@ attached to the answer as a verifiable caveat (warn/info).
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from datetime import date
 
@@ -68,6 +69,260 @@ def _quality_notice(quality: dict | None) -> tuple[CheckIssue | None, list[dict]
                 "count": check.get("count"),
             }
             for check in notable[:8]
+        ],
+    )
+
+
+REF_RE = re.compile(r"\b(t_[A-Za-z0-9]+)\.([A-Za-z0-9_]+)\b")
+
+
+def _refs_in(value: object) -> list[tuple[str, str]]:
+    if isinstance(value, str):
+        return REF_RE.findall(value)
+    if isinstance(value, dict):
+        out: list[tuple[str, str]] = []
+        for item in value.values():
+            out.extend(_refs_in(item))
+        return out
+    if isinstance(value, (list, tuple)):
+        out = []
+        for item in value:
+            out.extend(_refs_in(item))
+        return out
+    return []
+
+
+def _plan_metric_refs(plan: QueryPlan, metric, sem: SemanticLayer
+                      ) -> list[tuple[str, str]]:
+    raw = metric.raw or {}
+    refs: list[tuple[str, str]] = []
+    for key in (
+        "expr", "numerator", "denominator", "grain_numerator",
+        "grain_denominator", "operand", "time_via", "entity",
+        "count_orders", "default_time_axis",
+    ):
+        refs.extend(_refs_in(raw.get(key)))
+    refs.extend(_refs_in(list((raw.get("scope") or {}).keys())))
+    if plan.time_axis:
+        refs.extend(_refs_in(plan.time_axis))
+    # Deliberately do NOT include grouping dimensions here: a null in a
+    # group-by column is a separate, filter-dependent question. The quality
+    # notice should only claim what the metric actually reads.
+    out: list[tuple[str, str]] = []
+    for ref in refs:
+        if ref not in out:
+            out.append(ref)
+    return out
+
+
+def _quality_missing(quality: dict | None) -> dict[tuple[str, str], int]:
+    detail: dict = {}
+    for check in (quality or {}).get("checks") or []:
+        if check.get("id") == "missing_values":
+            detail = check.get("detail") or {}
+            break
+    out: dict[tuple[str, str], int] = {}
+    if isinstance(detail, dict):
+        for table, columns in detail.items():
+            if not isinstance(columns, dict):
+                continue
+            for column, count in columns.items():
+                try:
+                    out[(str(table), str(column))] = int(count)
+                except (TypeError, ValueError):
+                    continue
+    return out
+
+
+def _field_label(ref: tuple[str, str], metric, sem: SemanticLayer) -> str:
+    table, column = ref
+    for dim in sem.dimensions.values():
+        raw = dim.raw
+        if str(raw.get("column") or "") == f"{table}.{column}":
+            return str(raw.get("name_zh") or dim.id)
+        if f"{table}.{column}" in str(raw.get("expr") or ""):
+            return str(raw.get("name_zh") or dim.id)
+    for axis in sem.time_axes or []:
+        if str(axis.get("ref") or "") == f"{table}.{column}":
+            return str(axis.get("name_zh") or column)
+    if metric is not None and f"{table}.{column}" in str((metric.raw or {}).get("expr") or ""):
+        return str(metric.name)
+    return column
+
+
+def _filtered_null_count(db_path, table: str, column: str, plan: QueryPlan,
+                         metric, sem: SemanticLayer) -> int | None:
+    """Count nulls after the plan's filters/time, when a safe probe is possible.
+
+    The catalog count is table-wide. For a query filtered to delivered orders,
+    a table-wide 21 is misleading if all 21 belong to non-delivered rows. We
+    only probe when every filter/time predicate lives on the same table and is
+    a simple column predicate; otherwise return None and keep the table-wide
+    wording.
+    """
+    if not db_path:
+        return None
+    predicates = [f'"{column}" IS NULL']
+    params: list = []
+    for dim_id, spec in plan.filters.items():
+        dim = sem.dimensions.get(dim_id)
+        if dim is None:
+            return None
+        ref = str(dim.raw.get("filter_column") or dim.raw.get("column") or "")
+        if "." not in ref:
+            return None
+        ref_table, ref_column = ref.split(".", 1)
+        if ref_table != table:
+            return None
+        if isinstance(spec, dict):
+            op = str(spec.get("op") or "eq")
+            value = spec.get("value")
+        else:
+            op = str(getattr(spec, "op", "eq") or "eq")
+            value = getattr(spec, "value", None)
+        if op == "eq":
+            predicates.append(f'"{ref_column}" = ?')
+            params.append(value)
+        elif op == "in" and isinstance(value, (list, tuple)):
+            if not value:
+                return None
+            predicates.append(
+                f'"{ref_column}" IN ({", ".join("?" for _ in value)})'
+            )
+            params.extend(value)
+        else:
+            return None
+    # Include the metric's own scope (e.g. delivered) even if the controller
+    # did not materialize it as a plan filter.
+    for scope_ref, scope_value in ((metric.raw or {}).get("scope") or {}).items():
+        if "." not in str(scope_ref):
+            continue
+        scope_table, scope_column = str(scope_ref).split(".", 1)
+        if scope_table != table or isinstance(scope_value, (list, tuple, dict)):
+            continue
+        predicates.append(f'"{scope_column}" = ?')
+        params.append(scope_value)
+    if plan.time is not None:
+        time_ref = str((metric.raw or {}).get("time_via") or "")
+        if time_ref and "." in time_ref:
+            time_table, time_column = time_ref.split(".", 1)
+        else:
+            time_table = table
+            time_column = time_ref or str(
+                ((sem.tables.get(table) or {}).get("time") or "")
+            )
+        if time_table != table or not time_column:
+            return None
+        predicates.append(f'"{time_column}" >= ?')
+        predicates.append(f'"{time_column}" < ?')
+        params.extend([str(plan.time.start), str(plan.time.end)])
+    try:
+        con = duckdb.connect(str(db_path), read_only=True)
+        try:
+            row = con.execute(
+                f'SELECT COUNT(*) FROM "{table}" WHERE ' + " AND ".join(predicates),
+                params,
+            ).fetchone()
+        finally:
+            con.close()
+    except Exception:
+        return None
+    return int(row[0]) if row else None
+
+
+def _relevant_quality_notice(plan: QueryPlan, metric, sem: SemanticLayer,
+                             quality: dict | None,
+                             catalog: dict | None,
+                             db_path=None,
+                             ) -> tuple[CheckIssue | None, list[dict]]:
+    """Only report nulls that the current query actually reads."""
+    if not catalog:
+        return _quality_notice(quality)
+    missing = _quality_missing(quality)
+    refs = _plan_metric_refs(plan, metric, sem)
+    columns = {
+        (table_id, str(col.get("name"))): col
+        for table_id, table in ((catalog.get("tables") or {})).items()
+        for col in table.get("columns") or []
+    }
+    relevant: list[tuple[tuple[str, str], int, str]] = []
+    for ref in refs:
+        col = columns.get(ref)
+        count = None
+        if col is not None:
+            try:
+                count = int(col.get("nulls") or 0)
+            except (TypeError, ValueError):
+                count = None
+        if count is None:
+            count = missing.get(ref)
+        if not count:
+            continue
+        filtered = _filtered_null_count(
+            db_path, ref[0], ref[1], plan, metric, sem,
+        )
+        if filtered is not None:
+            count = filtered
+        if count:
+            relevant.append((ref, count, _field_label(ref, metric, sem)))
+    if not relevant:
+        return None, []
+
+    parts = [
+        f"{label} {count} 条空值"
+        for (_table, _column), count, label in relevant[:3]
+    ]
+    dim_refs = {
+        ref
+        for dim_id in list(plan.dimensions) + list(plan.filters)
+        for dim in [sem.dimensions.get(dim_id)]
+        if dim is not None
+        for ref in _refs_in(dim.raw.get("column"))
+        + _refs_in(dim.raw.get("expr"))
+    }
+    derived_hit = None
+    for dim_id in list(plan.dimensions) + list(plan.filters):
+        dim = sem.dimensions.get(dim_id)
+        if dim is None or str(dim.raw.get("kind") or "") != "derived":
+            continue
+        dim_refs_in_expr = set(_refs_in(dim.raw.get("expr")))
+        if any(ref in dim_refs_in_expr for ref, _count, _label in relevant):
+            labels = dim.raw.get("labels") or {}
+            derived_hit = (
+                str(dim.raw.get("name_zh") or dim_id),
+                str(labels.get("true") or "命中"),
+                str(labels.get("false") or "未命中"),
+            )
+            break
+    if derived_hit:
+        dim_name, true_label, false_label = derived_hit
+        impact = (
+            f"「{dim_name}」的条件判定依赖这些字段；空值不会被判定为"
+            f"「{true_label}」或「{false_label}」，会进入空分组或被排除，"
+            "相关比例/分组值可能偏差。"
+        )
+    elif any(ref in dim_refs for ref, _count, _label in relevant):
+        impact = "这些记录无法进入对应分组或无法判定条件，相关比例/分组值可能偏差"
+    elif any(
+        ref == tuple(str((metric.raw or {}).get("time_via") or "").split(".", 1))
+        for ref, _count, _label in relevant
+    ):
+        impact = "这些记录不会进入按时间筛选的结果"
+    else:
+        impact = "聚合只按非空记录计算，缺失记录会被排除"
+    detail = (
+        f"本次查询实际使用的字段中：{'、'.join(parts)}。"
+        f"{impact.rstrip('。')}。未涉及的字段缺失不影响该结果。"
+    )
+    return (
+        CheckIssue("DATA_QUALITY", "warn", "相关列缺失", detail),
+        [
+            {
+                "field": f"{table}.{column}",
+                "label": label,
+                "count": count,
+            }
+            for (table, column), count, label in relevant[:8]
         ],
     )
 
@@ -191,7 +446,8 @@ def run_coverage_checks(plan: QueryPlan, metric, result: ResultSet,
 
 
 def run_checks(plan: QueryPlan, metric, result: ResultSet, sem: SemanticLayer,
-               db_path=WAREHOUSE_PATH, quality: dict | None = None) -> tuple[list[CheckIssue], dict]:
+               db_path=WAREHOUSE_PATH, quality: dict | None = None,
+               catalog: dict | None = None) -> tuple[list[CheckIssue], dict]:
     """Return (issues, facts). `facts` is machine-readable context for the composer."""
     issues: list[CheckIssue] = []
     facts: dict = {
@@ -430,7 +686,9 @@ def run_checks(plan: QueryPlan, metric, result: ResultSet, sem: SemanticLayer,
                                          "基期为 0，无法计算增长率（已用 NULL 而非无穷大）。"))
 
     q = quality if quality is not None else _quality_counts()
-    quality_issue, quality_facts = _quality_notice(q)
+    quality_issue, quality_facts = _relevant_quality_notice(
+        plan, metric, sem, q, catalog, db_path=db_path,
+    )
     if quality_issue:
         issues.append(quality_issue)
         facts["data_quality"] = quality_facts
