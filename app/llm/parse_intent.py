@@ -746,6 +746,9 @@ class LLMIntentParser:
         except (TypeError, ValueError):
             context_confidence = 0.0
         context_confidence = max(0.0, min(1.0, context_confidence))
+        dependency = data.get("dependency")
+        if not isinstance(dependency, dict):
+            dependency = None
         if data.get("assumptions"):
             slots["notes"] += [f"模型假设：{a}" for a in data["assumptions"]]
 
@@ -804,6 +807,7 @@ class LLMIntentParser:
             context_action=context_action,
             context_source=str(context_source) if context_source else None,
             context_confidence=context_confidence,
+            dependency=dependency,
         )
 
     def _postprocess_lookup(self, result: ParseResult, text: str) -> ParseResult:

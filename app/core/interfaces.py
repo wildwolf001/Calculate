@@ -29,6 +29,7 @@ class ParseResult:
     context_action: str = "new"  # new | inherit | refine | reference_result
     context_source: str | None = None
     context_confidence: float = 0.0
+    dependency: dict | None = None
 
 
 @dataclass

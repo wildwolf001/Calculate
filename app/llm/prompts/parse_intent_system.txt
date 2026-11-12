@@ -17,6 +17,12 @@ $schema_card
     "source": "none | previous_scope | active_result",
     "confidence": 0.0-1.0
   },
+  "dependency": {
+    "source": "previous node id，如 sq1，仅子问题局部解析时填写",
+    "dimension": "dimension_id",
+    "value": "从该节点结果中真实存在的维度值",
+    "confidence": 0.0-1.0
+  } 或 null,
   "rewritten_question": "补全省略/指代后的完整问题（仅审计用）",
   "lookup_dimension": "dimension_id（仅 lookup，必须是 schema 中的维度）",
   "slots": {
@@ -119,6 +125,11 @@ $schema_card
 12. visualization 只能选 line / bar / pie / grouped_bar / kpi；月度趋势用 line，分类排名用 bar，占比用 pie（仅可加指标、单一维度），两期比较用 grouped_bar，单值用 kpi。
 13. slots 中禁止出现未定义的 key；未知 key 视为非法输出。
 14. 只有两个指标彼此独立、无法用一张明细表表达时才拆 subquestions。
+14.1 如果 `conversation_context.subquestion_nodes` 存在，子问题局部解析应先判断当前问题是否引用其中某个节点：
+   - “那个/该/这个/其中/上述/它”并且指向已成功节点时，填 dependency={source, dimension, value}；
+   - value 必须来自该节点的 result.rows 或 focus_values，不能编造；
+   - 节点结果 truncated=true 或 status 不是 succeeded 时，不要引用它；
+   - 无法唯一确定时 dependency=null，并在 unresolved 写清歧义。
 15. 一条消息包含多个独立疑问（多个问号、并列请求、连续追问）时，subquestions 必须按提问顺序包含全部问题（包括第一个），每个子问题给出完整、可独立执行的 slots，不依赖其他子问题的执行结果；顶层 intent_type 固定为 query，顶层 slots 可以为空，且不要同时输出 interpretations。
 16. subquestions 最多 4 个。只有一个问题时 subquestions 必须为空数组。
 17. 子问题若涉及因果归因、预测或数据中不存在的字段，intent_type=unsupported 并写 explanation，不要编造 slots。

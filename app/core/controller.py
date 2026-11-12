@@ -1438,11 +1438,105 @@ class Controller:
             "dimension": dimension,
             "name": name,
             "value": str(value),
+            "source": entry.get("id"),
+            "time": (
+                entry.get("slots").time.model_dump(mode="json")
+                if entry.get("slots") is not None
+                and getattr(entry.get("slots"), "time", None) is not None
+                else (
+                    plan.time.model_dump(mode="json")
+                    if getattr(plan, "time", None) is not None else None
+                )
+            ),
         })
+
+    def _subquestion_nodes(self, executed: list[dict]) -> list[dict]:
+        """Bounded semantic projection of already executed siblings."""
+        nodes: list[dict] = []
+        for entry in executed:
+            plan = entry.get("plan")
+            artifact = entry.get("artifact")
+            if plan is None or artifact is None:
+                continue
+            scope = {
+                "metric": getattr(plan, "metric", None),
+                "dimensions": list(getattr(plan, "dimensions", None) or []),
+                "time": (
+                    entry.get("slots").time.model_dump(mode="json")
+                    if entry.get("slots") is not None
+                    and getattr(entry.get("slots"), "time", None) is not None
+                    else (
+                        plan.time.model_dump(mode="json")
+                        if getattr(plan, "time", None) is not None else None
+                    )
+                ),
+                "filters": {
+                    dim: spec.model_dump(mode="json")
+                    for dim, spec in (getattr(plan, "filters", None) or {}).items()
+                },
+            }
+            columns = list(getattr(artifact, "columns", None) or [])
+            rows = list(getattr(artifact, "rows", None) or [])[:12]
+            dimension = scope["dimensions"][0] if scope["dimensions"] else None
+            focus_values = []
+            if dimension and dimension in columns:
+                idx = columns.index(dimension)
+                focus_values = [str(row[idx]) for row in rows if idx < len(row)]
+            nodes.append({
+                "id": entry.get("id"),
+                "question": entry.get("question"),
+                "status": "succeeded",
+                "scope": scope,
+                "result": {
+                    "columns": columns,
+                    "rows": rows,
+                    "row_count": getattr(artifact, "row_count", len(rows)),
+                    "truncated": bool(getattr(artifact, "truncated", False)),
+                },
+                "focus_values": focus_values,
+            })
+        return nodes
+
+    def _dependency_anchor_from_model(self, dependency: dict | None,
+                                      nodes: list[dict]) -> dict | None:
+        if not isinstance(dependency, dict):
+            return None
+        source_id = str(dependency.get("source") or "")
+        dimension = str(dependency.get("dimension") or "")
+        value = dependency.get("value")
+        if not source_id or not dimension or value is None:
+            return None
+        node = next((item for item in nodes if item.get("id") == source_id), None)
+        if not node or node.get("status") != "succeeded":
+            return None
+        result = node.get("result") or {}
+        if result.get("truncated"):
+            return None
+        columns = list(result.get("columns") or [])
+        if dimension not in columns:
+            return None
+        try:
+            index = columns.index(dimension)
+        except ValueError:
+            return None
+        if not any(
+            index < len(row) and str(row[index]) == str(value)
+            for row in result.get("rows") or []
+        ):
+            return None
+        item = self.sem.dimensions.get(dimension)
+        name = str(item.raw.get("name_zh") or dimension) if item else dimension
+        return {
+            "dimension": dimension,
+            "name": name,
+            "value": str(value),
+            "source": source_id,
+            "time": (node.get("scope") or {}).get("time"),
+        }
 
     def _parse_subquestion_locally(self, state: SessionState, sub: dict,
                                    question: str, anchors: list[dict],
-                                   events: list) -> tuple[dict | None, dict | None]:
+                                   nodes: list[dict], events: list) -> tuple[dict | None, dict | None]:
         """Re-parse one subquestion with its own brief and dependency hint.
 
         The root parse is intentionally only a decomposer. This second pass is
@@ -1463,6 +1557,9 @@ class Controller:
             state,
             dim_values_path=self.dim_values_path,
         )
+        conversation_context = dict(context.get("conversation_context") or {})
+        conversation_context["subquestion_nodes"] = nodes
+        context["conversation_context"] = conversation_context
         try:
             parsed = self._call_with_retry(
                 "parse_subquestion",
@@ -1475,6 +1572,23 @@ class Controller:
         slots = dict(getattr(parsed, "slots", None) or {})
         if not slots.get("metric") and not slots.get("metric_spec"):
             return None, anchor
+        model_anchor = self._dependency_anchor_from_model(
+            getattr(parsed, "dependency", None), nodes,
+        )
+        if model_anchor:
+            anchor = model_anchor
+            if not slots.get("time") and model_anchor.get("time"):
+                slots["time"] = model_anchor["time"]
+                slots["notes"] = list(dict.fromkeys(
+                    list(slots.get("notes") or [])
+                    + ["沿用被引用子问题的时间范围。"]
+                ))
+            slots["notes"] = list(dict.fromkeys(
+                list(slots.get("notes") or [])
+                + [f"模型引用 {model_anchor['source']} 的 {model_anchor['name']}={model_anchor['value']}。"]
+            ))
+        elif anchor and not slots.get("time") and anchor.get("time"):
+            slots["time"] = anchor["time"]
         self._normalize_entity_ratio_slots(slots, question)
         self._apply_sample_threshold(slots, question)
         return slots, anchor
@@ -1590,8 +1704,9 @@ class Controller:
 
             action = str(sub.get("context_action") or "new")
             root_slots = dict(sub.get("slots") or {})
+            nodes = self._subquestion_nodes(executed)
             local_slots, anchor = self._parse_subquestion_locally(
-                state, sub, question, anchors, events,
+                state, sub, question, anchors, nodes, events,
             )
             slots_payload = local_slots or root_slots
 
