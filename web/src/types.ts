@@ -156,6 +156,8 @@ export type ChartType =
   | 'kpi' | 'line' | 'area' | 'bar' | 'horizontal_bar' | 'grouped_bar'
   | 'stacked_bar' | 'donut' | 'pie' | 'scatter' | 'heatmap' | 'waterfall' | 'table'
 
+export type ChartSort = 'source_order' | 'value_desc' | 'category_asc' | 'time_asc'
+
 export interface ChartSpec {
   recommended: ChartType
   alternatives: ChartType[]
@@ -163,7 +165,16 @@ export interface ChartSpec {
   source?: 'llm' | 'rule' | string
   x?: string | null
   y?: string | null
+  value?: string | null
   series?: string | null
+  sort?: ChartSort | string
+  top_n?: number
+  total_rows?: number
+  truncated?: boolean
+  unit?: string | null
+  value_label?: string | null
+  x_label?: string | null
+  series_label?: string | null
 }
 
 export interface AnalysisModule {

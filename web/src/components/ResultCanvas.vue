@@ -463,6 +463,7 @@ const metricCrumb = computed(() =>
           :columns="columns"
           :rows="rows"
           :format="fmt"
+          :labels="labels"
           :compare="compare"
           :metric-key="chartKey"
           :metric-label="chartLabel"
@@ -470,6 +471,8 @@ const metricCrumb = computed(() =>
           :metric-type="metric?.type"
           :unit="unit"
           :chart="chartSpec"
+          :row-count="store.result?.row_count"
+          :truncated="store.result?.truncated"
         />
       </div>
 

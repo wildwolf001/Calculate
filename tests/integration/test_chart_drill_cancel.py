@@ -85,6 +85,27 @@ def test_many_categories_recommend_horizontal_bar():
     rows = [[f"c{i}", i] for i in range(12)]
     spec = recommend_chart(plan, _sem(), _display(["cat", "value"]), _result(["cat", "value"], rows))
     assert spec["recommended"] == "horizontal_bar"
+    assert spec["value"] == "value"
+    assert spec["sort"] == "value_desc"
+    assert spec["top_n"] == 20
+    assert spec["total_rows"] == 12
+    assert spec["truncated"] is False
+
+
+def test_chart_contract_reports_chart_truncation_and_labels():
+    plan = QueryPlan(metric="m", dimensions=["cat"])
+    rows = [[f"c{i}", i] for i in range(25)]
+    display = _display(["cat", "value"])
+    display["columns"][0]["label"] = "品类"
+    display["columns"][1]["label"] = "销售额（元）"
+    display["unit"] = "元"
+    spec = recommend_chart(plan, _sem(), display, _result(["cat", "value"], rows))
+    assert spec["total_rows"] == 25
+    assert spec["top_n"] == 20
+    assert spec["truncated"] is True
+    assert spec["value_label"] == "销售额（元）"
+    assert spec["x_label"] == "品类"
+    assert spec["unit"] == "元"
 
 
 @pytest.mark.skipif(not COMPLEX_DATASET.exists(), reason="complex dataset is not available")

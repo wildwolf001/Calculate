@@ -5,6 +5,7 @@ const props = defineProps<{
   columns: string[]
   rows: any[][]
   format: (col: string, value: any) => string
+  labels?: Record<string, string>
   compare?: boolean
   metricKey?: string
   metricLabel?: string
@@ -40,7 +41,7 @@ const items = computed(() => {
     </div>
     <div v-for="item in items" :key="item.name" class="crow">
       <div class="cname" :title="item.name">{{ item.name }}</div>
-      <div class="track">
+      <div class="track" :title="`${item.name}: ${format(compare ? 'current' : key, item.row[columns.indexOf(compare ? 'current' : key)])}`">
         <div class="bar" :style="{ width: item.pct + '%' }"></div>
         <div v-if="compare" class="bar y24" :style="{ width: item.pct2 + '%' }"></div>
       </div>

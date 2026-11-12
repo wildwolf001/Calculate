@@ -49,6 +49,41 @@ def _numeric_columns(display: dict[str, Any], columns: list[str]) -> list[str]:
     ]
 
 
+def _default_top_n(chart: str) -> int:
+    return {
+        "kpi": 4,
+        "line": 60,
+        "area": 60,
+        "bar": 20,
+        "horizontal_bar": 20,
+        "grouped_bar": 30,
+        "stacked_bar": 30,
+        "donut": 8,
+        "pie": 8,
+        "scatter": 120,
+        "heatmap": 200,
+        "waterfall": 30,
+        "table": 80,
+    }.get(chart, 20)
+
+
+def _default_sort(chart: str) -> str:
+    if chart in {"line", "area"}:
+        return "time_asc"
+    if chart in {"bar", "horizontal_bar", "donut", "pie", "waterfall"}:
+        return "value_desc"
+    return "source_order"
+
+
+def _label_for(display: dict[str, Any], key: str | None) -> str | None:
+    if not key:
+        return None
+    for item in display.get("columns") or []:
+        if item.get("key") == key:
+            return str(item.get("label") or key)
+    return str(key)
+
+
 def recommend_chart(plan: QueryPlan, sem: SemanticLayer,
                     display: dict[str, Any], result: ResultSet) -> dict[str, Any]:
     """Return a chart contract: recommendation + compatible alternatives."""
@@ -75,18 +110,31 @@ def recommend_chart(plan: QueryPlan, sem: SemanticLayer,
 
     def spec(recommended: str, alternatives: list[str], reason: str,
              x: str | None = None, y: str | None = None,
-             series: str | None = None) -> dict[str, Any]:
+             series: str | None = None,
+             sort: str | None = None,
+             top_n: int | None = None) -> dict[str, Any]:
         # The rule owns the recommendation. A model hint may confirm it, but
         # must not silently replace a KPI with a one-bar chart (or vice versa):
         # the reason would then describe a different chart than the one shown.
+        value = y or ("current" if compare and "current" in columns else "value")
+        cap = int(top_n or _default_top_n(recommended))
         return {
             "recommended": recommended,
             "alternatives": list(dict.fromkeys([recommended, *alternatives])),
             "reason": reason,
             "source": "llm" if hint == recommended else "rule",
             "x": x,
-            "y": y or ("current" if compare and "current" in columns else "value"),
+            "y": value,
+            "value": value,
             "series": series,
+            "sort": sort or _default_sort(recommended),
+            "top_n": cap,
+            "total_rows": max(row_count, len(rows)),
+            "truncated": max(row_count, len(rows)) > cap,
+            "unit": display.get("unit"),
+            "value_label": _label_for(display, value),
+            "x_label": _label_for(display, x),
+            "series_label": _label_for(display, series) if series != "period" else "期间",
         }
 
     # A single scalar is a KPI, not a bar chart with one bar.
