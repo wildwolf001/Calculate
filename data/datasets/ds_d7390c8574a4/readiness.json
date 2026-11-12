@@ -1,0 +1,631 @@
+{
+  "status": "ready",
+  "dataset_id": "ds_d7390c8574a4",
+  "semantic_version": 2,
+  "data_version": "sha256:19c27310c21d5074",
+  "checks": [
+    {
+      "id": "tables_present",
+      "status": "pass",
+      "detail": "9 张表"
+    },
+    {
+      "id": "warehouse_present",
+      "status": "pass",
+      "detail": "warehouse.duckdb"
+    },
+    {
+      "id": "primary_fact",
+      "status": "pass",
+      "detail": [
+        "t_004",
+        "t_005",
+        "t_006",
+        "t_007"
+      ]
+    },
+    {
+      "id": "join_cardinality",
+      "status": "pass",
+      "detail": "all N:1/1:1"
+    },
+    {
+      "id": "dimensions_available",
+      "status": "pass",
+      "detail": 25
+    },
+    {
+      "id": "metric:m_004_row_count:overall",
+      "status": "pass",
+      "metric": "m_004_row_count",
+      "label": "overall",
+      "row_count": 1
+    },
+    {
+      "id": "metric:m_004_row_count:by:d_004_001_c03",
+      "status": "pass",
+      "metric": "m_004_row_count",
+      "label": "by:d_004_001_c03",
+      "row_count": 6
+    },
+    {
+      "id": "metric:m_004_row_count:by:month",
+      "status": "pass",
+      "metric": "m_004_row_count",
+      "label": "by:month",
+      "row_count": 6
+    },
+    {
+      "id": "metric:m_004_c03_distinct:overall",
+      "status": "pass",
+      "metric": "m_004_c03_distinct",
+      "label": "overall",
+      "row_count": 1
+    },
+    {
+      "id": "metric:m_004_c03_distinct:by:d_004_001_c03",
+      "status": "pass",
+      "metric": "m_004_c03_distinct",
+      "label": "by:d_004_001_c03",
+      "row_count": 6
+    },
+    {
+      "id": "metric:m_004_c03_distinct:by:month",
+      "status": "pass",
+      "metric": "m_004_c03_distinct",
+      "label": "by:month",
+      "row_count": 6
+    },
+    {
+      "id": "metric:m_004_c04_distinct:overall",
+      "status": "pass",
+      "metric": "m_004_c04_distinct",
+      "label": "overall",
+      "row_count": 1
+    },
+    {
+      "id": "metric:m_004_c04_distinct:by:d_004_001_c03",
+      "status": "pass",
+      "metric": "m_004_c04_distinct",
+      "label": "by:d_004_001_c03",
+      "row_count": 6
+    },
+    {
+      "id": "metric:m_004_c04_distinct:by:month",
+      "status": "pass",
+      "metric": "m_004_c04_distinct",
+      "label": "by:month",
+      "row_count": 6
+    },
+    {
+      "id": "metric:m_004_c06_sum:overall",
+      "status": "pass",
+      "metric": "m_004_c06_sum",
+      "label": "overall",
+      "row_count": 1
+    },
+    {
+      "id": "metric:m_004_c06_sum:by:d_004_001_c03",
+      "status": "pass",
+      "metric": "m_004_c06_sum",
+      "label": "by:d_004_001_c03",
+      "row_count": 6
+    },
+    {
+      "id": "metric:m_004_c06_sum:by:month",
+      "status": "pass",
+      "metric": "m_004_c06_sum",
+      "label": "by:month",
+      "row_count": 6
+    },
+    {
+      "id": "metric:m_004_c07_sum:overall",
+      "status": "pass",
+      "metric": "m_004_c07_sum",
+      "label": "overall",
+      "row_count": 1
+    },
+    {
+      "id": "metric:m_004_c07_sum:by:d_004_001_c03",
+      "status": "pass",
+      "metric": "m_004_c07_sum",
+      "label": "by:d_004_001_c03",
+      "row_count": 6
+    },
+    {
+      "id": "metric:m_004_c07_sum:by:month",
+      "status": "pass",
+      "metric": "m_004_c07_sum",
+      "label": "by:month",
+      "row_count": 6
+    },
+    {
+      "id": "metric:m_007_c02_distinct:overall",
+      "status": "pass",
+      "metric": "m_007_c02_distinct",
+      "label": "overall",
+      "row_count": 1
+    },
+    {
+      "id": "metric:m_007_c02_distinct:by:d_004_001_c03",
+      "status": "pass",
+      "metric": "m_007_c02_distinct",
+      "label": "by:d_004_001_c03",
+      "row_count": 6
+    },
+    {
+      "id": "metric:m_007_c02_distinct:by:month",
+      "status": "pass",
+      "metric": "m_007_c02_distinct",
+      "label": "by:month",
+      "row_count": 6
+    },
+    {
+      "id": "metric:m_004_001_distinct:overall",
+      "status": "pass",
+      "metric": "m_004_001_distinct",
+      "label": "overall",
+      "row_count": 1
+    },
+    {
+      "id": "metric:m_004_001_distinct:by:d_004_001_c03",
+      "status": "pass",
+      "metric": "m_004_001_distinct",
+      "label": "by:d_004_001_c03",
+      "row_count": 6
+    },
+    {
+      "id": "metric:m_004_001_distinct:by:month",
+      "status": "pass",
+      "metric": "m_004_001_distinct",
+      "label": "by:month",
+      "row_count": 6
+    },
+    {
+      "id": "metric:m_llm_已交付商品销售额:overall",
+      "status": "pass",
+      "metric": "m_llm_已交付商品销售额",
+      "label": "overall",
+      "row_count": 1
+    },
+    {
+      "id": "metric:m_llm_已交付商品销售额:by:d_004_001_c03",
+      "status": "pass",
+      "metric": "m_llm_已交付商品销售额",
+      "label": "by:d_004_001_c03",
+      "row_count": 6
+    },
+    {
+      "id": "metric:m_llm_已交付商品销售额:by:month",
+      "status": "pass",
+      "metric": "m_llm_已交付商品销售额",
+      "label": "by:month",
+      "row_count": 6
+    },
+    {
+      "id": "metric:m_llm_已交付运费合计:overall",
+      "status": "pass",
+      "metric": "m_llm_已交付运费合计",
+      "label": "overall",
+      "row_count": 1
+    },
+    {
+      "id": "metric:m_llm_已交付运费合计:by:d_004_001_c03",
+      "status": "pass",
+      "metric": "m_llm_已交付运费合计",
+      "label": "by:d_004_001_c03",
+      "row_count": 6
+    },
+    {
+      "id": "metric:m_llm_已交付运费合计:by:month",
+      "status": "pass",
+      "metric": "m_llm_已交付运费合计",
+      "label": "by:month",
+      "row_count": 6
+    },
+    {
+      "id": "metric:m_llm_平均商品单价:overall",
+      "status": "pass",
+      "metric": "m_llm_平均商品单价",
+      "label": "overall",
+      "row_count": 1
+    },
+    {
+      "id": "metric:m_llm_平均商品单价:by:d_004_001_c03",
+      "status": "pass",
+      "metric": "m_llm_平均商品单价",
+      "label": "by:d_004_001_c03",
+      "row_count": 6
+    },
+    {
+      "id": "metric:m_llm_平均商品单价:by:month",
+      "status": "pass",
+      "metric": "m_llm_平均商品单价",
+      "label": "by:month",
+      "row_count": 6
+    },
+    {
+      "id": "metric:m_llm_已交付支付金额:overall",
+      "status": "pass",
+      "metric": "m_llm_已交付支付金额",
+      "label": "overall",
+      "row_count": 1
+    },
+    {
+      "id": "metric:m_llm_已交付支付金额:by:d_004_002_c04",
+      "status": "pass",
+      "metric": "m_llm_已交付支付金额",
+      "label": "by:d_004_002_c04",
+      "row_count": 10
+    },
+    {
+      "id": "metric:m_llm_已交付支付金额:by:month",
+      "status": "pass",
+      "metric": "m_llm_已交付支付金额",
+      "label": "by:month",
+      "row_count": 6
+    },
+    {
+      "id": "metric:m_llm_延迟交付率:overall",
+      "status": "pass",
+      "metric": "m_llm_延迟交付率",
+      "label": "overall",
+      "row_count": 1
+    },
+    {
+      "id": "metric:m_llm_延迟交付率:by:d_004_001_c03",
+      "status": "pass",
+      "metric": "m_llm_延迟交付率",
+      "label": "by:d_004_001_c03",
+      "row_count": 6
+    },
+    {
+      "id": "metric:m_llm_延迟交付率:by:month",
+      "status": "pass",
+      "metric": "m_llm_延迟交付率",
+      "label": "by:month",
+      "row_count": 6
+    },
+    {
+      "id": "metric:m_llm_已交付订单平均评分:overall",
+      "status": "pass",
+      "metric": "m_llm_已交付订单平均评分",
+      "label": "overall",
+      "row_count": 1
+    },
+    {
+      "id": "metric:m_llm_已交付订单平均评分:by:d_004_002_c04",
+      "status": "pass",
+      "metric": "m_llm_已交付订单平均评分",
+      "label": "by:d_004_002_c04",
+      "row_count": 10
+    },
+    {
+      "id": "metric:m_llm_已交付订单平均评分:by:month",
+      "status": "pass",
+      "metric": "m_llm_已交付订单平均评分",
+      "label": "by:month",
+      "row_count": 7
+    },
+    {
+      "id": "metric:m_llm_低分评价率:overall",
+      "status": "pass",
+      "metric": "m_llm_低分评价率",
+      "label": "overall",
+      "row_count": 1
+    },
+    {
+      "id": "metric:m_llm_低分评价率:by:d_004_001_c03",
+      "status": "pass",
+      "metric": "m_llm_低分评价率",
+      "label": "by:d_004_001_c03",
+      "row_count": 6
+    },
+    {
+      "id": "metric:m_llm_低分评价率:by:month",
+      "status": "pass",
+      "metric": "m_llm_低分评价率",
+      "label": "by:month",
+      "row_count": 7
+    },
+    {
+      "id": "metric:m_llm_好评率:overall",
+      "status": "pass",
+      "metric": "m_llm_好评率",
+      "label": "overall",
+      "row_count": 1
+    },
+    {
+      "id": "metric:m_llm_好评率:by:d_004_001_c03",
+      "status": "pass",
+      "metric": "m_llm_好评率",
+      "label": "by:d_004_001_c03",
+      "row_count": 6
+    },
+    {
+      "id": "metric:m_llm_好评率:by:month",
+      "status": "pass",
+      "metric": "m_llm_好评率",
+      "label": "by:month",
+      "row_count": 7
+    },
+    {
+      "id": "metric:m_llm_复购客户数:overall",
+      "status": "pass",
+      "metric": "m_llm_复购客户数",
+      "label": "overall",
+      "row_count": 1
+    },
+    {
+      "id": "metric:m_llm_复购客户数:by:d_004_001_c03",
+      "status": "pass",
+      "metric": "m_llm_复购客户数",
+      "label": "by:d_004_001_c03",
+      "row_count": 6
+    },
+    {
+      "id": "metric:m_llm_复购客户数:by:month",
+      "status": "pass",
+      "metric": "m_llm_复购客户数",
+      "label": "by:month",
+      "row_count": 6
+    },
+    {
+      "id": "metric:m_llm_动销商品数:overall",
+      "status": "pass",
+      "metric": "m_llm_动销商品数",
+      "label": "overall",
+      "row_count": 1
+    },
+    {
+      "id": "metric:m_llm_动销商品数:by:d_004_001_c03",
+      "status": "pass",
+      "metric": "m_llm_动销商品数",
+      "label": "by:d_004_001_c03",
+      "row_count": 6
+    },
+    {
+      "id": "metric:m_llm_动销商品数:by:month",
+      "status": "pass",
+      "metric": "m_llm_动销商品数",
+      "label": "by:month",
+      "row_count": 6
+    },
+    {
+      "id": "metric:m_llm_动销商家数:overall",
+      "status": "pass",
+      "metric": "m_llm_动销商家数",
+      "label": "overall",
+      "row_count": 1
+    },
+    {
+      "id": "metric:m_llm_动销商家数:by:d_004_001_c03",
+      "status": "pass",
+      "metric": "m_llm_动销商家数",
+      "label": "by:d_004_001_c03",
+      "row_count": 6
+    },
+    {
+      "id": "metric:m_llm_动销商家数:by:month",
+      "status": "pass",
+      "metric": "m_llm_动销商家数",
+      "label": "by:month",
+      "row_count": 6
+    },
+    {
+      "id": "metric:m_llm_平均分期期数:overall",
+      "status": "pass",
+      "metric": "m_llm_平均分期期数",
+      "label": "overall",
+      "row_count": 1
+    },
+    {
+      "id": "metric:m_llm_平均分期期数:by:d_004_002_c04",
+      "status": "pass",
+      "metric": "m_llm_平均分期期数",
+      "label": "by:d_004_002_c04",
+      "row_count": 10
+    },
+    {
+      "id": "metric:m_llm_平均分期期数:by:month",
+      "status": "pass",
+      "metric": "m_llm_平均分期期数",
+      "label": "by:month",
+      "row_count": 6
+    },
+    {
+      "id": "metric:m_llm_优惠券支付订单数:overall",
+      "status": "pass",
+      "metric": "m_llm_优惠券支付订单数",
+      "label": "overall",
+      "row_count": 1
+    },
+    {
+      "id": "metric:m_llm_优惠券支付订单数:by:d_004_001_c03",
+      "status": "pass",
+      "metric": "m_llm_优惠券支付订单数",
+      "label": "by:d_004_001_c03",
+      "row_count": 6
+    },
+    {
+      "id": "metric:m_llm_优惠券支付订单数:by:month",
+      "status": "pass",
+      "metric": "m_llm_优惠券支付订单数",
+      "label": "by:month",
+      "row_count": 6
+    },
+    {
+      "id": "metric:m_llm_信用卡支付金额:overall",
+      "status": "pass",
+      "metric": "m_llm_信用卡支付金额",
+      "label": "overall",
+      "row_count": 1
+    },
+    {
+      "id": "metric:m_llm_信用卡支付金额:by:d_004_002_c04",
+      "status": "pass",
+      "metric": "m_llm_信用卡支付金额",
+      "label": "by:d_004_002_c04",
+      "row_count": 10
+    },
+    {
+      "id": "metric:m_llm_信用卡支付金额:by:month",
+      "status": "pass",
+      "metric": "m_llm_信用卡支付金额",
+      "label": "by:month",
+      "row_count": 6
+    },
+    {
+      "id": "metric:m_doc_延迟订单:overall",
+      "status": "pass",
+      "metric": "m_doc_延迟订单",
+      "label": "overall",
+      "row_count": 1
+    },
+    {
+      "id": "metric:m_doc_延迟订单:by:d_004_002_c04",
+      "status": "pass",
+      "metric": "m_doc_延迟订单",
+      "label": "by:d_004_002_c04",
+      "row_count": 10
+    },
+    {
+      "id": "metric:m_doc_延迟订单:by:month",
+      "status": "pass",
+      "metric": "m_doc_延迟订单",
+      "label": "by:month",
+      "row_count": 6
+    },
+    {
+      "id": "metric:m_doc_低分评价:overall",
+      "status": "pass",
+      "metric": "m_doc_低分评价",
+      "label": "overall",
+      "row_count": 1
+    },
+    {
+      "id": "metric:m_doc_低分评价:by:d_004_002_c04",
+      "status": "pass",
+      "metric": "m_doc_低分评价",
+      "label": "by:d_004_002_c04",
+      "row_count": 10
+    },
+    {
+      "id": "metric:m_doc_低分评价:by:month",
+      "status": "pass",
+      "metric": "m_doc_低分评价",
+      "label": "by:month",
+      "row_count": 7
+    },
+    {
+      "id": "metric:m_doc_订单数:overall",
+      "status": "pass",
+      "metric": "m_doc_订单数",
+      "label": "overall",
+      "row_count": 1
+    },
+    {
+      "id": "metric:m_doc_订单数:by:d_004_002_c04",
+      "status": "pass",
+      "metric": "m_doc_订单数",
+      "label": "by:d_004_002_c04",
+      "row_count": 10
+    },
+    {
+      "id": "metric:m_doc_订单数:by:month",
+      "status": "pass",
+      "metric": "m_doc_订单数",
+      "label": "by:month",
+      "row_count": 6
+    },
+    {
+      "id": "metric:entity_count_t_002:overall",
+      "status": "pass",
+      "metric": "entity_count_t_002",
+      "label": "overall",
+      "row_count": 1
+    },
+    {
+      "id": "metric:entity_count_t_002:by:d_004_001_c03",
+      "status": "pass",
+      "metric": "entity_count_t_002",
+      "label": "by:d_004_001_c03",
+      "row_count": 6
+    },
+    {
+      "id": "metric:entity_count_t_002:by:month",
+      "status": "pass",
+      "metric": "entity_count_t_002",
+      "label": "by:month",
+      "row_count": 6
+    }
+  ],
+  "blockers": [],
+  "warnings": [
+    "该数据集存在多个时间轴：t_004.c05、t_006.c06、t_007.c04；跨指标的同月对比需要确认按哪个时间轴归属。"
+  ],
+  "probes": 75,
+  "metrics": [
+    "m_004_row_count",
+    "m_004_c03_distinct",
+    "m_004_c04_distinct",
+    "m_004_c06_sum",
+    "m_004_c07_sum",
+    "m_007_c02_distinct",
+    "m_004_001_distinct",
+    "m_llm_已交付商品销售额",
+    "m_llm_已交付运费合计",
+    "m_llm_平均商品单价",
+    "m_llm_已交付支付金额",
+    "m_llm_延迟交付率",
+    "m_llm_已交付订单平均评分",
+    "m_llm_低分评价率",
+    "m_llm_好评率",
+    "m_llm_复购客户数",
+    "m_llm_动销商品数",
+    "m_llm_动销商家数",
+    "m_llm_平均分期期数",
+    "m_llm_优惠券支付订单数",
+    "m_llm_信用卡支付金额",
+    "m_doc_延迟订单",
+    "m_doc_低分评价",
+    "m_doc_订单数",
+    "entity_count_t_002"
+  ],
+  "dimensions": [
+    "month",
+    "d_004_007_c03",
+    "d_004_008_c03",
+    "d_004_009_c02",
+    "d_004_009_c04",
+    "d_004_002_c04",
+    "d_004_002_c05",
+    "d_004_001_c03",
+    "d_004_003_c04",
+    "d_004_003_c05",
+    "d_007_c03",
+    "d_007_002_c04",
+    "d_007_002_c05",
+    "d_007_003_c04",
+    "d_007_003_c05",
+    "d_doc_t_007_c07_c08",
+    "d_005_002_c04",
+    "d_005_002_c05",
+    "d_005_007_c03",
+    "d_005_c03",
+    "d_005_c04",
+    "d_006_002_c04",
+    "d_006_002_c05",
+    "d_006_007_c03",
+    "d_006_c04"
+  ],
+  "capabilities": {
+    "member_list": true,
+    "ratio": true,
+    "entity_count": true,
+    "compare": true,
+    "business_checks": [],
+    "member_list_coverage": null
+  },
+  "generated_at": "2026-11-11T19:59:04"
+}

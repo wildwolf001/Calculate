@@ -13,9 +13,17 @@ data/dev/
 data/uploads/
 data/trash/
 data/datasets/ds_*/
+# The two demo datasets are shipped so a fresh clone renders the same demo.
+!data/datasets/ds_d7390c8574a4/
+!data/datasets/ds_d7390c8574a4/**
+!data/datasets/ds_dd0addc20f5c/
+!data/datasets/ds_dd0addc20f5c/**
 project_2/
 web/node_modules/
 web/dist/
+# Ship the built UI so the FastAPI process serves the same page after clone.
+!web/dist/
+!web/dist/**
 .pytest_cache/
 backup_*.zip
 *.duckdb.tmp

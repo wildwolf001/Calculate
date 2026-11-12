@@ -1,0 +1,1613 @@
+version: 1
+dataset: 客户数
+dataset_id: null
+compiler_version: 1
+time_range:
+- '2025-01-01'
+- '2025-07-09'
+default_year: latest_occurrence
+status: draft
+provenance: auto
+parser: generic
+capabilities:
+  member_list: true
+  ratio: true
+  entity_count: true
+  compare: true
+  business_checks: []
+  member_list_coverage: null
+tables:
+  t_001:
+    grain:
+    - c01
+    time: null
+    columns:
+    - c01
+    - c02
+    - c03
+  t_002:
+    grain:
+    - c01
+    time: null
+    columns:
+    - c01
+    - c02
+    - c03
+    - c04
+    - c05
+  t_003:
+    grain:
+    - c01
+    time: null
+    columns:
+    - c01
+    - c02
+    - c03
+    - c04
+    - c05
+  t_004:
+    grain:
+    - c02
+    - c01
+    time: c05
+    columns:
+    - c01
+    - c02
+    - c03
+    - c04
+    - c05
+    - c06
+    - c07
+  t_005:
+    grain:
+    - c01
+    - c02
+    time: null
+    columns:
+    - c01
+    - c02
+    - c03
+    - c04
+    - c05
+  t_006:
+    grain:
+    - c01
+    time: c06
+    columns:
+    - c01
+    - c02
+    - c03
+    - c04
+    - c05
+    - c06
+    - c07
+  t_007:
+    grain:
+    - c01
+    time: c04
+    columns:
+    - c01
+    - c02
+    - c03
+    - c04
+    - c05
+    - c06
+    - c07
+    - c08
+  t_008:
+    grain:
+    - c01
+    time: null
+    columns:
+    - c01
+    - c02
+    - c03
+    - c04
+    - c05
+    - c06
+    - c07
+    - c08
+    - c09
+    - c10
+    - c11
+  t_009:
+    grain:
+    - c01
+    time: null
+    columns:
+    - c01
+    - c02
+    - c03
+    - c04
+    - c05
+joins:
+  t_002:
+    t_003:
+      left: c03
+      right: c01
+      card: N:1
+  t_004:
+    t_007:
+      left: c01
+      right: c01
+      card: N:1
+    t_008:
+      left: c03
+      right: c01
+      card: N:1
+    t_009:
+      left: c04
+      right: c01
+      card: N:1
+  t_005:
+    t_007:
+      left: c01
+      right: c01
+      card: N:1
+  t_006:
+    t_007:
+      left: c02
+      right: c01
+      card: N:1
+  t_007:
+    t_002:
+      left: c02
+      right: c01
+      card: N:1
+  t_008:
+    t_001:
+      left: c02
+      right: c01
+      card: N:1
+  t_009:
+    t_003:
+      left: c03
+      right: c01
+      card: N:1
+pre_aggregates: {}
+metrics:
+  m_004_row_count:
+    name_zh: 记录数
+    synonyms:
+    - 行数
+    - 记录数
+    - 数据行数
+    type: aggregate
+    fact: t_004
+    expr: COUNT(*)
+    scope: {}
+    time_via: t_004.c05
+    additive: true
+    unit: 行
+    supported_grain:
+    - none
+    - month
+    - d_004_007_c03
+    - d_004_008_c03
+    - d_004_009_c02
+    - d_004_009_c04
+    - d_004_002_c04
+    - d_004_002_c05
+    - d_004_001_c03
+    - d_004_003_c04
+    - d_004_003_c05
+    - d_doc_t_007_c07_c08
+    definition: order_items的记录数（自动口径，未确认）。
+    selected: true
+    provenance: auto
+    confidence: 0.95
+  m_004_c01_distinct:
+    name_zh: 订单数
+    synonyms:
+    - order_id
+    - 订单数
+    - 订单量
+    - 订单笔数
+    type: aggregate
+    fact: t_004
+    expr: COUNT(DISTINCT t_004.c01)
+    scope: {}
+    time_via: t_004.c05
+    additive: false
+    unit: 个
+    supported_grain:
+    - none
+    - month
+    - d_004_007_c03
+    - d_004_008_c03
+    - d_004_009_c02
+    - d_004_009_c04
+    - d_004_002_c04
+    - d_004_002_c05
+    - d_004_001_c03
+    - d_004_003_c04
+    - d_004_003_c05
+    - d_006_c04
+    - d_006_007_c03
+    - d_006_002_c04
+    - d_006_002_c05
+    - d_005_c03
+    - d_005_c04
+    - d_005_007_c03
+    - d_005_002_c04
+    - d_005_002_c05
+    - d_007_c03
+    - d_007_002_c04
+    - d_007_002_c05
+    - d_007_003_c04
+    - d_007_003_c05
+    - d_doc_t_007_c07_c08
+    definition: order_items.order_id 的去重计数（自动口径，未确认）。
+    selected: false
+    provenance: auto
+    confidence: 0.9
+  m_004_c03_distinct:
+    name_zh: 商品数
+    synonyms:
+    - product_id
+    - 商品数
+    - 商品种类
+    - 几种商品
+    - 商品款数
+    type: aggregate
+    fact: t_004
+    expr: COUNT(DISTINCT t_004.c03)
+    scope: {}
+    time_via: t_004.c05
+    additive: false
+    unit: 个
+    supported_grain:
+    - none
+    - month
+    - d_004_007_c03
+    - d_004_008_c03
+    - d_004_009_c02
+    - d_004_009_c04
+    - d_004_002_c04
+    - d_004_002_c05
+    - d_004_001_c03
+    - d_004_003_c04
+    - d_004_003_c05
+    - d_006_c04
+    - d_006_007_c03
+    - d_006_002_c04
+    - d_006_002_c05
+    - d_005_c03
+    - d_005_c04
+    - d_005_007_c03
+    - d_005_002_c04
+    - d_005_002_c05
+    - d_007_c03
+    - d_007_002_c04
+    - d_007_002_c05
+    - d_007_003_c04
+    - d_007_003_c05
+    - d_doc_t_007_c07_c08
+    definition: order_items.product_id 的去重计数（自动口径，未确认）。
+    selected: true
+    provenance: auto
+    confidence: 0.9
+  m_004_c04_distinct:
+    name_zh: 商家数
+    synonyms:
+    - seller_id
+    - 商家数
+    - 卖家数
+    type: aggregate
+    fact: t_004
+    expr: COUNT(DISTINCT t_004.c04)
+    scope: {}
+    time_via: t_004.c05
+    additive: false
+    unit: 个
+    supported_grain:
+    - none
+    - month
+    - d_004_007_c03
+    - d_004_008_c03
+    - d_004_009_c02
+    - d_004_009_c04
+    - d_004_002_c04
+    - d_004_002_c05
+    - d_004_001_c03
+    - d_004_003_c04
+    - d_004_003_c05
+    - d_006_c04
+    - d_006_007_c03
+    - d_006_002_c04
+    - d_006_002_c05
+    - d_005_c03
+    - d_005_c04
+    - d_005_007_c03
+    - d_005_002_c04
+    - d_005_002_c05
+    - d_007_c03
+    - d_007_002_c04
+    - d_007_002_c05
+    - d_007_003_c04
+    - d_007_003_c05
+    - d_doc_t_007_c07_c08
+    definition: order_items.seller_id 的去重计数（自动口径，未确认）。
+    selected: true
+    provenance: auto
+    confidence: 0.9
+  m_004_c06_sum:
+    name_zh: 商品销售额
+    synonyms:
+    - price
+    - 销售额
+    - 商品销售额
+    - 销售金额
+    - GMV
+    - 营收
+    - price合计
+    type: aggregate
+    fact: t_004
+    expr: SUM(t_004.c06)
+    scope: {}
+    time_via: t_004.c05
+    additive: true
+    unit: 元
+    supported_grain:
+    - none
+    - month
+    - d_004_007_c03
+    - d_004_008_c03
+    - d_004_009_c02
+    - d_004_009_c04
+    - d_004_002_c04
+    - d_004_002_c05
+    - d_004_001_c03
+    - d_004_003_c04
+    - d_004_003_c05
+    - d_doc_t_007_c07_c08
+    definition: order_items.price 的合计（自动口径，未确认）。
+    selected: true
+    provenance: auto
+    confidence: 0.9
+  m_004_c07_sum:
+    name_zh: 运费合计
+    synonyms:
+    - freight_value
+    - 运费
+    - 物流费
+    - freight_value合计
+    - 运费合计
+    type: aggregate
+    fact: t_004
+    expr: SUM(t_004.c07)
+    scope: {}
+    time_via: t_004.c05
+    additive: true
+    unit: 元
+    supported_grain:
+    - none
+    - month
+    - d_004_007_c03
+    - d_004_008_c03
+    - d_004_009_c02
+    - d_004_009_c04
+    - d_004_002_c04
+    - d_004_002_c05
+    - d_004_001_c03
+    - d_004_003_c04
+    - d_004_003_c05
+    - d_doc_t_007_c07_c08
+    definition: order_items.freight_value 的合计（自动口径，未确认）。
+    selected: true
+    provenance: auto
+    confidence: 0.9
+  m_006_row_count:
+    name_zh: 记录数
+    synonyms:
+    - 行数
+    - 记录数
+    - 数据行数
+    type: aggregate
+    fact: t_006
+    expr: COUNT(*)
+    scope: {}
+    time_via: t_006.c06
+    additive: true
+    unit: 行
+    supported_grain:
+    - none
+    - month
+    - d_006_c04
+    - d_006_007_c03
+    - d_006_002_c04
+    - d_006_002_c05
+    - d_doc_t_007_c07_c08
+    definition: order_reviews的记录数（自动口径，未确认）。
+    selected: false
+    provenance: auto
+    confidence: 0.95
+  m_006_c01_distinct:
+    name_zh: 评价数
+    synonyms:
+    - review_id
+    - 评价数
+    - 评论数
+    type: aggregate
+    fact: t_006
+    expr: COUNT(DISTINCT t_006.c01)
+    scope: {}
+    time_via: t_006.c06
+    additive: false
+    unit: 个
+    supported_grain:
+    - none
+    - month
+    - d_006_c04
+    - d_006_007_c03
+    - d_006_002_c04
+    - d_006_002_c05
+    - d_004_007_c03
+    - d_004_008_c03
+    - d_004_009_c02
+    - d_004_009_c04
+    - d_004_002_c04
+    - d_004_002_c05
+    - d_004_001_c03
+    - d_004_003_c04
+    - d_004_003_c05
+    - d_005_c03
+    - d_005_c04
+    - d_005_007_c03
+    - d_005_002_c04
+    - d_005_002_c05
+    - d_007_c03
+    - d_007_002_c04
+    - d_007_002_c05
+    - d_007_003_c04
+    - d_007_003_c05
+    - d_doc_t_007_c07_c08
+    definition: order_reviews.review_id 的去重计数（自动口径，未确认）。
+    selected: false
+    provenance: auto
+    confidence: 0.9
+  m_006_c02_distinct:
+    name_zh: 订单数
+    synonyms:
+    - order_id
+    - 订单数
+    - 订单量
+    - 订单笔数
+    type: aggregate
+    fact: t_006
+    expr: COUNT(DISTINCT t_006.c02)
+    scope: {}
+    time_via: t_006.c06
+    additive: false
+    unit: 个
+    supported_grain:
+    - none
+    - month
+    - d_006_c04
+    - d_006_007_c03
+    - d_006_002_c04
+    - d_006_002_c05
+    - d_004_007_c03
+    - d_004_008_c03
+    - d_004_009_c02
+    - d_004_009_c04
+    - d_004_002_c04
+    - d_004_002_c05
+    - d_004_001_c03
+    - d_004_003_c04
+    - d_004_003_c05
+    - d_005_c03
+    - d_005_c04
+    - d_005_007_c03
+    - d_005_002_c04
+    - d_005_002_c05
+    - d_007_c03
+    - d_007_002_c04
+    - d_007_002_c05
+    - d_007_003_c04
+    - d_007_003_c05
+    - d_doc_t_007_c07_c08
+    definition: order_reviews.order_id 的去重计数（自动口径，未确认）。
+    selected: false
+    provenance: auto
+    confidence: 0.9
+  m_006_c03_avg:
+    name_zh: 平均评分
+    synonyms:
+    - review_score
+    - 评分
+    - 评价分数
+    - review_score平均值
+    - 平均评分
+    type: aggregate
+    fact: t_006
+    expr: AVG(t_006.c03)
+    scope: {}
+    time_via: t_006.c06
+    additive: false
+    unit: 分
+    supported_grain:
+    - none
+    - month
+    - d_006_c04
+    - d_006_007_c03
+    - d_006_002_c04
+    - d_006_002_c05
+    - d_doc_t_007_c07_c08
+    definition: order_reviews.review_score 的平均值（自动口径，未确认）。
+    selected: false
+    provenance: auto
+    confidence: 0.9
+  m_005_row_count:
+    name_zh: 记录数
+    synonyms:
+    - 行数
+    - 记录数
+    - 数据行数
+    type: aggregate
+    fact: t_005
+    expr: COUNT(*)
+    scope: {}
+    time_via: t_007.c04
+    additive: true
+    unit: 行
+    supported_grain:
+    - none
+    - month
+    - d_005_c03
+    - d_005_c04
+    - d_005_007_c03
+    - d_005_002_c04
+    - d_005_002_c05
+    - d_doc_t_007_c07_c08
+    definition: order_payments的记录数（自动口径，未确认）。
+    selected: false
+    provenance: auto
+    confidence: 0.95
+  m_005_c01_distinct:
+    name_zh: 订单数
+    synonyms:
+    - order_id
+    - 订单数
+    - 订单量
+    - 订单笔数
+    type: aggregate
+    fact: t_005
+    expr: COUNT(DISTINCT t_005.c01)
+    scope: {}
+    time_via: t_007.c04
+    additive: false
+    unit: 个
+    supported_grain:
+    - none
+    - month
+    - d_005_c03
+    - d_005_c04
+    - d_005_007_c03
+    - d_005_002_c04
+    - d_005_002_c05
+    - d_004_007_c03
+    - d_004_008_c03
+    - d_004_009_c02
+    - d_004_009_c04
+    - d_004_002_c04
+    - d_004_002_c05
+    - d_004_001_c03
+    - d_004_003_c04
+    - d_004_003_c05
+    - d_006_c04
+    - d_006_007_c03
+    - d_006_002_c04
+    - d_006_002_c05
+    - d_007_c03
+    - d_007_002_c04
+    - d_007_002_c05
+    - d_007_003_c04
+    - d_007_003_c05
+    - d_doc_t_007_c07_c08
+    definition: order_payments.order_id 的去重计数（自动口径，未确认）。
+    selected: false
+    provenance: auto
+    confidence: 0.9
+  m_005_c04_sum:
+    name_zh: payment_installments合计
+    synonyms:
+    - payment_installments
+    - payment_installments合计
+    type: aggregate
+    fact: t_005
+    expr: SUM(t_005.c04)
+    scope: {}
+    time_via: t_007.c04
+    additive: true
+    unit: null
+    supported_grain:
+    - none
+    - month
+    - d_005_c03
+    - d_005_c04
+    - d_005_007_c03
+    - d_005_002_c04
+    - d_005_002_c05
+    - d_doc_t_007_c07_c08
+    definition: order_payments.payment_installments 的合计（自动口径，未确认）。
+    selected: false
+    provenance: auto
+    confidence: 0.55
+  m_005_c05_sum:
+    name_zh: 支付金额
+    synonyms:
+    - payment_value
+    - 支付金额
+    - 实付金额
+    - payment_value合计
+    type: aggregate
+    fact: t_005
+    expr: SUM(t_005.c05)
+    scope: {}
+    time_via: t_007.c04
+    additive: true
+    unit: 元
+    supported_grain:
+    - none
+    - month
+    - d_005_c03
+    - d_005_c04
+    - d_005_007_c03
+    - d_005_002_c04
+    - d_005_002_c05
+    - d_doc_t_007_c07_c08
+    definition: order_payments.payment_value 的合计（自动口径，未确认）。
+    selected: false
+    provenance: auto
+    confidence: 0.9
+  m_007_row_count:
+    name_zh: 记录数
+    synonyms:
+    - 行数
+    - 记录数
+    - 数据行数
+    type: aggregate
+    fact: t_007
+    expr: COUNT(*)
+    scope: {}
+    time_via: t_007.c04
+    additive: true
+    unit: 行
+    supported_grain:
+    - none
+    - month
+    - d_007_c03
+    - d_007_002_c04
+    - d_007_002_c05
+    - d_007_003_c04
+    - d_007_003_c05
+    - d_doc_t_007_c07_c08
+    definition: orders的记录数（自动口径，未确认）。
+    selected: false
+    provenance: auto
+    confidence: 0.95
+  m_007_c01_distinct:
+    name_zh: 订单数
+    synonyms:
+    - order_id
+    - 订单数
+    - 订单量
+    - 订单笔数
+    type: aggregate
+    fact: t_007
+    expr: COUNT(DISTINCT t_007.c01)
+    scope: {}
+    time_via: t_007.c04
+    additive: false
+    unit: 个
+    supported_grain:
+    - none
+    - month
+    - d_007_c03
+    - d_007_002_c04
+    - d_007_002_c05
+    - d_007_003_c04
+    - d_007_003_c05
+    - d_004_007_c03
+    - d_004_008_c03
+    - d_004_009_c02
+    - d_004_009_c04
+    - d_004_002_c04
+    - d_004_002_c05
+    - d_004_001_c03
+    - d_004_003_c04
+    - d_004_003_c05
+    - d_006_c04
+    - d_006_007_c03
+    - d_006_002_c04
+    - d_006_002_c05
+    - d_005_c03
+    - d_005_c04
+    - d_005_007_c03
+    - d_005_002_c04
+    - d_005_002_c05
+    - d_doc_t_007_c07_c08
+    definition: orders.order_id 的去重计数（自动口径，未确认）。
+    selected: true
+    provenance: auto
+    confidence: 0.9
+  m_007_c02_distinct:
+    name_zh: 客户数
+    synonyms:
+    - customer_id
+    - 客户数
+    - 买家数
+    - 客户人数
+    type: aggregate
+    fact: t_007
+    expr: COUNT(DISTINCT t_007.c02)
+    scope: {}
+    time_via: t_007.c04
+    additive: false
+    unit: 个
+    supported_grain:
+    - none
+    - month
+    - d_007_c03
+    - d_007_002_c04
+    - d_007_002_c05
+    - d_007_003_c04
+    - d_007_003_c05
+    - d_004_007_c03
+    - d_004_008_c03
+    - d_004_009_c02
+    - d_004_009_c04
+    - d_004_002_c04
+    - d_004_002_c05
+    - d_004_001_c03
+    - d_004_003_c04
+    - d_004_003_c05
+    - d_006_c04
+    - d_006_007_c03
+    - d_006_002_c04
+    - d_006_002_c05
+    - d_005_c03
+    - d_005_c04
+    - d_005_007_c03
+    - d_005_002_c04
+    - d_005_002_c05
+    - d_doc_t_007_c07_c08
+    definition: orders.customer_id 的去重计数（自动口径，未确认）。
+    selected: true
+    provenance: auto
+    confidence: 0.9
+  m_004_001_distinct:
+    name_zh: 品类数
+    type: aggregate
+    fact: t_004
+    expr: COUNT(DISTINCT t_001.c01)
+    scope: {}
+    time_via: t_004.c05
+    additive: false
+    unit: 个
+    supported_grain:
+    - none
+    - month
+    - d_004_007_c03
+    - d_004_008_c03
+    - d_004_009_c02
+    - d_004_009_c04
+    - d_004_002_c04
+    - d_004_002_c05
+    - d_004_001_c03
+    - d_004_003_c04
+    - d_004_003_c05
+    - d_006_c04
+    - d_006_007_c03
+    - d_006_002_c04
+    - d_006_002_c05
+    - d_005_c03
+    - d_005_c04
+    - d_005_007_c03
+    - d_005_002_c04
+    - d_005_002_c05
+    - d_007_c03
+    - d_007_002_c04
+    - d_007_002_c05
+    - d_007_003_c04
+    - d_007_003_c05
+    - d_doc_t_007_c07_c08
+    synonyms:
+    - 品类数
+    - 几种品类
+    - 多少种品类
+    definition: categories中不同主键的去重计数（自动口径，未确认）。
+    selected: true
+    provenance: auto
+    confidence: 0.8
+  m_llm_已交付商品销售额:
+    name_zh: 已交付商品销售额
+    type: aggregate
+    fact: t_004
+    expr: SUM(t_004.c06)
+    scope:
+      t_007.c03: delivered
+    time_via: t_004.c05
+    supported_grain:
+    - none
+    - d_004_001_c03
+    - d_004_008_c03
+    - d_004_009_c02
+    - d_004_002_c04
+    - d_004_002_c05
+    - d_doc_t_007_c07_c08
+    unit: 元
+    additive: true
+    definition: 已送达订单中商品价格合计，不含运费。
+    synonyms:
+    - 已交付商品销售额
+    - 销售额
+    - GMV
+    - 商品成交额
+    provenance: llm
+    confidence: 0.7
+  m_llm_已交付运费合计:
+    name_zh: 已交付运费合计
+    type: aggregate
+    fact: t_004
+    expr: SUM(t_004.c07)
+    scope:
+      t_007.c03: delivered
+    time_via: t_004.c05
+    supported_grain:
+    - none
+    - d_004_001_c03
+    - d_004_009_c02
+    - d_004_009_c04
+    - d_004_002_c05
+    - d_doc_t_007_c07_c08
+    unit: 元
+    additive: true
+    definition: 已送达订单中运费合计。
+    synonyms:
+    - 已交付运费合计
+    - 运费
+    - 物流费用
+    provenance: llm
+    confidence: 0.7
+  m_llm_平均商品单价:
+    name_zh: 平均商品单价
+    type: aggregate
+    fact: t_004
+    expr: AVG(t_004.c06)
+    scope:
+      t_007.c03: delivered
+    time_via: t_004.c05
+    supported_grain:
+    - none
+    - d_004_001_c03
+    - d_004_008_c03
+    - d_004_009_c02
+    - d_doc_t_007_c07_c08
+    unit: 元
+    additive: false
+    definition: 已送达订单明细中商品价格的平均值。
+    synonyms:
+    - 平均商品单价
+    - 平均售价
+    - 件均价
+    provenance: llm
+    confidence: 0.7
+  m_llm_已交付支付金额:
+    name_zh: 已交付支付金额
+    type: aggregate
+    fact: t_005
+    expr: SUM(t_005.c05)
+    scope:
+      t_007.c03: delivered
+    time_via: t_007.c04
+    supported_grain:
+    - none
+    - d_005_c03
+    - d_005_c04
+    - d_005_002_c04
+    - d_005_002_c05
+    - d_doc_t_007_c07_c08
+    unit: 元
+    additive: true
+    definition: 已送达订单的支付流水金额合计。
+    synonyms:
+    - 已交付支付金额
+    - 支付总额
+    - 收款金额
+    provenance: llm
+    confidence: 0.7
+  m_llm_延迟交付率:
+    name_zh: 延迟交付率
+    type: ratio
+    fact: t_007
+    ratio_grain: fact
+    ratio_key: t_007.c01
+    numerator: COUNT(CASE WHEN t_007.c07 > t_007.c08 THEN 1 END)
+    denominator: COUNT(DISTINCT t_007.c01)
+    grain_numerator: MAX(CASE WHEN t_007.c07 > t_007.c08 THEN 1 ELSE 0 END)
+    grain_denominator: '1'
+    numerator_label: 延迟交付率
+    denominator_label: 总数
+    scope:
+      t_007.c03: delivered
+    time_via: t_007.c04
+    supported_grain:
+    - none
+    - d_007_002_c04
+    - d_007_002_c05
+    - d_007_003_c04
+    - d_007_003_c05
+    - d_doc_t_007_c07_c08
+    unit: '%'
+    additive: false
+    definition: 已送达订单中，实际送达时间晚于预计送达时间的订单占比。
+    synonyms:
+    - 延迟交付率
+    - 超时交付率
+    - 延迟率
+    provenance: llm
+    confidence: 0.7
+  m_llm_已交付订单平均评分:
+    name_zh: 已交付订单平均评分
+    type: aggregate
+    fact: t_006
+    expr: AVG(t_006.c03)
+    scope:
+      t_007.c03: delivered
+    time_via: t_006.c06
+    supported_grain:
+    - none
+    - d_006_c04
+    - d_006_002_c04
+    - d_006_002_c05
+    - d_doc_t_007_c07_c08
+    unit: 分
+    additive: false
+    definition: 已送达订单关联评价的平均评分。
+    synonyms:
+    - 已交付订单平均评分
+    - 平均评分
+    - 评价得分
+    provenance: llm
+    confidence: 0.7
+  m_llm_低分评价率:
+    name_zh: 低分评价率
+    type: ratio
+    fact: t_006
+    ratio_grain: fact
+    ratio_key: t_006.c01
+    numerator: COUNT(CASE WHEN t_006.c03 < 3 THEN 1 END)
+    denominator: COUNT(DISTINCT t_006.c01)
+    grain_numerator: MAX(CASE WHEN t_006.c03 < 3 THEN 1 ELSE 0 END)
+    grain_denominator: '1'
+    numerator_label: 低分评价率
+    denominator_label: 总数
+    scope:
+      t_007.c03: delivered
+    time_via: t_006.c06
+    supported_grain:
+    - none
+    - d_006_c04
+    - d_006_002_c04
+    - d_006_002_c05
+    - d_doc_t_007_c07_c08
+    unit: '%'
+    additive: false
+    definition: 已送达订单评价中，评分低于3分的评价占比。
+    synonyms:
+    - 低分评价率
+    - 差评率
+    - 低分率
+    provenance: llm
+    confidence: 0.7
+  m_llm_好评率:
+    name_zh: 好评率
+    type: ratio
+    fact: t_006
+    ratio_grain: fact
+    ratio_key: t_006.c01
+    numerator: COUNT(CASE WHEN t_006.c03 > 3 THEN 1 END)
+    denominator: COUNT(DISTINCT t_006.c01)
+    grain_numerator: MAX(CASE WHEN t_006.c03 > 3 THEN 1 ELSE 0 END)
+    grain_denominator: '1'
+    numerator_label: 好评率
+    denominator_label: 总数
+    scope:
+      t_007.c03: delivered
+    time_via: t_006.c06
+    supported_grain:
+    - none
+    - d_006_c04
+    - d_006_002_c04
+    - d_006_002_c05
+    - d_doc_t_007_c07_c08
+    unit: '%'
+    additive: false
+    definition: 已送达订单评价中，评分高于3分的评价占比。
+    synonyms:
+    - 好评率
+    - 高评分率
+    - 满意率
+    provenance: llm
+    confidence: 0.7
+  m_llm_复购客户数:
+    name_zh: 复购客户数
+    type: entity_count
+    fact: t_007
+    entity: t_002.c02
+    entity_join: t_007 -> t_002
+    count_orders: COUNT(DISTINCT t_007.c01)
+    min_orders: 2
+    scope:
+      t_007.c03: delivered
+    time_via: t_007.c04
+    supported_grain:
+    - none
+    unit: 人
+    additive: false
+    definition: 在已送达订单中，下单次数不少于2次的去重客户数。
+    synonyms:
+    - 复购客户数
+    - 复购人数
+    - 多次购买客户数
+    provenance: llm
+    confidence: 0.7
+  m_llm_动销商品数:
+    name_zh: 动销商品数
+    type: aggregate
+    fact: t_004
+    expr: COUNT(DISTINCT t_004.c03)
+    scope:
+      t_007.c03: delivered
+    time_via: t_004.c05
+    supported_grain:
+    - none
+    - d_004_001_c03
+    - d_004_009_c02
+    - d_004_009_c04
+    - d_doc_t_007_c07_c08
+    unit: 个
+    additive: false
+    definition: 已送达订单中出现过的去重商品数。
+    synonyms:
+    - 动销商品数
+    - 有销商品数
+    - 在售动销商品数
+    provenance: llm
+    confidence: 0.7
+  m_llm_动销商家数:
+    name_zh: 动销商家数
+    type: aggregate
+    fact: t_004
+    expr: COUNT(DISTINCT t_004.c04)
+    scope:
+      t_007.c03: delivered
+    time_via: t_004.c05
+    supported_grain:
+    - none
+    - d_004_009_c04
+    - d_004_001_c03
+    - d_doc_t_007_c07_c08
+    unit: 个
+    additive: false
+    definition: 已送达订单中出现过的去重商家数。
+    synonyms:
+    - 动销商家数
+    - 有销商家数
+    - 活跃商家数
+    provenance: llm
+    confidence: 0.7
+  m_llm_平均分期期数:
+    name_zh: 平均分期期数
+    type: aggregate
+    fact: t_005
+    expr: AVG(t_005.c04)
+    scope:
+      t_007.c03: delivered
+    time_via: t_007.c04
+    supported_grain:
+    - none
+    - d_005_c03
+    - d_005_002_c04
+    - d_005_002_c05
+    - d_doc_t_007_c07_c08
+    unit: 期
+    additive: false
+    definition: 已送达订单支付记录的平均分期期数。
+    synonyms:
+    - 平均分期期数
+    - 平均分期数
+    - 平均期数
+    provenance: llm
+    confidence: 0.7
+  m_llm_优惠券支付订单数:
+    name_zh: 优惠券支付订单数
+    type: aggregate
+    fact: t_005
+    expr: COUNT(DISTINCT t_005.c01)
+    scope:
+      t_007.c03: delivered
+      t_005.c03: voucher
+    time_via: t_007.c04
+    supported_grain:
+    - none
+    - d_005_c04
+    - d_005_002_c04
+    - d_005_002_c05
+    - d_doc_t_007_c07_c08
+    unit: 单
+    additive: false
+    definition: 已送达订单中使用优惠券支付的去重订单数。
+    synonyms:
+    - 优惠券支付订单数
+    - voucher订单数
+    - 券支付订单数
+    provenance: llm
+    confidence: 0.7
+  m_llm_信用卡支付金额:
+    name_zh: 信用卡支付金额
+    type: aggregate
+    fact: t_005
+    expr: SUM(t_005.c05)
+    scope:
+      t_007.c03: delivered
+      t_005.c03: credit_card
+    time_via: t_007.c04
+    supported_grain:
+    - none
+    - d_005_c04
+    - d_005_002_c04
+    - d_005_002_c05
+    - d_doc_t_007_c07_c08
+    unit: 元
+    additive: true
+    definition: 已送达订单中信用卡支付方式的支付金额合计。
+    synonyms:
+    - 信用卡支付金额
+    - 信用卡收款
+    - credit_card支付金额
+    provenance: llm
+    confidence: 0.7
+dimensions:
+  month:
+    id: month
+    name_zh: 月份
+    kind: time
+    format: '%Y-%m'
+    column_from: t_004.c05
+    synonyms:
+    - 月份
+    - 按月
+    - 月度
+    - month
+    selected: true
+    provenance: auto
+    confidence: 0.9
+  d_004_007_c03:
+    id: d_004_007_c03
+    name_zh: 订单状态
+    column: t_007.c03
+    filter_column: t_007.c03
+    filter_lookup: t_007.c03
+    value_source: t_007
+    join_path:
+    - t_004 -> t_007
+    synonyms:
+    - order_status
+    - 订单状态
+    - 状态
+    - orders
+    selected: true
+    provenance: auto
+    confidence: 0.9
+  d_004_008_c03:
+    id: d_004_008_c03
+    name_zh: 商品名称
+    column: t_008.c03
+    filter_column: t_008.c03
+    filter_lookup: t_008.c03
+    value_source: t_008
+    join_path:
+    - t_004 -> t_008
+    synonyms:
+    - product_name
+    - 商品
+    - 商品名称
+    - 产品
+    - products
+    selected: true
+    provenance: auto
+    confidence: 0.9
+  d_004_009_c02:
+    id: d_004_009_c02
+    name_zh: 商家名称
+    column: t_009.c02
+    filter_column: t_009.c02
+    filter_lookup: t_009.c02
+    value_source: t_009
+    join_path:
+    - t_004 -> t_009
+    synonyms:
+    - seller_name
+    - 商家
+    - 商家名称
+    - 卖家
+    - sellers
+    selected: true
+    provenance: auto
+    confidence: 0.9
+  d_004_009_c04:
+    id: d_004_009_c04
+    name_zh: 商家城市
+    column: t_009.c04
+    filter_column: t_009.c04
+    filter_lookup: t_009.c04
+    value_source: t_009
+    join_path:
+    - t_004 -> t_009
+    synonyms:
+    - seller_city
+    - 城市
+    - sellers
+    selected: true
+    provenance: auto
+    confidence: 0.9
+  d_004_002_c04:
+    id: d_004_002_c04
+    name_zh: 客户城市
+    column: t_002.c04
+    filter_column: t_002.c04
+    filter_lookup: t_002.c04
+    value_source: t_002
+    join_path:
+    - t_004 -> t_007
+    - t_007 -> t_002
+    synonyms:
+    - customer_city
+    - 客户城市
+    - 城市
+    - 地区
+    - customers
+    selected: true
+    provenance: auto
+    confidence: 0.75
+  d_004_002_c05:
+    id: d_004_002_c05
+    name_zh: 客户省份
+    column: t_002.c05
+    filter_column: t_002.c05
+    filter_lookup: t_002.c05
+    value_source: t_002
+    join_path:
+    - t_004 -> t_007
+    - t_007 -> t_002
+    synonyms:
+    - customer_state
+    - 客户省份
+    - 省份
+    - 州
+    - customers
+    selected: true
+    provenance: auto
+    confidence: 0.75
+  d_004_001_c03:
+    id: d_004_001_c03
+    name_zh: 品类
+    column: t_001.c03
+    filter_column: t_001.c03
+    filter_lookup: t_001.c03
+    value_source: t_001
+    join_path:
+    - t_004 -> t_008
+    - t_008 -> t_001
+    synonyms:
+    - category_name_zh
+    - 品类
+    - 类目
+    - 分类
+    - categories
+    selected: true
+    provenance: auto
+    confidence: 0.75
+  d_004_003_c04:
+    id: d_004_003_c04
+    name_zh: 城市
+    column: t_003.c04
+    filter_column: t_003.c04
+    filter_lookup: t_003.c04
+    value_source: t_003
+    join_path:
+    - t_004 -> t_009
+    - t_009 -> t_003
+    synonyms:
+    - city
+    - 城市
+    - geolocation
+    selected: true
+    provenance: auto
+    confidence: 0.75
+  d_004_003_c05:
+    id: d_004_003_c05
+    name_zh: 省份
+    column: t_003.c05
+    filter_column: t_003.c05
+    filter_lookup: t_003.c05
+    value_source: t_003
+    join_path:
+    - t_004 -> t_009
+    - t_009 -> t_003
+    synonyms:
+    - state
+    - 省份
+    - 州
+    - geolocation
+    selected: true
+    provenance: auto
+    confidence: 0.75
+  d_006_c04:
+    id: d_006_c04
+    name_zh: review_title
+    column: t_006.c04
+    filter_column: t_006.c04
+    filter_lookup: t_006.c04
+    value_source: t_006
+    synonyms:
+    - review_title
+    - order_reviews
+    selected: false
+    provenance: auto
+    confidence: 0.95
+  d_006_007_c03:
+    id: d_006_007_c03
+    name_zh: 订单状态
+    column: t_007.c03
+    filter_column: t_007.c03
+    filter_lookup: t_007.c03
+    value_source: t_007
+    join_path:
+    - t_006 -> t_007
+    synonyms:
+    - order_status
+    - 订单状态
+    - 状态
+    - orders
+    selected: false
+    provenance: auto
+    confidence: 0.9
+  d_006_002_c04:
+    id: d_006_002_c04
+    name_zh: 客户城市
+    column: t_002.c04
+    filter_column: t_002.c04
+    filter_lookup: t_002.c04
+    value_source: t_002
+    join_path:
+    - t_006 -> t_007
+    - t_007 -> t_002
+    synonyms:
+    - customer_city
+    - 客户城市
+    - 城市
+    - 地区
+    - customers
+    selected: false
+    provenance: auto
+    confidence: 0.75
+  d_006_002_c05:
+    id: d_006_002_c05
+    name_zh: 客户省份
+    column: t_002.c05
+    filter_column: t_002.c05
+    filter_lookup: t_002.c05
+    value_source: t_002
+    join_path:
+    - t_006 -> t_007
+    - t_007 -> t_002
+    synonyms:
+    - customer_state
+    - 客户省份
+    - 省份
+    - 州
+    - customers
+    selected: false
+    provenance: auto
+    confidence: 0.75
+  d_005_c03:
+    id: d_005_c03
+    name_zh: 支付方式
+    column: t_005.c03
+    filter_column: t_005.c03
+    filter_lookup: t_005.c03
+    value_source: t_005
+    synonyms:
+    - payment_type
+    - 支付方式
+    - 付款方式
+    - order_payments
+    selected: false
+    provenance: auto
+    confidence: 0.95
+  d_005_c04:
+    id: d_005_c04
+    name_zh: 分期期数
+    column: t_005.c04
+    filter_column: t_005.c04
+    filter_lookup: t_005.c04
+    value_source: t_005
+    synonyms:
+    - payment_installments
+    - 分期期数
+    - 分期
+    - order_payments
+    selected: false
+    provenance: auto
+    confidence: 0.95
+  d_005_007_c03:
+    id: d_005_007_c03
+    name_zh: 订单状态
+    column: t_007.c03
+    filter_column: t_007.c03
+    filter_lookup: t_007.c03
+    value_source: t_007
+    join_path:
+    - t_005 -> t_007
+    synonyms:
+    - order_status
+    - 订单状态
+    - 状态
+    - orders
+    selected: false
+    provenance: auto
+    confidence: 0.9
+  d_005_002_c04:
+    id: d_005_002_c04
+    name_zh: 客户城市
+    column: t_002.c04
+    filter_column: t_002.c04
+    filter_lookup: t_002.c04
+    value_source: t_002
+    join_path:
+    - t_005 -> t_007
+    - t_007 -> t_002
+    synonyms:
+    - customer_city
+    - 客户城市
+    - 城市
+    - 地区
+    - customers
+    selected: false
+    provenance: auto
+    confidence: 0.75
+  d_005_002_c05:
+    id: d_005_002_c05
+    name_zh: 客户省份
+    column: t_002.c05
+    filter_column: t_002.c05
+    filter_lookup: t_002.c05
+    value_source: t_002
+    join_path:
+    - t_005 -> t_007
+    - t_007 -> t_002
+    synonyms:
+    - customer_state
+    - 客户省份
+    - 省份
+    - 州
+    - customers
+    selected: false
+    provenance: auto
+    confidence: 0.75
+  d_007_c03:
+    id: d_007_c03
+    name_zh: 订单状态
+    column: t_007.c03
+    filter_column: t_007.c03
+    filter_lookup: t_007.c03
+    value_source: t_007
+    synonyms:
+    - order_status
+    - 订单状态
+    - 状态
+    - orders
+    selected: true
+    provenance: auto
+    confidence: 0.95
+  d_007_002_c04:
+    id: d_007_002_c04
+    name_zh: 客户城市
+    column: t_002.c04
+    filter_column: t_002.c04
+    filter_lookup: t_002.c04
+    value_source: t_002
+    join_path:
+    - t_007 -> t_002
+    synonyms:
+    - customer_city
+    - 客户城市
+    - 城市
+    - 地区
+    - customers
+    selected: true
+    provenance: auto
+    confidence: 0.9
+  d_007_002_c05:
+    id: d_007_002_c05
+    name_zh: 客户省份
+    column: t_002.c05
+    filter_column: t_002.c05
+    filter_lookup: t_002.c05
+    value_source: t_002
+    join_path:
+    - t_007 -> t_002
+    synonyms:
+    - customer_state
+    - 客户省份
+    - 省份
+    - 州
+    - customers
+    selected: true
+    provenance: auto
+    confidence: 0.9
+  d_007_003_c04:
+    id: d_007_003_c04
+    name_zh: 城市
+    column: t_003.c04
+    filter_column: t_003.c04
+    filter_lookup: t_003.c04
+    value_source: t_003
+    join_path:
+    - t_007 -> t_002
+    - t_002 -> t_003
+    synonyms:
+    - city
+    - 城市
+    - geolocation
+    selected: true
+    provenance: auto
+    confidence: 0.75
+  d_007_003_c05:
+    id: d_007_003_c05
+    name_zh: 省份
+    column: t_003.c05
+    filter_column: t_003.c05
+    filter_lookup: t_003.c05
+    value_source: t_003
+    join_path:
+    - t_007 -> t_002
+    - t_002 -> t_003
+    synonyms:
+    - state
+    - 省份
+    - 州
+    - geolocation
+    selected: true
+    provenance: auto
+    confidence: 0.75
+  d_doc_t_007_c07_c08:
+    id: d_doc_t_007_c07_c08
+    name_zh: 是否延迟
+    kind: derived
+    expr: t_007.c07 > t_007.c08
+    requires: t_007
+    labels:
+      'true': 延迟
+      'false': 准时
+    synonyms:
+    - 延迟
+    - 准时
+    - 是否延迟
+    - 延迟订单
+    - 准时订单
+    - 延迟评价
+    selected: true
+    provenance: documentation
+    confidence: 0.8
+    definition: 延迟：t_007.c07 > t_007.c08；否则为准时。
+policies:
+  ambiguity: ask_once_then_remember
+  missing_year: latest_occurrence_in_range
+  ratio_grain: order
+  max_retry: 1
+generic: true

@@ -1,0 +1,149 @@
+{
+  "source": "README.md",
+  "parsed_at": "2026-11-11T19:57:58",
+  "parser": "llm+deterministic",
+  "rules": [
+    {
+      "name": "销售额",
+      "aliases": [
+        "销售额",
+        "GMV",
+        "销售金额"
+      ],
+      "definition": "已送达订单的 order_items.price 合计，不含运费；数据范围为 2025-01 至 2025-06。",
+      "aggregation": "sum",
+      "table": "order_items",
+      "columns": [
+        "price"
+      ],
+      "filters": {
+        "order_status": "delivered"
+      },
+      "formula": null,
+      "unit": "货币",
+      "notes": [
+        "不含运费"
+      ],
+      "raw": "销售额口径：已送达订单的 order_items.price，不含运费",
+      "source": "llm+document",
+      "table_id": "t_004",
+      "resolved_columns": [
+        {
+          "table": "t_004",
+          "column": "c06",
+          "label": "price"
+        }
+      ]
+    },
+    {
+      "name": "延迟订单",
+      "aliases": [
+        "延迟订单",
+        "延迟订单数"
+      ],
+      "definition": "已送达时间晚于预计送达时间的订单；延迟判定为 delivered_at > estimated_delivery_at。",
+      "aggregation": "count",
+      "table": "orders",
+      "columns": [
+        "order_id",
+        "delivered_at",
+        "estimated_delivery_at"
+      ],
+      "filters": {
+        "order_status": "delivered"
+      },
+      "formula": "delivered_at > estimated_delivery_at",
+      "unit": "单",
+      "notes": [],
+      "raw": "延迟订单：delivered_at > estimated_delivery_at",
+      "source": "llm+document",
+      "table_id": "t_007",
+      "resolved_columns": [
+        {
+          "table": "t_007",
+          "column": "c01",
+          "label": "order_id"
+        },
+        {
+          "table": "t_007",
+          "column": "c07",
+          "label": "delivered_at"
+        },
+        {
+          "table": "t_007",
+          "column": "c08",
+          "label": "estimated_delivery_at"
+        }
+      ]
+    },
+    {
+      "name": "低分评价",
+      "aliases": [
+        "低分评价",
+        "低分评价数"
+      ],
+      "definition": "评价分数小于等于 2 的评价；低分判定为 review_score <= 2。",
+      "aggregation": "count",
+      "table": "order_reviews",
+      "columns": [
+        "review_id",
+        "review_score"
+      ],
+      "filters": {},
+      "formula": "review_score <= 2",
+      "unit": "条",
+      "notes": [],
+      "raw": "低分评价：review_score <= 2",
+      "source": "llm+document",
+      "table_id": "t_006",
+      "resolved_columns": [
+        {
+          "table": "t_006",
+          "column": "c01",
+          "label": "review_id"
+        },
+        {
+          "table": "t_006",
+          "column": "c03",
+          "label": "review_score"
+        }
+      ]
+    },
+    {
+      "name": "订单数",
+      "aliases": [
+        "订单数",
+        "订单量"
+      ],
+      "definition": "统计范围内订单数量；数据范围为 2025-01 至 2025-06。",
+      "aggregation": "count",
+      "table": "orders",
+      "columns": [
+        "order_id"
+      ],
+      "filters": {},
+      "formula": null,
+      "unit": "单",
+      "notes": [],
+      "raw": "",
+      "source": "llm",
+      "table_id": "t_007",
+      "resolved_columns": [
+        {
+          "table": "t_007",
+          "column": "c01",
+          "label": "order_id"
+        }
+      ]
+    }
+  ],
+  "notes": [
+    "数据范围：2025-01 至 2025-06",
+    "订单数：180",
+    "数据结构：参考 Olist 巴西电商公开数据集",
+    "随机种子：20260921，可重复生成"
+  ],
+  "warnings": [],
+  "size": 358,
+  "path": "docs\\README.md"
+}

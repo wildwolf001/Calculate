@@ -1,0 +1,2964 @@
+{
+  "data_version": "sha256:19c27310c21d5074",
+  "dataset_id": "ds_d7390c8574a4",
+  "dimensions": {
+    "d_004_001_c03": {
+      "column": "t_001.c03",
+      "expr": null,
+      "kind": "categorical",
+      "labels": {},
+      "name": "品类",
+      "pii": false,
+      "requires": null,
+      "synonyms": [
+        "category_name_zh",
+        "品类",
+        "类目",
+        "分类",
+        "categories"
+      ],
+      "values": [
+        "图书文教",
+        "家居生活",
+        "数码家电",
+        "美妆个护",
+        "运动户外",
+        "食品饮料"
+      ]
+    },
+    "d_004_002_c04": {
+      "column": "t_002.c04",
+      "expr": null,
+      "kind": "categorical",
+      "labels": {},
+      "name": "客户城市",
+      "pii": false,
+      "requires": null,
+      "synonyms": [
+        "customer_city",
+        "客户城市",
+        "城市",
+        "地区",
+        "customers"
+      ],
+      "values": [
+        "上海",
+        "北京",
+        "南京",
+        "广州",
+        "成都",
+        "杭州",
+        "武汉",
+        "深圳",
+        "西安",
+        "长沙"
+      ]
+    },
+    "d_004_002_c05": {
+      "column": "t_002.c05",
+      "expr": null,
+      "kind": "categorical",
+      "labels": {},
+      "name": "客户省份",
+      "pii": false,
+      "requires": null,
+      "synonyms": [
+        "customer_state",
+        "客户省份",
+        "省份",
+        "州",
+        "customers"
+      ],
+      "values": [
+        "上海",
+        "北京",
+        "四川",
+        "广东",
+        "江苏",
+        "浙江",
+        "湖北",
+        "湖南",
+        "陕西"
+      ]
+    },
+    "d_004_003_c04": {
+      "column": "t_003.c04",
+      "expr": null,
+      "kind": "categorical",
+      "labels": {},
+      "name": "城市",
+      "pii": false,
+      "requires": null,
+      "synonyms": [
+        "city",
+        "城市",
+        "geolocation"
+      ],
+      "values": [
+        "上海",
+        "北京",
+        "南京",
+        "广州",
+        "成都",
+        "杭州",
+        "武汉",
+        "深圳",
+        "西安",
+        "长沙"
+      ]
+    },
+    "d_004_003_c05": {
+      "column": "t_003.c05",
+      "expr": null,
+      "kind": "categorical",
+      "labels": {},
+      "name": "省份",
+      "pii": false,
+      "requires": null,
+      "synonyms": [
+        "state",
+        "省份",
+        "州",
+        "geolocation"
+      ],
+      "values": [
+        "上海",
+        "北京",
+        "四川",
+        "广东",
+        "江苏",
+        "浙江",
+        "湖北",
+        "湖南",
+        "陕西"
+      ]
+    },
+    "d_004_007_c03": {
+      "column": "t_007.c03",
+      "expr": null,
+      "kind": "categorical",
+      "labels": {},
+      "name": "订单状态",
+      "pii": false,
+      "requires": null,
+      "synonyms": [
+        "order_status",
+        "订单状态",
+        "状态",
+        "orders"
+      ],
+      "values": [
+        "cancelled",
+        "delivered",
+        "shipped",
+        "unavailable"
+      ]
+    },
+    "d_004_008_c03": {
+      "column": "t_008.c03",
+      "expr": null,
+      "kind": "categorical",
+      "labels": {},
+      "name": "商品名称",
+      "pii": false,
+      "requires": null,
+      "synonyms": [
+        "product_name",
+        "商品",
+        "商品名称",
+        "产品",
+        "products"
+      ],
+      "values": [
+        "世界文学",
+        "保湿面霜",
+        "儿童绘本",
+        "办公椅",
+        "口红",
+        "商业分析",
+        "坚果礼盒",
+        "巧克力",
+        "护眼台灯",
+        "收纳箱",
+        "无线耳机",
+        "智能手环",
+        "机械键盘",
+        "洁面乳",
+        "洗发水",
+        "燕麦片",
+        "瑜伽垫",
+        "登山包",
+        "移动电源",
+        "空气炸锅",
+        "纯棉四件套",
+        "编程入门",
+        "羽毛球拍",
+        "蓝牙音箱",
+        "财务管理",
+        "跑步鞋",
+        "运动水杯",
+        "防晒霜",
+        "黑咖啡",
+        "龙井茶"
+      ]
+    },
+    "d_004_009_c02": {
+      "column": "t_009.c02",
+      "expr": null,
+      "kind": "categorical",
+      "labels": {},
+      "name": "商家名称",
+      "pii": false,
+      "requires": null,
+      "synonyms": [
+        "seller_name",
+        "商家",
+        "商家名称",
+        "卖家",
+        "sellers"
+      ],
+      "values": [
+        "京华数码",
+        "岭南好物",
+        "杭城食品",
+        "沪上家居",
+        "深湾美妆",
+        "蓉城运动",
+        "金陵书局",
+        "长安优选"
+      ]
+    },
+    "d_004_009_c04": {
+      "column": "t_009.c04",
+      "expr": null,
+      "kind": "categorical",
+      "labels": {},
+      "name": "商家城市",
+      "pii": false,
+      "requires": null,
+      "synonyms": [
+        "seller_city",
+        "城市",
+        "sellers"
+      ],
+      "values": [
+        "上海",
+        "北京",
+        "南京",
+        "广州",
+        "成都",
+        "杭州",
+        "深圳",
+        "西安"
+      ]
+    },
+    "d_005_002_c04": {
+      "column": "t_002.c04",
+      "expr": null,
+      "kind": "categorical",
+      "labels": {},
+      "name": "客户城市",
+      "pii": false,
+      "requires": null,
+      "synonyms": [
+        "customer_city",
+        "客户城市",
+        "城市",
+        "地区",
+        "customers"
+      ],
+      "values": [
+        "上海",
+        "北京",
+        "南京",
+        "广州",
+        "成都",
+        "杭州",
+        "武汉",
+        "深圳",
+        "西安",
+        "长沙"
+      ]
+    },
+    "d_005_002_c05": {
+      "column": "t_002.c05",
+      "expr": null,
+      "kind": "categorical",
+      "labels": {},
+      "name": "客户省份",
+      "pii": false,
+      "requires": null,
+      "synonyms": [
+        "customer_state",
+        "客户省份",
+        "省份",
+        "州",
+        "customers"
+      ],
+      "values": [
+        "上海",
+        "北京",
+        "四川",
+        "广东",
+        "江苏",
+        "浙江",
+        "湖北",
+        "湖南",
+        "陕西"
+      ]
+    },
+    "d_005_007_c03": {
+      "column": "t_007.c03",
+      "expr": null,
+      "kind": "categorical",
+      "labels": {},
+      "name": "订单状态",
+      "pii": false,
+      "requires": null,
+      "synonyms": [
+        "order_status",
+        "订单状态",
+        "状态",
+        "orders"
+      ],
+      "values": [
+        "cancelled",
+        "delivered",
+        "shipped",
+        "unavailable"
+      ]
+    },
+    "d_005_c03": {
+      "column": "t_005.c03",
+      "expr": null,
+      "kind": "categorical",
+      "labels": {},
+      "name": "支付方式",
+      "pii": false,
+      "requires": null,
+      "synonyms": [
+        "payment_type",
+        "支付方式",
+        "付款方式",
+        "order_payments"
+      ],
+      "values": [
+        "bank_transfer",
+        "credit_card",
+        "debit_card",
+        "voucher"
+      ]
+    },
+    "d_005_c04": {
+      "column": "t_005.c04",
+      "expr": null,
+      "kind": "categorical",
+      "labels": {},
+      "name": "分期期数",
+      "pii": false,
+      "requires": null,
+      "synonyms": [
+        "payment_installments",
+        "分期期数",
+        "分期",
+        "order_payments"
+      ],
+      "values": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8"
+      ]
+    },
+    "d_006_002_c04": {
+      "column": "t_002.c04",
+      "expr": null,
+      "kind": "categorical",
+      "labels": {},
+      "name": "客户城市",
+      "pii": false,
+      "requires": null,
+      "synonyms": [
+        "customer_city",
+        "客户城市",
+        "城市",
+        "地区",
+        "customers"
+      ],
+      "values": [
+        "上海",
+        "北京",
+        "南京",
+        "广州",
+        "成都",
+        "杭州",
+        "武汉",
+        "深圳",
+        "西安",
+        "长沙"
+      ]
+    },
+    "d_006_002_c05": {
+      "column": "t_002.c05",
+      "expr": null,
+      "kind": "categorical",
+      "labels": {},
+      "name": "客户省份",
+      "pii": false,
+      "requires": null,
+      "synonyms": [
+        "customer_state",
+        "客户省份",
+        "省份",
+        "州",
+        "customers"
+      ],
+      "values": [
+        "上海",
+        "北京",
+        "四川",
+        "广东",
+        "江苏",
+        "浙江",
+        "湖北",
+        "湖南",
+        "陕西"
+      ]
+    },
+    "d_006_007_c03": {
+      "column": "t_007.c03",
+      "expr": null,
+      "kind": "categorical",
+      "labels": {},
+      "name": "订单状态",
+      "pii": false,
+      "requires": null,
+      "synonyms": [
+        "order_status",
+        "订单状态",
+        "状态",
+        "orders"
+      ],
+      "values": [
+        "cancelled",
+        "delivered",
+        "shipped",
+        "unavailable"
+      ]
+    },
+    "d_006_c04": {
+      "column": "t_006.c04",
+      "expr": null,
+      "kind": "categorical",
+      "labels": {},
+      "name": "review_title",
+      "pii": false,
+      "requires": null,
+      "synonyms": [
+        "review_title",
+        "order_reviews"
+      ],
+      "values": [
+        "体验不佳",
+        "购买反馈"
+      ]
+    },
+    "d_007_002_c04": {
+      "column": "t_002.c04",
+      "expr": null,
+      "kind": "categorical",
+      "labels": {},
+      "name": "客户城市",
+      "pii": false,
+      "requires": null,
+      "synonyms": [
+        "customer_city",
+        "客户城市",
+        "城市",
+        "地区",
+        "customers"
+      ],
+      "values": [
+        "上海",
+        "北京",
+        "南京",
+        "广州",
+        "成都",
+        "杭州",
+        "武汉",
+        "深圳",
+        "西安",
+        "长沙"
+      ]
+    },
+    "d_007_002_c05": {
+      "column": "t_002.c05",
+      "expr": null,
+      "kind": "categorical",
+      "labels": {},
+      "name": "客户省份",
+      "pii": false,
+      "requires": null,
+      "synonyms": [
+        "customer_state",
+        "客户省份",
+        "省份",
+        "州",
+        "customers"
+      ],
+      "values": [
+        "上海",
+        "北京",
+        "四川",
+        "广东",
+        "江苏",
+        "浙江",
+        "湖北",
+        "湖南",
+        "陕西"
+      ]
+    },
+    "d_007_003_c04": {
+      "column": "t_003.c04",
+      "expr": null,
+      "kind": "categorical",
+      "labels": {},
+      "name": "城市",
+      "pii": false,
+      "requires": null,
+      "synonyms": [
+        "city",
+        "城市",
+        "geolocation"
+      ],
+      "values": [
+        "上海",
+        "北京",
+        "南京",
+        "广州",
+        "成都",
+        "杭州",
+        "武汉",
+        "深圳",
+        "西安",
+        "长沙"
+      ]
+    },
+    "d_007_003_c05": {
+      "column": "t_003.c05",
+      "expr": null,
+      "kind": "categorical",
+      "labels": {},
+      "name": "省份",
+      "pii": false,
+      "requires": null,
+      "synonyms": [
+        "state",
+        "省份",
+        "州",
+        "geolocation"
+      ],
+      "values": [
+        "上海",
+        "北京",
+        "四川",
+        "广东",
+        "江苏",
+        "浙江",
+        "湖北",
+        "湖南",
+        "陕西"
+      ]
+    },
+    "d_007_c03": {
+      "column": "t_007.c03",
+      "expr": null,
+      "kind": "categorical",
+      "labels": {},
+      "name": "订单状态",
+      "pii": false,
+      "requires": null,
+      "synonyms": [
+        "order_status",
+        "订单状态",
+        "状态",
+        "orders"
+      ],
+      "values": [
+        "cancelled",
+        "delivered",
+        "shipped",
+        "unavailable"
+      ]
+    },
+    "d_doc_t_007_c07_c08": {
+      "column": null,
+      "expr": "t_007.c07 > t_007.c08",
+      "kind": "derived",
+      "labels": {
+        "false": "准时",
+        "true": "延迟"
+      },
+      "name": "是否延迟",
+      "pii": false,
+      "requires": "t_007",
+      "synonyms": [
+        "延迟",
+        "准时",
+        "是否延迟",
+        "延迟订单",
+        "准时订单",
+        "延迟评价"
+      ],
+      "values": []
+    },
+    "month": {
+      "column": null,
+      "expr": null,
+      "kind": "time",
+      "labels": {},
+      "name": "月份",
+      "pii": false,
+      "requires": null,
+      "synonyms": [
+        "月份",
+        "按月",
+        "月度",
+        "month"
+      ],
+      "values": []
+    }
+  },
+  "docs": [
+    {
+      "columns": [
+        {
+          "column": "c06",
+          "label": "price",
+          "table": "t_004"
+        }
+      ],
+      "definition": "已送达订单的 order_items.price 合计，不含运费；数据范围为 2025-01 至 2025-06。",
+      "formula": null,
+      "name": "销售额",
+      "table": "t_004"
+    },
+    {
+      "columns": [
+        {
+          "column": "c01",
+          "label": "order_id",
+          "table": "t_007"
+        },
+        {
+          "column": "c07",
+          "label": "delivered_at",
+          "table": "t_007"
+        },
+        {
+          "column": "c08",
+          "label": "estimated_delivery_at",
+          "table": "t_007"
+        }
+      ],
+      "definition": "已送达时间晚于预计送达时间的订单；延迟判定为 delivered_at > estimated_delivery_at。",
+      "formula": "delivered_at > estimated_delivery_at",
+      "name": "延迟订单",
+      "table": "t_007"
+    },
+    {
+      "columns": [
+        {
+          "column": "c01",
+          "label": "review_id",
+          "table": "t_006"
+        },
+        {
+          "column": "c03",
+          "label": "review_score",
+          "table": "t_006"
+        }
+      ],
+      "definition": "评价分数小于等于 2 的评价；低分判定为 review_score <= 2。",
+      "formula": "review_score <= 2",
+      "name": "低分评价",
+      "table": "t_006"
+    },
+    {
+      "columns": [
+        {
+          "column": "c01",
+          "label": "order_id",
+          "table": "t_007"
+        }
+      ],
+      "definition": "统计范围内订单数量；数据范围为 2025-01 至 2025-06。",
+      "formula": null,
+      "name": "订单数",
+      "table": "t_007"
+    }
+  ],
+  "issues": [],
+  "metrics": {
+    "entity_count_t_002": {
+      "confidence": 0.7,
+      "count_orders": "COUNT(DISTINCT t_007.c01)",
+      "definition": "按 c02 去重的客户数",
+      "denominator": null,
+      "entity": "t_002.c02",
+      "entity_join": "t_007 -> t_002",
+      "expr": null,
+      "fact": "t_007",
+      "min_orders": 1,
+      "name": "自然客户数",
+      "numerator": null,
+      "provenance": "derived",
+      "scope": {
+        "t_007.c03": "delivered"
+      },
+      "supported_dimensions": [
+        "d_004_001_c03",
+        "d_004_002_c04",
+        "d_004_002_c05",
+        "d_004_003_c04",
+        "d_004_003_c05",
+        "d_004_007_c03",
+        "d_004_008_c03",
+        "d_004_009_c02",
+        "d_004_009_c04",
+        "d_005_002_c04",
+        "d_005_002_c05",
+        "d_005_007_c03",
+        "d_005_c03",
+        "d_005_c04",
+        "d_006_002_c04",
+        "d_006_002_c05",
+        "d_006_007_c03",
+        "d_006_c04",
+        "d_007_002_c04",
+        "d_007_002_c05",
+        "d_007_003_c04",
+        "d_007_003_c05",
+        "d_007_c03",
+        "d_doc_t_007_c07_c08",
+        "month"
+      ],
+      "time_axis": null,
+      "time_via": "t_007.c04",
+      "type": "entity_count",
+      "unit": "人"
+    },
+    "m_004_001_distinct": {
+      "confidence": 0.8,
+      "count_orders": null,
+      "definition": "categories中不同主键的去重计数。",
+      "denominator": null,
+      "entity": null,
+      "entity_join": null,
+      "expr": "COUNT(DISTINCT t_001.c01)",
+      "fact": "t_004",
+      "min_orders": null,
+      "name": "品类数",
+      "numerator": null,
+      "provenance": "auto",
+      "scope": {},
+      "supported_dimensions": [
+        "d_004_001_c03",
+        "d_004_002_c04",
+        "d_004_002_c05",
+        "d_004_003_c04",
+        "d_004_003_c05",
+        "d_004_007_c03",
+        "d_004_008_c03",
+        "d_004_009_c02",
+        "d_004_009_c04",
+        "d_005_002_c04",
+        "d_005_002_c05",
+        "d_005_007_c03",
+        "d_005_c03",
+        "d_005_c04",
+        "d_006_002_c04",
+        "d_006_002_c05",
+        "d_006_007_c03",
+        "d_006_c04",
+        "d_007_002_c04",
+        "d_007_002_c05",
+        "d_007_003_c04",
+        "d_007_003_c05",
+        "d_007_c03",
+        "d_doc_t_007_c07_c08",
+        "month"
+      ],
+      "time_axis": "发货截止时间",
+      "time_via": "t_004.c05",
+      "type": "aggregate",
+      "unit": "个"
+    },
+    "m_004_c03_distinct": {
+      "confidence": 0.9,
+      "count_orders": null,
+      "definition": "order_items.product_id 的去重计数。",
+      "denominator": null,
+      "entity": null,
+      "entity_join": null,
+      "expr": "COUNT(DISTINCT t_004.c03)",
+      "fact": "t_004",
+      "min_orders": null,
+      "name": "商品数",
+      "numerator": null,
+      "provenance": "auto",
+      "scope": {},
+      "supported_dimensions": [
+        "d_004_001_c03",
+        "d_004_002_c04",
+        "d_004_002_c05",
+        "d_004_003_c04",
+        "d_004_003_c05",
+        "d_004_007_c03",
+        "d_004_008_c03",
+        "d_004_009_c02",
+        "d_004_009_c04",
+        "d_005_002_c04",
+        "d_005_002_c05",
+        "d_005_007_c03",
+        "d_005_c03",
+        "d_005_c04",
+        "d_006_002_c04",
+        "d_006_002_c05",
+        "d_006_007_c03",
+        "d_006_c04",
+        "d_007_002_c04",
+        "d_007_002_c05",
+        "d_007_003_c04",
+        "d_007_003_c05",
+        "d_007_c03",
+        "d_doc_t_007_c07_c08",
+        "month"
+      ],
+      "time_axis": "发货截止时间",
+      "time_via": "t_004.c05",
+      "type": "aggregate",
+      "unit": "个"
+    },
+    "m_004_c04_distinct": {
+      "confidence": 0.9,
+      "count_orders": null,
+      "definition": "order_items.seller_id 的去重计数。",
+      "denominator": null,
+      "entity": null,
+      "entity_join": null,
+      "expr": "COUNT(DISTINCT t_004.c04)",
+      "fact": "t_004",
+      "min_orders": null,
+      "name": "商家数",
+      "numerator": null,
+      "provenance": "auto",
+      "scope": {},
+      "supported_dimensions": [
+        "d_004_001_c03",
+        "d_004_002_c04",
+        "d_004_002_c05",
+        "d_004_003_c04",
+        "d_004_003_c05",
+        "d_004_007_c03",
+        "d_004_008_c03",
+        "d_004_009_c02",
+        "d_004_009_c04",
+        "d_005_002_c04",
+        "d_005_002_c05",
+        "d_005_007_c03",
+        "d_005_c03",
+        "d_005_c04",
+        "d_006_002_c04",
+        "d_006_002_c05",
+        "d_006_007_c03",
+        "d_006_c04",
+        "d_007_002_c04",
+        "d_007_002_c05",
+        "d_007_003_c04",
+        "d_007_003_c05",
+        "d_007_c03",
+        "d_doc_t_007_c07_c08",
+        "month"
+      ],
+      "time_axis": "发货截止时间",
+      "time_via": "t_004.c05",
+      "type": "aggregate",
+      "unit": "个"
+    },
+    "m_004_c06_sum": {
+      "confidence": 0.9,
+      "count_orders": null,
+      "definition": "已送达订单的 order_items.price 合计，不含运费；数据范围为 2025-01 至 2025-06。",
+      "denominator": null,
+      "entity": null,
+      "entity_join": null,
+      "expr": "SUM(t_004.c06)",
+      "fact": "t_004",
+      "min_orders": null,
+      "name": "销售额",
+      "numerator": null,
+      "provenance": "documentation",
+      "scope": {
+        "t_007.c03": "delivered"
+      },
+      "supported_dimensions": [
+        "d_004_001_c03",
+        "d_004_002_c04",
+        "d_004_002_c05",
+        "d_004_003_c04",
+        "d_004_003_c05",
+        "d_004_007_c03",
+        "d_004_008_c03",
+        "d_004_009_c02",
+        "d_004_009_c04",
+        "d_005_002_c04",
+        "d_005_002_c05",
+        "d_005_007_c03",
+        "d_006_002_c04",
+        "d_006_002_c05",
+        "d_006_007_c03",
+        "d_007_002_c04",
+        "d_007_002_c05",
+        "d_007_003_c04",
+        "d_007_003_c05",
+        "d_007_c03",
+        "d_doc_t_007_c07_c08",
+        "month"
+      ],
+      "time_axis": "发货截止时间",
+      "time_via": "t_004.c05",
+      "type": "aggregate",
+      "unit": "货币"
+    },
+    "m_004_c07_sum": {
+      "confidence": 0.9,
+      "count_orders": null,
+      "definition": "order_items.freight_value 的合计。",
+      "denominator": null,
+      "entity": null,
+      "entity_join": null,
+      "expr": "SUM(t_004.c07)",
+      "fact": "t_004",
+      "min_orders": null,
+      "name": "运费合计",
+      "numerator": null,
+      "provenance": "auto",
+      "scope": {},
+      "supported_dimensions": [
+        "d_004_001_c03",
+        "d_004_002_c04",
+        "d_004_002_c05",
+        "d_004_003_c04",
+        "d_004_003_c05",
+        "d_004_007_c03",
+        "d_004_008_c03",
+        "d_004_009_c02",
+        "d_004_009_c04",
+        "d_005_002_c04",
+        "d_005_002_c05",
+        "d_005_007_c03",
+        "d_006_002_c04",
+        "d_006_002_c05",
+        "d_006_007_c03",
+        "d_007_002_c04",
+        "d_007_002_c05",
+        "d_007_003_c04",
+        "d_007_003_c05",
+        "d_007_c03",
+        "d_doc_t_007_c07_c08",
+        "month"
+      ],
+      "time_axis": "发货截止时间",
+      "time_via": "t_004.c05",
+      "type": "aggregate",
+      "unit": "元"
+    },
+    "m_004_row_count": {
+      "confidence": 0.95,
+      "count_orders": null,
+      "definition": "order_items的记录数。",
+      "denominator": null,
+      "entity": null,
+      "entity_join": null,
+      "expr": "COUNT(*)",
+      "fact": "t_004",
+      "min_orders": null,
+      "name": "记录数",
+      "numerator": null,
+      "provenance": "auto",
+      "scope": {},
+      "supported_dimensions": [
+        "d_004_001_c03",
+        "d_004_002_c04",
+        "d_004_002_c05",
+        "d_004_003_c04",
+        "d_004_003_c05",
+        "d_004_007_c03",
+        "d_004_008_c03",
+        "d_004_009_c02",
+        "d_004_009_c04",
+        "d_005_002_c04",
+        "d_005_002_c05",
+        "d_005_007_c03",
+        "d_006_002_c04",
+        "d_006_002_c05",
+        "d_006_007_c03",
+        "d_007_002_c04",
+        "d_007_002_c05",
+        "d_007_003_c04",
+        "d_007_003_c05",
+        "d_007_c03",
+        "d_doc_t_007_c07_c08",
+        "month"
+      ],
+      "time_axis": "发货截止时间",
+      "time_via": "t_004.c05",
+      "type": "aggregate",
+      "unit": "行"
+    },
+    "m_007_c02_distinct": {
+      "confidence": 0.9,
+      "count_orders": null,
+      "definition": "orders.customer_id 的去重计数。",
+      "denominator": null,
+      "entity": null,
+      "entity_join": null,
+      "expr": "COUNT(DISTINCT t_007.c02)",
+      "fact": "t_007",
+      "min_orders": null,
+      "name": "客户数",
+      "numerator": null,
+      "provenance": "auto",
+      "scope": {},
+      "supported_dimensions": [
+        "d_004_001_c03",
+        "d_004_002_c04",
+        "d_004_002_c05",
+        "d_004_003_c04",
+        "d_004_003_c05",
+        "d_004_007_c03",
+        "d_004_008_c03",
+        "d_004_009_c02",
+        "d_004_009_c04",
+        "d_005_002_c04",
+        "d_005_002_c05",
+        "d_005_007_c03",
+        "d_005_c03",
+        "d_005_c04",
+        "d_006_002_c04",
+        "d_006_002_c05",
+        "d_006_007_c03",
+        "d_006_c04",
+        "d_007_002_c04",
+        "d_007_002_c05",
+        "d_007_003_c04",
+        "d_007_003_c05",
+        "d_007_c03",
+        "d_doc_t_007_c07_c08",
+        "month"
+      ],
+      "time_axis": "下单时间",
+      "time_via": "t_007.c04",
+      "type": "aggregate",
+      "unit": "个"
+    },
+    "m_doc_低分评价": {
+      "confidence": 0.8,
+      "count_orders": null,
+      "definition": "评价分数小于等于 2 的评价；低分判定为 review_score <= 2。",
+      "denominator": null,
+      "entity": null,
+      "entity_join": null,
+      "expr": "COUNT(CASE WHEN t_006.c03 <= 2 THEN 1 END)",
+      "fact": "t_006",
+      "min_orders": null,
+      "name": "低分评价",
+      "numerator": null,
+      "provenance": "documentation",
+      "scope": {},
+      "supported_dimensions": [
+        "d_004_002_c04",
+        "d_004_002_c05",
+        "d_004_003_c04",
+        "d_004_003_c05",
+        "d_004_007_c03",
+        "d_005_002_c04",
+        "d_005_002_c05",
+        "d_005_007_c03",
+        "d_006_002_c04",
+        "d_006_002_c05",
+        "d_006_007_c03",
+        "d_006_c04",
+        "d_007_002_c04",
+        "d_007_002_c05",
+        "d_007_003_c04",
+        "d_007_003_c05",
+        "d_007_c03",
+        "d_doc_t_007_c07_c08",
+        "month"
+      ],
+      "time_axis": "评价时间",
+      "time_via": "t_006.c06",
+      "type": "aggregate",
+      "unit": "条"
+    },
+    "m_doc_延迟订单": {
+      "confidence": 0.8,
+      "count_orders": null,
+      "definition": "已送达时间晚于预计送达时间的订单；延迟判定为 delivered_at > estimated_delivery_at。",
+      "denominator": null,
+      "entity": null,
+      "entity_join": null,
+      "expr": "COUNT(CASE WHEN t_007.c07 > t_007.c08 THEN 1 END)",
+      "fact": "t_007",
+      "min_orders": null,
+      "name": "延迟订单",
+      "numerator": null,
+      "provenance": "documentation",
+      "scope": {
+        "t_007.c03": "delivered"
+      },
+      "supported_dimensions": [
+        "d_004_002_c04",
+        "d_004_002_c05",
+        "d_004_003_c04",
+        "d_004_003_c05",
+        "d_004_007_c03",
+        "d_005_002_c04",
+        "d_005_002_c05",
+        "d_005_007_c03",
+        "d_006_002_c04",
+        "d_006_002_c05",
+        "d_006_007_c03",
+        "d_007_002_c04",
+        "d_007_002_c05",
+        "d_007_003_c04",
+        "d_007_003_c05",
+        "d_007_c03",
+        "d_doc_t_007_c07_c08",
+        "month"
+      ],
+      "time_axis": "下单时间",
+      "time_via": "t_007.c04",
+      "type": "aggregate",
+      "unit": "单"
+    },
+    "m_doc_订单数": {
+      "confidence": 0.8,
+      "count_orders": null,
+      "definition": "统计范围内订单数量；数据范围为 2025-01 至 2025-06。",
+      "denominator": null,
+      "entity": null,
+      "entity_join": null,
+      "expr": "COUNT(t_007.c01)",
+      "fact": "t_007",
+      "min_orders": null,
+      "name": "订单数",
+      "numerator": null,
+      "provenance": "documentation",
+      "scope": {},
+      "supported_dimensions": [
+        "d_004_002_c04",
+        "d_004_002_c05",
+        "d_004_003_c04",
+        "d_004_003_c05",
+        "d_004_007_c03",
+        "d_005_002_c04",
+        "d_005_002_c05",
+        "d_005_007_c03",
+        "d_006_002_c04",
+        "d_006_002_c05",
+        "d_006_007_c03",
+        "d_007_002_c04",
+        "d_007_002_c05",
+        "d_007_003_c04",
+        "d_007_003_c05",
+        "d_007_c03",
+        "d_doc_t_007_c07_c08",
+        "month"
+      ],
+      "time_axis": "下单时间",
+      "time_via": "t_007.c04",
+      "type": "aggregate",
+      "unit": "单"
+    },
+    "m_llm_优惠券支付订单数": {
+      "confidence": 0.7,
+      "count_orders": null,
+      "definition": "已送达订单中使用优惠券支付的去重订单数。",
+      "denominator": null,
+      "entity": null,
+      "entity_join": null,
+      "expr": "COUNT(DISTINCT t_005.c01)",
+      "fact": "t_005",
+      "min_orders": null,
+      "name": "优惠券支付订单数",
+      "numerator": null,
+      "provenance": "llm",
+      "scope": {
+        "t_005.c03": "voucher",
+        "t_007.c03": "delivered"
+      },
+      "supported_dimensions": [
+        "d_004_001_c03",
+        "d_004_002_c04",
+        "d_004_002_c05",
+        "d_004_003_c04",
+        "d_004_003_c05",
+        "d_004_007_c03",
+        "d_004_008_c03",
+        "d_004_009_c02",
+        "d_004_009_c04",
+        "d_005_002_c04",
+        "d_005_002_c05",
+        "d_005_007_c03",
+        "d_005_c03",
+        "d_005_c04",
+        "d_006_002_c04",
+        "d_006_002_c05",
+        "d_006_007_c03",
+        "d_006_c04",
+        "d_007_002_c04",
+        "d_007_002_c05",
+        "d_007_003_c04",
+        "d_007_003_c05",
+        "d_007_c03",
+        "d_doc_t_007_c07_c08",
+        "month"
+      ],
+      "time_axis": "下单时间",
+      "time_via": "t_007.c04",
+      "type": "aggregate",
+      "unit": "单"
+    },
+    "m_llm_低分评价率": {
+      "confidence": 0.7,
+      "count_orders": null,
+      "definition": "已送达订单评价中，评分低于3分的评价占比。",
+      "denominator": "COUNT(DISTINCT t_006.c01)",
+      "entity": null,
+      "entity_join": null,
+      "expr": null,
+      "fact": "t_006",
+      "min_orders": null,
+      "name": "低分评价率",
+      "numerator": "COUNT(CASE WHEN t_006.c03 < 3 THEN 1 END)",
+      "provenance": "llm",
+      "scope": {
+        "t_007.c03": "delivered"
+      },
+      "supported_dimensions": [
+        "d_004_001_c03",
+        "d_004_002_c04",
+        "d_004_002_c05",
+        "d_004_003_c04",
+        "d_004_003_c05",
+        "d_004_007_c03",
+        "d_004_008_c03",
+        "d_004_009_c02",
+        "d_004_009_c04",
+        "d_005_002_c04",
+        "d_005_002_c05",
+        "d_005_007_c03",
+        "d_005_c03",
+        "d_005_c04",
+        "d_006_002_c04",
+        "d_006_002_c05",
+        "d_006_007_c03",
+        "d_006_c04",
+        "d_007_002_c04",
+        "d_007_002_c05",
+        "d_007_003_c04",
+        "d_007_003_c05",
+        "d_007_c03",
+        "d_doc_t_007_c07_c08",
+        "month"
+      ],
+      "time_axis": "评价时间",
+      "time_via": "t_006.c06",
+      "type": "ratio",
+      "unit": "%"
+    },
+    "m_llm_信用卡支付金额": {
+      "confidence": 0.7,
+      "count_orders": null,
+      "definition": "已送达订单中信用卡支付方式的支付金额合计。",
+      "denominator": null,
+      "entity": null,
+      "entity_join": null,
+      "expr": "SUM(t_005.c05)",
+      "fact": "t_005",
+      "min_orders": null,
+      "name": "信用卡支付金额",
+      "numerator": null,
+      "provenance": "llm",
+      "scope": {
+        "t_005.c03": "credit_card",
+        "t_007.c03": "delivered"
+      },
+      "supported_dimensions": [
+        "d_004_002_c04",
+        "d_004_002_c05",
+        "d_004_003_c04",
+        "d_004_003_c05",
+        "d_004_007_c03",
+        "d_005_002_c04",
+        "d_005_002_c05",
+        "d_005_007_c03",
+        "d_005_c03",
+        "d_005_c04",
+        "d_006_002_c04",
+        "d_006_002_c05",
+        "d_006_007_c03",
+        "d_007_002_c04",
+        "d_007_002_c05",
+        "d_007_003_c04",
+        "d_007_003_c05",
+        "d_007_c03",
+        "d_doc_t_007_c07_c08",
+        "month"
+      ],
+      "time_axis": "下单时间",
+      "time_via": "t_007.c04",
+      "type": "aggregate",
+      "unit": "元"
+    },
+    "m_llm_动销商品数": {
+      "confidence": 0.7,
+      "count_orders": null,
+      "definition": "已送达订单中出现过的去重商品数。",
+      "denominator": null,
+      "entity": null,
+      "entity_join": null,
+      "expr": "COUNT(DISTINCT t_004.c03)",
+      "fact": "t_004",
+      "min_orders": null,
+      "name": "动销商品数",
+      "numerator": null,
+      "provenance": "llm",
+      "scope": {
+        "t_007.c03": "delivered"
+      },
+      "supported_dimensions": [
+        "d_004_001_c03",
+        "d_004_002_c04",
+        "d_004_002_c05",
+        "d_004_003_c04",
+        "d_004_003_c05",
+        "d_004_007_c03",
+        "d_004_008_c03",
+        "d_004_009_c02",
+        "d_004_009_c04",
+        "d_005_002_c04",
+        "d_005_002_c05",
+        "d_005_007_c03",
+        "d_005_c03",
+        "d_005_c04",
+        "d_006_002_c04",
+        "d_006_002_c05",
+        "d_006_007_c03",
+        "d_006_c04",
+        "d_007_002_c04",
+        "d_007_002_c05",
+        "d_007_003_c04",
+        "d_007_003_c05",
+        "d_007_c03",
+        "d_doc_t_007_c07_c08",
+        "month"
+      ],
+      "time_axis": "发货截止时间",
+      "time_via": "t_004.c05",
+      "type": "aggregate",
+      "unit": "个"
+    },
+    "m_llm_动销商家数": {
+      "confidence": 0.7,
+      "count_orders": null,
+      "definition": "已送达订单中出现过的去重商家数。",
+      "denominator": null,
+      "entity": null,
+      "entity_join": null,
+      "expr": "COUNT(DISTINCT t_004.c04)",
+      "fact": "t_004",
+      "min_orders": null,
+      "name": "动销商家数",
+      "numerator": null,
+      "provenance": "llm",
+      "scope": {
+        "t_007.c03": "delivered"
+      },
+      "supported_dimensions": [
+        "d_004_001_c03",
+        "d_004_002_c04",
+        "d_004_002_c05",
+        "d_004_003_c04",
+        "d_004_003_c05",
+        "d_004_007_c03",
+        "d_004_008_c03",
+        "d_004_009_c02",
+        "d_004_009_c04",
+        "d_005_002_c04",
+        "d_005_002_c05",
+        "d_005_007_c03",
+        "d_005_c03",
+        "d_005_c04",
+        "d_006_002_c04",
+        "d_006_002_c05",
+        "d_006_007_c03",
+        "d_006_c04",
+        "d_007_002_c04",
+        "d_007_002_c05",
+        "d_007_003_c04",
+        "d_007_003_c05",
+        "d_007_c03",
+        "d_doc_t_007_c07_c08",
+        "month"
+      ],
+      "time_axis": "发货截止时间",
+      "time_via": "t_004.c05",
+      "type": "aggregate",
+      "unit": "个"
+    },
+    "m_llm_复购客户数": {
+      "confidence": 0.7,
+      "count_orders": "COUNT(DISTINCT t_007.c01)",
+      "definition": "在已送达订单中，下单次数不少于2次的去重客户数。",
+      "denominator": null,
+      "entity": "t_002.c02",
+      "entity_join": "t_007 -> t_002",
+      "expr": null,
+      "fact": "t_007",
+      "min_orders": 2,
+      "name": "复购客户数",
+      "numerator": null,
+      "provenance": "llm",
+      "scope": {
+        "t_007.c03": "delivered"
+      },
+      "supported_dimensions": [
+        "d_004_001_c03",
+        "d_004_002_c04",
+        "d_004_002_c05",
+        "d_004_003_c04",
+        "d_004_003_c05",
+        "d_004_007_c03",
+        "d_004_008_c03",
+        "d_004_009_c02",
+        "d_004_009_c04",
+        "d_005_002_c04",
+        "d_005_002_c05",
+        "d_005_007_c03",
+        "d_005_c03",
+        "d_005_c04",
+        "d_006_002_c04",
+        "d_006_002_c05",
+        "d_006_007_c03",
+        "d_006_c04",
+        "d_007_002_c04",
+        "d_007_002_c05",
+        "d_007_003_c04",
+        "d_007_003_c05",
+        "d_007_c03",
+        "d_doc_t_007_c07_c08",
+        "month"
+      ],
+      "time_axis": "下单时间",
+      "time_via": "t_007.c04",
+      "type": "entity_count",
+      "unit": "人"
+    },
+    "m_llm_好评率": {
+      "confidence": 0.7,
+      "count_orders": null,
+      "definition": "已送达订单评价中，评分高于3分的评价占比。",
+      "denominator": "COUNT(DISTINCT t_006.c01)",
+      "entity": null,
+      "entity_join": null,
+      "expr": null,
+      "fact": "t_006",
+      "min_orders": null,
+      "name": "好评率",
+      "numerator": "COUNT(CASE WHEN t_006.c03 > 3 THEN 1 END)",
+      "provenance": "llm",
+      "scope": {
+        "t_007.c03": "delivered"
+      },
+      "supported_dimensions": [
+        "d_004_001_c03",
+        "d_004_002_c04",
+        "d_004_002_c05",
+        "d_004_003_c04",
+        "d_004_003_c05",
+        "d_004_007_c03",
+        "d_004_008_c03",
+        "d_004_009_c02",
+        "d_004_009_c04",
+        "d_005_002_c04",
+        "d_005_002_c05",
+        "d_005_007_c03",
+        "d_005_c03",
+        "d_005_c04",
+        "d_006_002_c04",
+        "d_006_002_c05",
+        "d_006_007_c03",
+        "d_006_c04",
+        "d_007_002_c04",
+        "d_007_002_c05",
+        "d_007_003_c04",
+        "d_007_003_c05",
+        "d_007_c03",
+        "d_doc_t_007_c07_c08",
+        "month"
+      ],
+      "time_axis": "评价时间",
+      "time_via": "t_006.c06",
+      "type": "ratio",
+      "unit": "%"
+    },
+    "m_llm_已交付商品销售额": {
+      "confidence": 0.7,
+      "count_orders": null,
+      "definition": "已送达订单中商品价格合计，不含运费。",
+      "denominator": null,
+      "entity": null,
+      "entity_join": null,
+      "expr": "SUM(t_004.c06)",
+      "fact": "t_004",
+      "min_orders": null,
+      "name": "已交付商品销售额",
+      "numerator": null,
+      "provenance": "llm",
+      "scope": {
+        "t_007.c03": "delivered"
+      },
+      "supported_dimensions": [
+        "d_004_001_c03",
+        "d_004_002_c04",
+        "d_004_002_c05",
+        "d_004_003_c04",
+        "d_004_003_c05",
+        "d_004_007_c03",
+        "d_004_008_c03",
+        "d_004_009_c02",
+        "d_004_009_c04",
+        "d_005_002_c04",
+        "d_005_002_c05",
+        "d_005_007_c03",
+        "d_006_002_c04",
+        "d_006_002_c05",
+        "d_006_007_c03",
+        "d_007_002_c04",
+        "d_007_002_c05",
+        "d_007_003_c04",
+        "d_007_003_c05",
+        "d_007_c03",
+        "d_doc_t_007_c07_c08",
+        "month"
+      ],
+      "time_axis": "发货截止时间",
+      "time_via": "t_004.c05",
+      "type": "aggregate",
+      "unit": "元"
+    },
+    "m_llm_已交付支付金额": {
+      "confidence": 0.7,
+      "count_orders": null,
+      "definition": "已送达订单的支付流水金额合计。",
+      "denominator": null,
+      "entity": null,
+      "entity_join": null,
+      "expr": "SUM(t_005.c05)",
+      "fact": "t_005",
+      "min_orders": null,
+      "name": "已交付支付金额",
+      "numerator": null,
+      "provenance": "llm",
+      "scope": {
+        "t_007.c03": "delivered"
+      },
+      "supported_dimensions": [
+        "d_004_002_c04",
+        "d_004_002_c05",
+        "d_004_003_c04",
+        "d_004_003_c05",
+        "d_004_007_c03",
+        "d_005_002_c04",
+        "d_005_002_c05",
+        "d_005_007_c03",
+        "d_005_c03",
+        "d_005_c04",
+        "d_006_002_c04",
+        "d_006_002_c05",
+        "d_006_007_c03",
+        "d_007_002_c04",
+        "d_007_002_c05",
+        "d_007_003_c04",
+        "d_007_003_c05",
+        "d_007_c03",
+        "d_doc_t_007_c07_c08",
+        "month"
+      ],
+      "time_axis": "下单时间",
+      "time_via": "t_007.c04",
+      "type": "aggregate",
+      "unit": "元"
+    },
+    "m_llm_已交付订单平均评分": {
+      "confidence": 0.7,
+      "count_orders": null,
+      "definition": "已送达订单关联评价的平均评分。",
+      "denominator": null,
+      "entity": null,
+      "entity_join": null,
+      "expr": "AVG(t_006.c03)",
+      "fact": "t_006",
+      "min_orders": null,
+      "name": "已交付订单平均评分",
+      "numerator": null,
+      "provenance": "llm",
+      "scope": {
+        "t_007.c03": "delivered"
+      },
+      "supported_dimensions": [
+        "d_004_002_c04",
+        "d_004_002_c05",
+        "d_004_003_c04",
+        "d_004_003_c05",
+        "d_004_007_c03",
+        "d_005_002_c04",
+        "d_005_002_c05",
+        "d_005_007_c03",
+        "d_006_002_c04",
+        "d_006_002_c05",
+        "d_006_007_c03",
+        "d_006_c04",
+        "d_007_002_c04",
+        "d_007_002_c05",
+        "d_007_003_c04",
+        "d_007_003_c05",
+        "d_007_c03",
+        "d_doc_t_007_c07_c08",
+        "month"
+      ],
+      "time_axis": "评价时间",
+      "time_via": "t_006.c06",
+      "type": "aggregate",
+      "unit": "分"
+    },
+    "m_llm_已交付运费合计": {
+      "confidence": 0.7,
+      "count_orders": null,
+      "definition": "已送达订单中运费合计。",
+      "denominator": null,
+      "entity": null,
+      "entity_join": null,
+      "expr": "SUM(t_004.c07)",
+      "fact": "t_004",
+      "min_orders": null,
+      "name": "已交付运费合计",
+      "numerator": null,
+      "provenance": "llm",
+      "scope": {
+        "t_007.c03": "delivered"
+      },
+      "supported_dimensions": [
+        "d_004_001_c03",
+        "d_004_002_c04",
+        "d_004_002_c05",
+        "d_004_003_c04",
+        "d_004_003_c05",
+        "d_004_007_c03",
+        "d_004_008_c03",
+        "d_004_009_c02",
+        "d_004_009_c04",
+        "d_005_002_c04",
+        "d_005_002_c05",
+        "d_005_007_c03",
+        "d_006_002_c04",
+        "d_006_002_c05",
+        "d_006_007_c03",
+        "d_007_002_c04",
+        "d_007_002_c05",
+        "d_007_003_c04",
+        "d_007_003_c05",
+        "d_007_c03",
+        "d_doc_t_007_c07_c08",
+        "month"
+      ],
+      "time_axis": "发货截止时间",
+      "time_via": "t_004.c05",
+      "type": "aggregate",
+      "unit": "元"
+    },
+    "m_llm_平均分期期数": {
+      "confidence": 0.7,
+      "count_orders": null,
+      "definition": "已送达订单支付记录的平均分期期数。",
+      "denominator": null,
+      "entity": null,
+      "entity_join": null,
+      "expr": "AVG(t_005.c04)",
+      "fact": "t_005",
+      "min_orders": null,
+      "name": "平均分期期数",
+      "numerator": null,
+      "provenance": "llm",
+      "scope": {
+        "t_007.c03": "delivered"
+      },
+      "supported_dimensions": [
+        "d_004_002_c04",
+        "d_004_002_c05",
+        "d_004_003_c04",
+        "d_004_003_c05",
+        "d_004_007_c03",
+        "d_005_002_c04",
+        "d_005_002_c05",
+        "d_005_007_c03",
+        "d_005_c03",
+        "d_005_c04",
+        "d_006_002_c04",
+        "d_006_002_c05",
+        "d_006_007_c03",
+        "d_007_002_c04",
+        "d_007_002_c05",
+        "d_007_003_c04",
+        "d_007_003_c05",
+        "d_007_c03",
+        "d_doc_t_007_c07_c08",
+        "month"
+      ],
+      "time_axis": "下单时间",
+      "time_via": "t_007.c04",
+      "type": "aggregate",
+      "unit": "期"
+    },
+    "m_llm_平均商品单价": {
+      "confidence": 0.7,
+      "count_orders": null,
+      "definition": "已送达订单明细中商品价格的平均值。",
+      "denominator": null,
+      "entity": null,
+      "entity_join": null,
+      "expr": "AVG(t_004.c06)",
+      "fact": "t_004",
+      "min_orders": null,
+      "name": "平均商品单价",
+      "numerator": null,
+      "provenance": "llm",
+      "scope": {
+        "t_007.c03": "delivered"
+      },
+      "supported_dimensions": [
+        "d_004_001_c03",
+        "d_004_002_c04",
+        "d_004_002_c05",
+        "d_004_003_c04",
+        "d_004_003_c05",
+        "d_004_007_c03",
+        "d_004_008_c03",
+        "d_004_009_c02",
+        "d_004_009_c04",
+        "d_005_002_c04",
+        "d_005_002_c05",
+        "d_005_007_c03",
+        "d_006_002_c04",
+        "d_006_002_c05",
+        "d_006_007_c03",
+        "d_007_002_c04",
+        "d_007_002_c05",
+        "d_007_003_c04",
+        "d_007_003_c05",
+        "d_007_c03",
+        "d_doc_t_007_c07_c08",
+        "month"
+      ],
+      "time_axis": "发货截止时间",
+      "time_via": "t_004.c05",
+      "type": "aggregate",
+      "unit": "元"
+    },
+    "m_llm_延迟交付率": {
+      "confidence": 0.7,
+      "count_orders": null,
+      "definition": "已送达订单中，实际送达时间晚于预计送达时间的订单占比。",
+      "denominator": "COUNT(DISTINCT t_007.c01)",
+      "entity": null,
+      "entity_join": null,
+      "expr": null,
+      "fact": "t_007",
+      "min_orders": null,
+      "name": "延迟交付率",
+      "numerator": "COUNT(CASE WHEN t_007.c07 > t_007.c08 THEN 1 END)",
+      "provenance": "llm",
+      "scope": {
+        "t_007.c03": "delivered"
+      },
+      "supported_dimensions": [
+        "d_004_001_c03",
+        "d_004_002_c04",
+        "d_004_002_c05",
+        "d_004_003_c04",
+        "d_004_003_c05",
+        "d_004_007_c03",
+        "d_004_008_c03",
+        "d_004_009_c02",
+        "d_004_009_c04",
+        "d_005_002_c04",
+        "d_005_002_c05",
+        "d_005_007_c03",
+        "d_005_c03",
+        "d_005_c04",
+        "d_006_002_c04",
+        "d_006_002_c05",
+        "d_006_007_c03",
+        "d_006_c04",
+        "d_007_002_c04",
+        "d_007_002_c05",
+        "d_007_003_c04",
+        "d_007_003_c05",
+        "d_007_c03",
+        "d_doc_t_007_c07_c08",
+        "month"
+      ],
+      "time_axis": "下单时间",
+      "time_via": "t_007.c04",
+      "type": "ratio",
+      "unit": "%"
+    }
+  },
+  "relations": [
+    {
+      "card": "N:1",
+      "from": "t_002",
+      "left": "c03",
+      "right": "c01",
+      "to": "t_003"
+    },
+    {
+      "card": "N:1",
+      "from": "t_004",
+      "left": "c01",
+      "right": "c01",
+      "to": "t_007"
+    },
+    {
+      "card": "N:1",
+      "from": "t_004",
+      "left": "c03",
+      "right": "c01",
+      "to": "t_008"
+    },
+    {
+      "card": "N:1",
+      "from": "t_004",
+      "left": "c04",
+      "right": "c01",
+      "to": "t_009"
+    },
+    {
+      "card": "N:1",
+      "from": "t_005",
+      "left": "c01",
+      "right": "c01",
+      "to": "t_007"
+    },
+    {
+      "card": "N:1",
+      "from": "t_006",
+      "left": "c02",
+      "right": "c01",
+      "to": "t_007"
+    },
+    {
+      "card": "N:1",
+      "from": "t_007",
+      "left": "c02",
+      "right": "c01",
+      "to": "t_002"
+    },
+    {
+      "card": "N:1",
+      "from": "t_008",
+      "left": "c02",
+      "right": "c01",
+      "to": "t_001"
+    },
+    {
+      "card": "N:1",
+      "from": "t_009",
+      "left": "c03",
+      "right": "c01",
+      "to": "t_003"
+    }
+  ],
+  "semantic_fingerprint": "6e55c0c284f4d159",
+  "semantic_version": 2,
+  "tables": {
+    "t_001": {
+      "columns": [
+        {
+          "distinct": 6,
+          "label": "category_id",
+          "name": "c01",
+          "null_rate": 0.0,
+          "pii": false,
+          "samples": [
+            "beauty",
+            "books",
+            "electronics",
+            "food",
+            "home",
+            "sports"
+          ],
+          "type": "varchar"
+        },
+        {
+          "distinct": 6,
+          "label": "category_name_en",
+          "name": "c02",
+          "null_rate": 0.0,
+          "pii": false,
+          "samples": [
+            "Beauty",
+            "Books",
+            "Electronics",
+            "Food",
+            "Home & Living",
+            "Sports"
+          ],
+          "type": "varchar"
+        },
+        {
+          "distinct": 6,
+          "label": "category_name_zh",
+          "name": "c03",
+          "null_rate": 0.0,
+          "pii": false,
+          "samples": [
+            "图书文教",
+            "家居生活",
+            "数码家电",
+            "美妆个护",
+            "运动户外",
+            "食品饮料"
+          ],
+          "type": "varchar"
+        }
+      ],
+      "grain": [
+        "c01"
+      ],
+      "rows": 6,
+      "time": null
+    },
+    "t_002": {
+      "columns": [
+        {
+          "distinct": 180,
+          "label": "customer_id",
+          "name": "c01",
+          "null_rate": 0.0,
+          "pii": false,
+          "samples": [],
+          "type": "varchar"
+        },
+        {
+          "distinct": 70,
+          "label": "customer_unique_id",
+          "name": "c02",
+          "null_rate": 0.0,
+          "pii": false,
+          "samples": [],
+          "type": "varchar"
+        },
+        {
+          "distinct": 10,
+          "label": "customer_zip_code",
+          "name": "c03",
+          "null_rate": 0.0,
+          "pii": false,
+          "samples": [
+            100001,
+            200001,
+            210000,
+            310000,
+            410000,
+            430000,
+            510000,
+            518000,
+            610000,
+            710000
+          ],
+          "type": "integer"
+        },
+        {
+          "distinct": 10,
+          "label": "customer_city",
+          "name": "c04",
+          "null_rate": 0.0,
+          "pii": false,
+          "samples": [
+            "上海",
+            "北京",
+            "南京",
+            "广州",
+            "成都",
+            "杭州",
+            "武汉",
+            "深圳",
+            "西安",
+            "长沙"
+          ],
+          "type": "varchar"
+        },
+        {
+          "distinct": 9,
+          "label": "customer_state",
+          "name": "c05",
+          "null_rate": 0.0,
+          "pii": false,
+          "samples": [
+            "上海",
+            "北京",
+            "四川",
+            "广东",
+            "江苏",
+            "浙江",
+            "湖北",
+            "湖南",
+            "陕西"
+          ],
+          "type": "varchar"
+        }
+      ],
+      "grain": [
+        "c01"
+      ],
+      "rows": 180,
+      "time": null
+    },
+    "t_003": {
+      "columns": [
+        {
+          "distinct": 10,
+          "label": "zip_code",
+          "name": "c01",
+          "null_rate": 0.0,
+          "pii": false,
+          "samples": [
+            100001,
+            200001,
+            210000,
+            310000,
+            410000,
+            430000,
+            510000,
+            518000,
+            610000,
+            710000
+          ],
+          "type": "integer"
+        },
+        {
+          "distinct": 10,
+          "label": "latitude",
+          "name": "c02",
+          "null_rate": 0.0,
+          "pii": false,
+          "samples": [
+            22.5431,
+            23.1291,
+            28.2282,
+            30.2741,
+            30.5728,
+            30.5928,
+            31.2304,
+            32.0603,
+            34.3416,
+            39.9042
+          ],
+          "type": "decimal"
+        },
+        {
+          "distinct": 10,
+          "label": "longitude",
+          "name": "c03",
+          "null_rate": 0.0,
+          "pii": false,
+          "samples": [
+            104.0668,
+            108.9398,
+            112.9388,
+            113.2644,
+            114.0579,
+            114.3055,
+            116.4074,
+            118.7969,
+            120.1551,
+            121.4737
+          ],
+          "type": "decimal"
+        },
+        {
+          "distinct": 10,
+          "label": "city",
+          "name": "c04",
+          "null_rate": 0.0,
+          "pii": false,
+          "samples": [
+            "上海",
+            "北京",
+            "南京",
+            "广州",
+            "成都",
+            "杭州",
+            "武汉",
+            "深圳",
+            "西安",
+            "长沙"
+          ],
+          "type": "varchar"
+        },
+        {
+          "distinct": 9,
+          "label": "state",
+          "name": "c05",
+          "null_rate": 0.0,
+          "pii": false,
+          "samples": [
+            "上海",
+            "北京",
+            "四川",
+            "广东",
+            "江苏",
+            "浙江",
+            "湖北",
+            "湖南",
+            "陕西"
+          ],
+          "type": "varchar"
+        }
+      ],
+      "grain": [
+        "c01"
+      ],
+      "rows": 10,
+      "time": null
+    },
+    "t_004": {
+      "columns": [
+        {
+          "distinct": 180,
+          "label": "order_id",
+          "name": "c01",
+          "null_rate": 0.0,
+          "pii": false,
+          "samples": [],
+          "type": "varchar"
+        },
+        {
+          "distinct": 3,
+          "label": "order_item_id",
+          "name": "c02",
+          "null_rate": 0.0,
+          "pii": false,
+          "samples": [
+            1,
+            2,
+            3
+          ],
+          "type": "integer"
+        },
+        {
+          "distinct": 30,
+          "label": "product_id",
+          "name": "c03",
+          "null_rate": 0.0,
+          "pii": false,
+          "samples": [
+            "P0001",
+            "P0002",
+            "P0003",
+            "P0004",
+            "P0005",
+            "P0006",
+            "P0007",
+            "P0008",
+            "P0009",
+            "P0010",
+            "P0011",
+            "P0012",
+            "P0013",
+            "P0014",
+            "P0015",
+            "P0016",
+            "P0017",
+            "P0018",
+            "P0019",
+            "P0020"
+          ],
+          "type": "varchar"
+        },
+        {
+          "distinct": 8,
+          "label": "seller_id",
+          "name": "c04",
+          "null_rate": 0.0,
+          "pii": false,
+          "samples": [
+            "S001",
+            "S002",
+            "S003",
+            "S004",
+            "S005",
+            "S006",
+            "S007",
+            "S008"
+          ],
+          "type": "varchar"
+        },
+        {
+          "distinct": 180,
+          "label": "shipping_limit_at",
+          "name": "c05",
+          "null_rate": 0.0,
+          "pii": false,
+          "samples": [],
+          "type": "datetime"
+        },
+        {
+          "distinct": 325,
+          "label": "price",
+          "name": "c06",
+          "null_rate": 0.0,
+          "pii": false,
+          "samples": [],
+          "type": "decimal"
+        },
+        {
+          "distinct": 319,
+          "label": "freight_value",
+          "name": "c07",
+          "null_rate": 0.0,
+          "pii": false,
+          "samples": [],
+          "type": "decimal"
+        }
+      ],
+      "grain": [
+        "c02",
+        "c01"
+      ],
+      "rows": 359,
+      "time": "c05"
+    },
+    "t_005": {
+      "columns": [
+        {
+          "distinct": 164,
+          "label": "order_id",
+          "name": "c01",
+          "null_rate": 0.0,
+          "pii": false,
+          "samples": [],
+          "type": "varchar"
+        },
+        {
+          "distinct": 2,
+          "label": "payment_sequence",
+          "name": "c02",
+          "null_rate": 0.0,
+          "pii": false,
+          "samples": [
+            1,
+            2
+          ],
+          "type": "integer"
+        },
+        {
+          "distinct": 4,
+          "label": "payment_type",
+          "name": "c03",
+          "null_rate": 0.0,
+          "pii": false,
+          "samples": [
+            "bank_transfer",
+            "credit_card",
+            "debit_card",
+            "voucher"
+          ],
+          "type": "varchar"
+        },
+        {
+          "distinct": 8,
+          "label": "payment_installments",
+          "name": "c04",
+          "null_rate": 0.0,
+          "pii": false,
+          "samples": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8
+          ],
+          "type": "integer"
+        },
+        {
+          "distinct": 182,
+          "label": "payment_value",
+          "name": "c05",
+          "null_rate": 0.0,
+          "pii": false,
+          "samples": [],
+          "type": "decimal"
+        }
+      ],
+      "grain": [
+        "c01",
+        "c02"
+      ],
+      "rows": 182,
+      "time": null
+    },
+    "t_006": {
+      "columns": [
+        {
+          "distinct": 142,
+          "label": "review_id",
+          "name": "c01",
+          "null_rate": 0.0,
+          "pii": false,
+          "samples": [],
+          "type": "varchar"
+        },
+        {
+          "distinct": 142,
+          "label": "order_id",
+          "name": "c02",
+          "null_rate": 0.0,
+          "pii": false,
+          "samples": [],
+          "type": "varchar"
+        },
+        {
+          "distinct": 5,
+          "label": "review_score",
+          "name": "c03",
+          "null_rate": 0.0,
+          "pii": false,
+          "samples": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "type": "integer"
+        },
+        {
+          "distinct": 2,
+          "label": "review_title",
+          "name": "c04",
+          "null_rate": 0.0,
+          "pii": false,
+          "samples": [
+            "体验不佳",
+            "购买反馈"
+          ],
+          "type": "varchar"
+        },
+        {
+          "distinct": 3,
+          "label": "review_message",
+          "name": "c05",
+          "null_rate": 0.0,
+          "pii": false,
+          "samples": [
+            "商品和配送体验不错",
+            "整体一般",
+            "配送较慢，体验需要改进"
+          ],
+          "type": "varchar"
+        },
+        {
+          "distinct": 142,
+          "label": "review_created_at",
+          "name": "c06",
+          "null_rate": 0.0,
+          "pii": false,
+          "samples": [],
+          "type": "datetime"
+        },
+        {
+          "distinct": 142,
+          "label": "seller_answered_at",
+          "name": "c07",
+          "null_rate": 0.0,
+          "pii": false,
+          "samples": [],
+          "type": "datetime"
+        }
+      ],
+      "grain": [
+        "c01"
+      ],
+      "rows": 142,
+      "time": "c06"
+    },
+    "t_007": {
+      "columns": [
+        {
+          "distinct": 180,
+          "label": "order_id",
+          "name": "c01",
+          "null_rate": 0.0,
+          "pii": false,
+          "samples": [],
+          "type": "varchar"
+        },
+        {
+          "distinct": 180,
+          "label": "customer_id",
+          "name": "c02",
+          "null_rate": 0.0,
+          "pii": false,
+          "samples": [],
+          "type": "varchar"
+        },
+        {
+          "distinct": 4,
+          "label": "order_status",
+          "name": "c03",
+          "null_rate": 0.0,
+          "pii": false,
+          "samples": [
+            "cancelled",
+            "delivered",
+            "shipped",
+            "unavailable"
+          ],
+          "type": "varchar"
+        },
+        {
+          "distinct": 180,
+          "label": "purchase_at",
+          "name": "c04",
+          "null_rate": 0.0,
+          "pii": false,
+          "samples": [],
+          "type": "datetime"
+        },
+        {
+          "distinct": 164,
+          "label": "approved_at",
+          "name": "c05",
+          "null_rate": 0.0889,
+          "pii": false,
+          "samples": [],
+          "type": "datetime"
+        },
+        {
+          "distinct": 164,
+          "label": "shipped_at",
+          "name": "c06",
+          "null_rate": 0.0889,
+          "pii": false,
+          "samples": [],
+          "type": "datetime"
+        },
+        {
+          "distinct": 159,
+          "label": "delivered_at",
+          "name": "c07",
+          "null_rate": 0.1167,
+          "pii": false,
+          "samples": [],
+          "type": "datetime"
+        },
+        {
+          "distinct": 180,
+          "label": "estimated_delivery_at",
+          "name": "c08",
+          "null_rate": 0.0,
+          "pii": false,
+          "samples": [],
+          "type": "datetime"
+        }
+      ],
+      "grain": [
+        "c01"
+      ],
+      "rows": 180,
+      "time": "c04"
+    },
+    "t_008": {
+      "columns": [
+        {
+          "distinct": 30,
+          "label": "product_id",
+          "name": "c01",
+          "null_rate": 0.0,
+          "pii": false,
+          "samples": [
+            "P0001",
+            "P0002",
+            "P0003",
+            "P0004",
+            "P0005",
+            "P0006",
+            "P0007",
+            "P0008",
+            "P0009",
+            "P0010",
+            "P0011",
+            "P0012",
+            "P0013",
+            "P0014",
+            "P0015",
+            "P0016",
+            "P0017",
+            "P0018",
+            "P0019",
+            "P0020"
+          ],
+          "type": "varchar"
+        },
+        {
+          "distinct": 6,
+          "label": "category_id",
+          "name": "c02",
+          "null_rate": 0.0,
+          "pii": false,
+          "samples": [
+            "beauty",
+            "books",
+            "electronics",
+            "food",
+            "home",
+            "sports"
+          ],
+          "type": "varchar"
+        },
+        {
+          "distinct": 30,
+          "label": "product_name",
+          "name": "c03",
+          "null_rate": 0.0,
+          "pii": false,
+          "samples": [
+            "世界文学",
+            "保湿面霜",
+            "儿童绘本",
+            "办公椅",
+            "口红",
+            "商业分析",
+            "坚果礼盒",
+            "巧克力",
+            "护眼台灯",
+            "收纳箱",
+            "无线耳机",
+            "智能手环",
+            "机械键盘",
+            "洁面乳",
+            "洗发水",
+            "燕麦片",
+            "瑜伽垫",
+            "登山包",
+            "移动电源",
+            "空气炸锅"
+          ],
+          "type": "varchar"
+        },
+        {
+          "distinct": 4,
+          "label": "product_name_length",
+          "name": "c04",
+          "null_rate": 0.0,
+          "pii": false,
+          "samples": [
+            2,
+            3,
+            4,
+            5
+          ],
+          "type": "integer"
+        },
+        {
+          "distinct": 30,
+          "label": "product_description_length",
+          "name": "c05",
+          "null_rate": 0.0,
+          "pii": false,
+          "samples": [
+            85,
+            87,
+            88,
+            108,
+            110,
+            111,
+            114,
+            120,
+            128,
+            137,
+            147,
+            148,
+            150,
+            158,
+            169,
+            174,
+            181,
+            185,
+            188,
+            189
+          ],
+          "type": "integer"
+        },
+        {
+          "distinct": 5,
+          "label": "product_photos_count",
+          "name": "c06",
+          "null_rate": 0.0,
+          "pii": false,
+          "samples": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "type": "integer"
+        },
+        {
+          "distinct": 29,
+          "label": "product_weight_g",
+          "name": "c07",
+          "null_rate": 0.0,
+          "pii": false,
+          "samples": [
+            45,
+            85,
+            190,
+            220,
+            240,
+            260,
+            280,
+            320,
+            330,
+            350,
+            380,
+            420,
+            430,
+            500,
+            520,
+            560,
+            610,
+            620,
+            780,
+            900
+          ],
+          "type": "integer"
+        },
+        {
+          "distinct": 21,
+          "label": "product_length_cm",
+          "name": "c08",
+          "null_rate": 0.0,
+          "pii": false,
+          "samples": [
+            10,
+            11,
+            13,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            23,
+            24,
+            25,
+            27,
+            28,
+            30,
+            31,
+            32,
+            37,
+            38,
+            39
+          ],
+          "type": "integer"
+        },
+        {
+          "distinct": 17,
+          "label": "product_height_cm",
+          "name": "c09",
+          "null_rate": 0.0,
+          "pii": false,
+          "samples": [
+            3,
+            4,
+            5,
+            6,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            17,
+            18,
+            20,
+            21,
+            22
+          ],
+          "type": "integer"
+        },
+        {
+          "distinct": 15,
+          "label": "product_width_cm",
+          "name": "c10",
+          "null_rate": 0.0,
+          "pii": false,
+          "samples": [
+            8,
+            13,
+            14,
+            16,
+            19,
+            21,
+            23,
+            25,
+            28,
+            31,
+            32,
+            33,
+            35,
+            36,
+            37
+          ],
+          "type": "integer"
+        },
+        {
+          "distinct": 20,
+          "label": "base_price",
+          "name": "c11",
+          "null_rate": 0.0,
+          "pii": false,
+          "samples": [
+            59,
+            69,
+            79,
+            89,
+            99,
+            119,
+            129,
+            139,
+            169,
+            189,
+            199,
+            219,
+            259,
+            299,
+            399,
+            459,
+            499,
+            529,
+            629,
+            799
+          ],
+          "type": "integer"
+        }
+      ],
+      "grain": [
+        "c01"
+      ],
+      "rows": 30,
+      "time": null
+    },
+    "t_009": {
+      "columns": [
+        {
+          "distinct": 8,
+          "label": "seller_id",
+          "name": "c01",
+          "null_rate": 0.0,
+          "pii": false,
+          "samples": [
+            "S001",
+            "S002",
+            "S003",
+            "S004",
+            "S005",
+            "S006",
+            "S007",
+            "S008"
+          ],
+          "type": "varchar"
+        },
+        {
+          "distinct": 8,
+          "label": "seller_name",
+          "name": "c02",
+          "null_rate": 0.0,
+          "pii": false,
+          "samples": [
+            "京华数码",
+            "岭南好物",
+            "杭城食品",
+            "沪上家居",
+            "深湾美妆",
+            "蓉城运动",
+            "金陵书局",
+            "长安优选"
+          ],
+          "type": "varchar"
+        },
+        {
+          "distinct": 8,
+          "label": "seller_zip_code",
+          "name": "c03",
+          "null_rate": 0.0,
+          "pii": false,
+          "samples": [
+            100001,
+            200001,
+            210000,
+            310000,
+            510000,
+            518000,
+            610000,
+            710000
+          ],
+          "type": "integer"
+        },
+        {
+          "distinct": 8,
+          "label": "seller_city",
+          "name": "c04",
+          "null_rate": 0.0,
+          "pii": false,
+          "samples": [
+            "上海",
+            "北京",
+            "南京",
+            "广州",
+            "成都",
+            "杭州",
+            "深圳",
+            "西安"
+          ],
+          "type": "varchar"
+        },
+        {
+          "distinct": 7,
+          "label": "seller_state",
+          "name": "c05",
+          "null_rate": 0.0,
+          "pii": false,
+          "samples": [
+            "上海",
+            "北京",
+            "四川",
+            "广东",
+            "江苏",
+            "浙江",
+            "陕西"
+          ],
+          "type": "varchar"
+        }
+      ],
+      "grain": [
+        "c01"
+      ],
+      "rows": 8,
+      "time": null
+    }
+  },
+  "time_axes": [
+    {
+      "coverage": [
+        "2025-01-04",
+        "2025-06-28"
+      ],
+      "label": "shipping_limit_at",
+      "name_zh": "发货截止时间",
+      "ref": "t_004.c05"
+    },
+    {
+      "coverage": [
+        "2025-01-09",
+        "2025-07-08"
+      ],
+      "label": "review_created_at",
+      "name_zh": "评价时间",
+      "ref": "t_006.c06"
+    },
+    {
+      "coverage": [
+        "2025-01-10",
+        "2025-07-09"
+      ],
+      "label": "seller_answered_at",
+      "name_zh": "seller_answered_at",
+      "ref": "t_006.c07"
+    },
+    {
+      "coverage": [
+        "2025-01-01",
+        "2025-06-25"
+      ],
+      "label": "purchase_at",
+      "name_zh": "下单时间",
+      "ref": "t_007.c04"
+    },
+    {
+      "coverage": [
+        "2025-01-02",
+        "2025-06-26"
+      ],
+      "label": "approved_at",
+      "name_zh": "审批时间",
+      "ref": "t_007.c05"
+    },
+    {
+      "coverage": [
+        "2025-01-04",
+        "2025-06-29"
+      ],
+      "label": "shipped_at",
+      "name_zh": "发货时间",
+      "ref": "t_007.c06"
+    },
+    {
+      "coverage": [
+        "2025-01-07",
+        "2025-07-07"
+      ],
+      "label": "delivered_at",
+      "name_zh": "送达时间",
+      "ref": "t_007.c07"
+    },
+    {
+      "coverage": [
+        "2025-01-11",
+        "2025-07-05"
+      ],
+      "label": "estimated_delivery_at",
+      "name_zh": "estimated_delivery_at",
+      "ref": "t_007.c08"
+    }
+  ],
+  "version": 1
+}

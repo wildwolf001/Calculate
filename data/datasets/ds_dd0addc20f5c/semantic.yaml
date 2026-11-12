@@ -1,0 +1,2133 @@
+version: 2
+dataset: Excel_Demo
+dataset_id: ds_dd0addc20f5c
+compiler_version: 1
+time_range:
+- '2024-01-01'
+- '2026-01-08'
+default_year: latest_occurrence
+status: published
+provenance: human
+parser: generic
+capabilities:
+  member_list: true
+  ratio: true
+  entity_count: true
+  compare: true
+  business_checks: []
+  member_list_coverage: null
+tables:
+  t_001:
+    grain:
+    - c01
+    time: null
+    columns:
+    - c01
+    - c02
+    - c03
+    - c04
+    - c05
+  t_002:
+    grain:
+    - c01
+    time: null
+    columns:
+    - c01
+    - c02
+    - c03
+    - c04
+    - c05
+  t_003:
+    grain:
+    - c01
+    time: c04
+    columns:
+    - c01
+    - c02
+    - c03
+    - c04
+    - c05
+    - c06
+    - c07
+    - c08
+  t_004:
+    grain:
+    - c02
+    - c01
+    time: c05
+    columns:
+    - c01
+    - c02
+    - c03
+    - c04
+    - c05
+    - c06
+    - c07
+  t_005:
+    grain:
+    - c01
+    - c02
+    time: null
+    columns:
+    - c01
+    - c02
+    - c03
+    - c04
+    - c05
+  t_006:
+    grain:
+    - c01
+    time: c06
+    columns:
+    - c01
+    - c02
+    - c03
+    - c04
+    - c05
+    - c06
+    - c07
+  t_007:
+    grain:
+    - c01
+    time: null
+    columns:
+    - c01
+    - c02
+    - c03
+    - c04
+    - c05
+    - c06
+    - c07
+    - c08
+    - c09
+    - c10
+    - c11
+  t_008:
+    grain:
+    - c01
+    time: null
+    columns:
+    - c01
+    - c02
+    - c03
+    - c04
+    - c05
+  t_009:
+    grain:
+    - c01
+    time: null
+    columns:
+    - c01
+    - c02
+    - c03
+joins:
+  t_001:
+    t_002:
+      left: c03
+      right: c01
+      card: N:1
+  t_003:
+    t_001:
+      left: c02
+      right: c01
+      card: N:1
+  t_004:
+    t_003:
+      left: c01
+      right: c01
+      card: N:1
+    t_007:
+      left: c03
+      right: c01
+      card: N:1
+    t_008:
+      left: c04
+      right: c01
+      card: N:1
+  t_005:
+    t_003:
+      left: c01
+      right: c01
+      card: N:1
+  t_006:
+    t_003:
+      left: c02
+      right: c01
+      card: N:1
+  t_007:
+    t_009:
+      left: c02
+      right: c01
+      card: N:1
+  t_008:
+    t_002:
+      left: c03
+      right: c01
+      card: N:1
+pre_aggregates: {}
+metrics:
+  m_004_row_count:
+    name_zh: 记录数
+    synonyms:
+    - 行数
+    - 记录数
+    - 数据行数
+    type: aggregate
+    fact: t_004
+    expr: COUNT(*)
+    scope: {}
+    time_via: t_004.c05
+    additive: true
+    unit: 行
+    supported_grain:
+    - none
+    - d_003_001_c04
+    - d_003_001_c05
+    - d_003_002_c04
+    - d_003_002_c05
+    - d_003_c03
+    - d_004_001_c04
+    - d_004_001_c05
+    - d_004_002_c04
+    - d_004_002_c05
+    - d_004_003_c03
+    - d_004_007_c03
+    - d_004_008_c02
+    - d_004_008_c04
+    - d_004_009_c03
+    - d_005_001_c04
+    - d_005_001_c05
+    - d_005_003_c03
+    - d_006_001_c04
+    - d_006_001_c05
+    - d_006_003_c03
+    - d_doc_t_003_c07_c08
+    - month
+    definition: ecommerce_agent_demo/order_items的记录数。
+    selected: true
+    provenance: auto
+    confidence: 0.95
+    confirmed_at: '2026-11-11T21:07:01'
+    confirmed_by: publish
+    time_axis: 发货截止时间
+    default_time_axis: t_004.c05
+    data_health:
+      rows: 20900
+      generated_at: '2026-11-11T21:07:01'
+      distinct_key: 3
+      duplicate_key_ratio: 6966.667
+      time_coverage:
+      - '2024-01-04'
+      - '2025-12-28'
+  m_004_c03_distinct:
+    name_zh: 商品数
+    synonyms:
+    - product_id
+    - 商品数
+    - 商品种类
+    - 几种商品
+    - 商品款数
+    type: aggregate
+    fact: t_004
+    expr: COUNT(DISTINCT t_004.c03)
+    scope: {}
+    time_via: t_004.c05
+    additive: false
+    unit: 个
+    supported_grain:
+    - none
+    - d_003_001_c04
+    - d_003_001_c05
+    - d_003_002_c04
+    - d_003_002_c05
+    - d_003_c03
+    - d_004_001_c04
+    - d_004_001_c05
+    - d_004_002_c04
+    - d_004_002_c05
+    - d_004_003_c03
+    - d_004_007_c03
+    - d_004_008_c02
+    - d_004_008_c04
+    - d_004_009_c03
+    - d_005_001_c04
+    - d_005_001_c05
+    - d_005_003_c03
+    - d_005_c03
+    - d_005_c04
+    - d_006_001_c04
+    - d_006_001_c05
+    - d_006_003_c03
+    - d_006_c04
+    - d_doc_t_003_c07_c08
+    - month
+    definition: ecommerce_agent_demo/order_items.product_id 的去重计数。
+    selected: true
+    provenance: auto
+    confidence: 0.9
+    confirmed_at: '2026-11-11T21:07:01'
+    confirmed_by: publish
+    time_axis: 发货截止时间
+    default_time_axis: t_004.c05
+    data_health:
+      rows: 20900
+      generated_at: '2026-11-11T21:07:01'
+      measure_null_rate: 0.0
+      distinct_key: 3
+      duplicate_key_ratio: 6966.667
+      time_coverage:
+      - '2024-01-04'
+      - '2025-12-28'
+  m_004_c04_distinct:
+    name_zh: 商家数
+    synonyms:
+    - seller_id
+    - 商家数
+    - 卖家数
+    type: aggregate
+    fact: t_004
+    expr: COUNT(DISTINCT t_004.c04)
+    scope: {}
+    time_via: t_004.c05
+    additive: false
+    unit: 个
+    supported_grain:
+    - none
+    - d_003_001_c04
+    - d_003_001_c05
+    - d_003_002_c04
+    - d_003_002_c05
+    - d_003_c03
+    - d_004_001_c04
+    - d_004_001_c05
+    - d_004_002_c04
+    - d_004_002_c05
+    - d_004_003_c03
+    - d_004_007_c03
+    - d_004_008_c02
+    - d_004_008_c04
+    - d_004_009_c03
+    - d_005_001_c04
+    - d_005_001_c05
+    - d_005_003_c03
+    - d_005_c03
+    - d_005_c04
+    - d_006_001_c04
+    - d_006_001_c05
+    - d_006_003_c03
+    - d_006_c04
+    - d_doc_t_003_c07_c08
+    - month
+    definition: ecommerce_agent_demo/order_items.seller_id 的去重计数。
+    selected: true
+    provenance: auto
+    confidence: 0.9
+    confirmed_at: '2026-11-11T21:07:01'
+    confirmed_by: publish
+    time_axis: 发货截止时间
+    default_time_axis: t_004.c05
+    data_health:
+      rows: 20900
+      generated_at: '2026-11-11T21:07:01'
+      measure_null_rate: 0.0
+      distinct_key: 3
+      duplicate_key_ratio: 6966.667
+      time_coverage:
+      - '2024-01-04'
+      - '2025-12-28'
+  m_004_c06_sum:
+    name_zh: 商品销售额
+    synonyms:
+    - 商品销售额
+    - 销售额
+    - 商品销售总额
+    - price
+    - 销售金额
+    - GMV
+    - 营收
+    - price合计
+    type: aggregate
+    fact: t_004
+    expr: SUM(t_004.c06)
+    scope:
+      t_003.c03: delivered
+    time_via: t_004.c05
+    additive: true
+    unit: 货币
+    supported_grain:
+    - none
+    - d_003_001_c04
+    - d_003_001_c05
+    - d_003_002_c04
+    - d_003_002_c05
+    - d_003_c03
+    - d_004_001_c04
+    - d_004_001_c05
+    - d_004_002_c04
+    - d_004_002_c05
+    - d_004_003_c03
+    - d_004_007_c03
+    - d_004_008_c02
+    - d_004_008_c04
+    - d_004_009_c03
+    - d_005_001_c04
+    - d_005_001_c05
+    - d_005_003_c03
+    - d_006_001_c04
+    - d_006_001_c05
+    - d_006_003_c03
+    - d_doc_t_003_c07_c08
+    - month
+    definition: 状态为 delivered 的订单明细 price 合计，不含运费。
+    selected: true
+    provenance: documentation
+    confidence: 0.9
+    doc_source: llm+document
+    confirmed_at: '2026-11-11T21:07:01'
+    confirmed_by: publish
+    time_axis: 发货截止时间
+    default_time_axis: t_004.c05
+    data_health:
+      rows: 20900
+      generated_at: '2026-11-11T21:07:01'
+      measure_null_rate: 0.0
+      distinct_key: 3
+      duplicate_key_ratio: 6966.667
+      time_coverage:
+      - '2024-01-04'
+      - '2025-12-28'
+  m_004_c07_sum:
+    name_zh: 运费合计
+    synonyms:
+    - freight_value
+    - 运费
+    - 物流费
+    - freight_value合计
+    - 运费合计
+    type: aggregate
+    fact: t_004
+    expr: SUM(t_004.c07)
+    scope: {}
+    time_via: t_004.c05
+    additive: true
+    unit: 元
+    supported_grain:
+    - none
+    - d_003_001_c04
+    - d_003_001_c05
+    - d_003_002_c04
+    - d_003_002_c05
+    - d_003_c03
+    - d_004_001_c04
+    - d_004_001_c05
+    - d_004_002_c04
+    - d_004_002_c05
+    - d_004_003_c03
+    - d_004_007_c03
+    - d_004_008_c02
+    - d_004_008_c04
+    - d_004_009_c03
+    - d_005_001_c04
+    - d_005_001_c05
+    - d_005_003_c03
+    - d_006_001_c04
+    - d_006_001_c05
+    - d_006_003_c03
+    - d_doc_t_003_c07_c08
+    - month
+    definition: ecommerce_agent_demo/order_items.freight_value 的合计。
+    selected: true
+    provenance: auto
+    confidence: 0.9
+    confirmed_at: '2026-11-11T21:07:01'
+    confirmed_by: publish
+    time_axis: 发货截止时间
+    default_time_axis: t_004.c05
+    data_health:
+      rows: 20900
+      generated_at: '2026-11-11T21:07:01'
+      measure_null_rate: 0.0
+      distinct_key: 3
+      duplicate_key_ratio: 6966.667
+      time_coverage:
+      - '2024-01-04'
+      - '2025-12-28'
+  m_003_c01_distinct:
+    name_zh: 订单数
+    synonyms:
+    - 订单数
+    - 订单量
+    - 订单总数
+    - order_id
+    - 订单笔数
+    type: aggregate
+    fact: t_003
+    expr: COUNT(DISTINCT t_003.c01)
+    scope: {}
+    time_via: t_003.c04
+    additive: false
+    unit: 单
+    supported_grain:
+    - none
+    - d_003_001_c04
+    - d_003_001_c05
+    - d_003_002_c04
+    - d_003_002_c05
+    - d_003_c03
+    - d_004_001_c04
+    - d_004_001_c05
+    - d_004_002_c04
+    - d_004_002_c05
+    - d_004_003_c03
+    - d_004_007_c03
+    - d_004_008_c02
+    - d_004_008_c04
+    - d_004_009_c03
+    - d_005_001_c04
+    - d_005_001_c05
+    - d_005_003_c03
+    - d_005_c03
+    - d_005_c04
+    - d_006_001_c04
+    - d_006_001_c05
+    - d_006_003_c03
+    - d_006_c04
+    - d_doc_t_003_c07_c08
+    - month
+    definition: 按 order_id 去重计数。
+    selected: true
+    provenance: documentation
+    confidence: 0.9
+    doc_source: llm+document
+    confirmed_at: '2026-11-11T21:07:01'
+    confirmed_by: publish
+    time_axis: 下单时间
+    default_time_axis: t_003.c04
+    data_health:
+      rows: 11890
+      generated_at: '2026-11-11T21:07:01'
+      measure_null_rate: 0.0
+      distinct_key: 11890
+      duplicate_key_ratio: 1.0
+      time_coverage:
+      - '2024-01-01'
+      - '2025-12-25'
+  m_003_c02_distinct:
+    name_zh: 客户数
+    synonyms:
+    - customer_id
+    - 客户数
+    - 买家数
+    - 客户人数
+    type: aggregate
+    fact: t_003
+    expr: COUNT(DISTINCT t_003.c02)
+    scope: {}
+    time_via: t_003.c04
+    additive: false
+    unit: 个
+    supported_grain:
+    - none
+    - d_003_001_c04
+    - d_003_001_c05
+    - d_003_002_c04
+    - d_003_002_c05
+    - d_003_c03
+    - d_004_001_c04
+    - d_004_001_c05
+    - d_004_002_c04
+    - d_004_002_c05
+    - d_004_003_c03
+    - d_004_007_c03
+    - d_004_008_c02
+    - d_004_008_c04
+    - d_004_009_c03
+    - d_005_001_c04
+    - d_005_001_c05
+    - d_005_003_c03
+    - d_005_c03
+    - d_005_c04
+    - d_006_001_c04
+    - d_006_001_c05
+    - d_006_003_c03
+    - d_006_c04
+    - d_doc_t_003_c07_c08
+    - month
+    definition: ecommerce_agent_demo/orders.customer_id 的去重计数。
+    selected: true
+    provenance: auto
+    confidence: 0.9
+    confirmed_at: '2026-11-11T21:07:01'
+    confirmed_by: publish
+    time_axis: 下单时间
+    default_time_axis: t_003.c04
+    data_health:
+      rows: 11890
+      generated_at: '2026-11-11T21:07:01'
+      measure_null_rate: 0.0
+      distinct_key: 11890
+      duplicate_key_ratio: 1.0
+      time_coverage:
+      - '2024-01-01'
+      - '2025-12-25'
+  m_004_009_distinct:
+    name_zh: 品类数
+    type: aggregate
+    fact: t_004
+    expr: COUNT(DISTINCT t_009.c01)
+    scope: {}
+    time_via: t_004.c05
+    additive: false
+    unit: 个
+    supported_grain:
+    - none
+    - d_003_001_c04
+    - d_003_001_c05
+    - d_003_002_c04
+    - d_003_002_c05
+    - d_003_c03
+    - d_004_001_c04
+    - d_004_001_c05
+    - d_004_002_c04
+    - d_004_002_c05
+    - d_004_003_c03
+    - d_004_007_c03
+    - d_004_008_c02
+    - d_004_008_c04
+    - d_004_009_c03
+    - d_005_001_c04
+    - d_005_001_c05
+    - d_005_003_c03
+    - d_005_c03
+    - d_005_c04
+    - d_006_001_c04
+    - d_006_001_c05
+    - d_006_003_c03
+    - d_006_c04
+    - d_doc_t_003_c07_c08
+    - month
+    synonyms:
+    - 品类数
+    - 几种品类
+    - 多少种品类
+    definition: categories中不同主键的去重计数。
+    selected: true
+    provenance: auto
+    confidence: 0.8
+    confirmed_at: '2026-11-11T21:07:01'
+    confirmed_by: publish
+    time_axis: 发货截止时间
+    default_time_axis: t_004.c05
+    data_health:
+      rows: 20900
+      generated_at: '2026-11-11T21:07:01'
+      measure_null_rate: 0.0
+      distinct_key: 3
+      duplicate_key_ratio: 6966.667
+      time_coverage:
+      - '2024-01-04'
+      - '2025-12-28'
+  m_llm_已送达商品销售额:
+    name_zh: 已送达商品销售额
+    type: aggregate
+    fact: t_004
+    expr: SUM(t_004.c06)
+    scope:
+      t_003.c03: delivered
+    time_via: t_004.c05
+    supported_grain:
+    - none
+    - d_003_001_c04
+    - d_003_001_c05
+    - d_003_002_c04
+    - d_003_002_c05
+    - d_003_c03
+    - d_004_001_c04
+    - d_004_001_c05
+    - d_004_002_c04
+    - d_004_002_c05
+    - d_004_003_c03
+    - d_004_007_c03
+    - d_004_008_c02
+    - d_004_008_c04
+    - d_004_009_c03
+    - d_005_001_c04
+    - d_005_001_c05
+    - d_005_003_c03
+    - d_006_001_c04
+    - d_006_001_c05
+    - d_006_003_c03
+    - d_doc_t_003_c07_c08
+    - month
+    unit: 元
+    additive: true
+    definition: 已送达订单中商品价格按订单商品明细汇总的销售额。
+    synonyms:
+    - 已送达商品销售额
+    - 已送达GMV
+    - 已送达商品金额
+    provenance: llm
+    confidence: 0.7
+    confirmed_at: '2026-11-11T21:07:01'
+    confirmed_by: publish
+    time_axis: 发货截止时间
+    default_time_axis: t_004.c05
+    data_health:
+      rows: 20900
+      generated_at: '2026-11-11T21:07:01'
+      measure_null_rate: 0.0
+      distinct_key: 3
+      duplicate_key_ratio: 6966.667
+      time_coverage:
+      - '2024-01-04'
+      - '2025-12-28'
+  m_llm_已送达运费合计:
+    name_zh: 已送达运费合计
+    type: aggregate
+    fact: t_004
+    expr: SUM(t_004.c07)
+    scope:
+      t_003.c03: delivered
+    time_via: t_004.c05
+    supported_grain:
+    - none
+    - d_003_001_c04
+    - d_003_001_c05
+    - d_003_002_c04
+    - d_003_002_c05
+    - d_003_c03
+    - d_004_001_c04
+    - d_004_001_c05
+    - d_004_002_c04
+    - d_004_002_c05
+    - d_004_003_c03
+    - d_004_007_c03
+    - d_004_008_c02
+    - d_004_008_c04
+    - d_004_009_c03
+    - d_005_001_c04
+    - d_005_001_c05
+    - d_005_003_c03
+    - d_006_001_c04
+    - d_006_001_c05
+    - d_006_003_c03
+    - d_doc_t_003_c07_c08
+    - month
+    unit: 元
+    additive: true
+    definition: 已送达订单商品明细的运费合计。
+    synonyms:
+    - 已送达运费合计
+    - 已送达运费
+    provenance: llm
+    confidence: 0.7
+    confirmed_at: '2026-11-11T21:07:01'
+    confirmed_by: publish
+    time_axis: 发货截止时间
+    default_time_axis: t_004.c05
+    data_health:
+      rows: 20900
+      generated_at: '2026-11-11T21:07:01'
+      measure_null_rate: 0.0
+      distinct_key: 3
+      duplicate_key_ratio: 6966.667
+      time_coverage:
+      - '2024-01-04'
+      - '2025-12-28'
+  m_llm_平均商品单价:
+    name_zh: 平均商品单价
+    type: aggregate
+    fact: t_004
+    expr: AVG(t_004.c06)
+    scope:
+      t_003.c03: delivered
+    time_via: t_004.c05
+    supported_grain:
+    - none
+    - d_003_001_c04
+    - d_003_001_c05
+    - d_003_002_c04
+    - d_003_002_c05
+    - d_003_c03
+    - d_004_001_c04
+    - d_004_001_c05
+    - d_004_002_c04
+    - d_004_002_c05
+    - d_004_003_c03
+    - d_004_007_c03
+    - d_004_008_c02
+    - d_004_008_c04
+    - d_004_009_c03
+    - d_005_001_c04
+    - d_005_001_c05
+    - d_005_003_c03
+    - d_006_001_c04
+    - d_006_001_c05
+    - d_006_003_c03
+    - d_doc_t_003_c07_c08
+    - month
+    unit: 元
+    additive: false
+    definition: 已送达订单商品明细的平均商品价格。
+    synonyms:
+    - 平均商品单价
+    - 平均商品价格
+    provenance: llm
+    confidence: 0.7
+    confirmed_at: '2026-11-11T21:07:01'
+    confirmed_by: publish
+    time_axis: 发货截止时间
+    default_time_axis: t_004.c05
+    data_health:
+      rows: 20900
+      generated_at: '2026-11-11T21:07:01'
+      measure_null_rate: 0.0
+      distinct_key: 3
+      duplicate_key_ratio: 6966.667
+      time_coverage:
+      - '2024-01-04'
+      - '2025-12-28'
+  m_llm_已送达支付金额:
+    name_zh: 已送达支付金额
+    type: aggregate
+    fact: t_005
+    expr: SUM(t_005.c05)
+    scope:
+      t_003.c03: delivered
+    time_via: t_003.c04
+    supported_grain:
+    - none
+    - d_003_001_c04
+    - d_003_001_c05
+    - d_003_002_c04
+    - d_003_002_c05
+    - d_003_c03
+    - d_004_001_c04
+    - d_004_001_c05
+    - d_004_002_c04
+    - d_004_002_c05
+    - d_004_003_c03
+    - d_005_001_c04
+    - d_005_001_c05
+    - d_005_003_c03
+    - d_005_c03
+    - d_005_c04
+    - d_006_001_c04
+    - d_006_001_c05
+    - d_006_003_c03
+    - d_doc_t_003_c07_c08
+    - month
+    unit: 元
+    additive: true
+    definition: 已送达订单的支付金额合计，按支付记录汇总。
+    synonyms:
+    - 已送达支付金额
+    - 已送达支付总额
+    provenance: llm
+    confidence: 0.7
+    confirmed_at: '2026-11-11T21:07:01'
+    confirmed_by: publish
+    time_axis: 下单时间
+    default_time_axis: t_003.c04
+    data_health:
+      rows: 12494
+      generated_at: '2026-11-11T21:07:01'
+      measure_null_rate: 0.0
+      distinct_key: 11063
+      duplicate_key_ratio: 1.129
+      time_coverage:
+      - '2024-01-01'
+      - '2025-12-25'
+  m_llm_信用卡支付金额:
+    name_zh: 信用卡支付金额
+    type: aggregate
+    fact: t_005
+    expr: SUM(t_005.c05)
+    scope:
+      t_005.c03: credit_card
+      t_003.c03: delivered
+    time_via: t_003.c04
+    supported_grain:
+    - none
+    - d_003_001_c04
+    - d_003_001_c05
+    - d_003_002_c04
+    - d_003_002_c05
+    - d_003_c03
+    - d_004_001_c04
+    - d_004_001_c05
+    - d_004_002_c04
+    - d_004_002_c05
+    - d_004_003_c03
+    - d_005_001_c04
+    - d_005_001_c05
+    - d_005_003_c03
+    - d_005_c03
+    - d_005_c04
+    - d_006_001_c04
+    - d_006_001_c05
+    - d_006_003_c03
+    - d_doc_t_003_c07_c08
+    - month
+    unit: 元
+    additive: true
+    definition: 已送达订单中信用卡支付方式的支付金额合计。
+    synonyms:
+    - 信用卡支付金额
+    - 信用卡支付总额
+    provenance: llm
+    confidence: 0.7
+    confirmed_at: '2026-11-11T21:07:01'
+    confirmed_by: publish
+    time_axis: 下单时间
+    default_time_axis: t_003.c04
+    data_health:
+      rows: 12494
+      generated_at: '2026-11-11T21:07:01'
+      measure_null_rate: 0.0
+      distinct_key: 11063
+      duplicate_key_ratio: 1.129
+      time_coverage:
+      - '2024-01-01'
+      - '2025-12-25'
+  m_llm_平均分期期数:
+    name_zh: 平均分期期数
+    type: aggregate
+    fact: t_005
+    expr: AVG(t_005.c04)
+    scope:
+      t_003.c03: delivered
+    time_via: t_003.c04
+    supported_grain:
+    - none
+    - d_003_001_c04
+    - d_003_001_c05
+    - d_003_002_c04
+    - d_003_002_c05
+    - d_003_c03
+    - d_004_001_c04
+    - d_004_001_c05
+    - d_004_002_c04
+    - d_004_002_c05
+    - d_004_003_c03
+    - d_005_001_c04
+    - d_005_001_c05
+    - d_005_003_c03
+    - d_005_c03
+    - d_005_c04
+    - d_006_001_c04
+    - d_006_001_c05
+    - d_006_003_c03
+    - d_doc_t_003_c07_c08
+    - month
+    unit: 期
+    additive: false
+    definition: 已送达订单支付记录的平均分期期数。
+    synonyms:
+    - 平均分期期数
+    - 平均分期数
+    provenance: llm
+    confidence: 0.7
+    confirmed_at: '2026-11-11T21:07:01'
+    confirmed_by: publish
+    time_axis: 下单时间
+    default_time_axis: t_003.c04
+    data_health:
+      rows: 12494
+      generated_at: '2026-11-11T21:07:01'
+      measure_null_rate: 0.0
+      distinct_key: 11063
+      duplicate_key_ratio: 1.129
+      time_coverage:
+      - '2024-01-01'
+      - '2025-12-25'
+  m_llm_配送延迟率:
+    name_zh: 延迟率
+    type: ratio
+    fact: t_003
+    ratio_grain: fact
+    ratio_key: t_003.c01
+    numerator: COUNT(CASE WHEN t_003.c07 > t_003.c08 THEN 1 END)
+    denominator: COUNT(DISTINCT t_003.c01)
+    grain_numerator: MAX(CASE WHEN t_003.c07 > t_003.c08 THEN 1 ELSE 0 END)
+    grain_denominator: '1'
+    numerator_label: 延迟率
+    denominator_label: 总数
+    scope:
+      t_003.c03: delivered
+    time_via: t_003.c04
+    supported_grain:
+    - none
+    - d_003_001_c04
+    - d_003_001_c05
+    - d_003_002_c04
+    - d_003_002_c05
+    - d_003_c03
+    - d_004_001_c04
+    - d_004_001_c05
+    - d_004_002_c04
+    - d_004_002_c05
+    - d_004_003_c03
+    - d_004_007_c03
+    - d_004_008_c02
+    - d_004_008_c04
+    - d_004_009_c03
+    - d_005_001_c04
+    - d_005_001_c05
+    - d_005_003_c03
+    - d_005_c03
+    - d_005_c04
+    - d_006_001_c04
+    - d_006_001_c05
+    - d_006_003_c03
+    - d_006_c04
+    - d_doc_t_003_c07_c08
+    - month
+    unit: '%'
+    additive: false
+    definition: 延迟的已送达订单数除以已送达订单数。
+    synonyms:
+    - 延迟率
+    - 延迟订单率
+    - 超时率
+    - 配送延迟率
+    - 延迟交付率
+    provenance: documentation
+    confidence: 0.7
+    doc_source: llm+document
+    confirmed_at: '2026-11-11T21:07:01'
+    confirmed_by: publish
+    time_axis: 下单时间
+    default_time_axis: t_003.c04
+    data_health:
+      rows: 11890
+      generated_at: '2026-11-11T21:07:01'
+      measure_null_rate: 0.0989
+      distinct_key: 11890
+      duplicate_key_ratio: 1.0
+      time_coverage:
+      - '2024-01-01'
+      - '2025-12-25'
+  m_llm_已送达订单数:
+    name_zh: 已送达订单数
+    type: aggregate
+    fact: t_003
+    expr: COUNT(DISTINCT t_003.c01)
+    scope:
+      t_003.c03: delivered
+    time_via: t_003.c04
+    supported_grain:
+    - none
+    - d_003_001_c04
+    - d_003_001_c05
+    - d_003_002_c04
+    - d_003_002_c05
+    - d_003_c03
+    - d_004_001_c04
+    - d_004_001_c05
+    - d_004_002_c04
+    - d_004_002_c05
+    - d_004_003_c03
+    - d_004_007_c03
+    - d_004_008_c02
+    - d_004_008_c04
+    - d_004_009_c03
+    - d_005_001_c04
+    - d_005_001_c05
+    - d_005_003_c03
+    - d_005_c03
+    - d_005_c04
+    - d_006_001_c04
+    - d_006_001_c05
+    - d_006_003_c03
+    - d_006_c04
+    - d_doc_t_003_c07_c08
+    - month
+    unit: 单
+    additive: false
+    definition: 订单状态为已送达的去重订单数。
+    synonyms:
+    - 已送达订单数
+    - 送达订单数
+    provenance: llm
+    confidence: 0.7
+    confirmed_at: '2026-11-11T21:07:01'
+    confirmed_by: publish
+    time_axis: 下单时间
+    default_time_axis: t_003.c04
+    data_health:
+      rows: 11890
+      generated_at: '2026-11-11T21:07:01'
+      measure_null_rate: 0.0
+      distinct_key: 11890
+      duplicate_key_ratio: 1.0
+      time_coverage:
+      - '2024-01-01'
+      - '2025-12-25'
+  m_llm_复购客户数:
+    name_zh: 复购客户数
+    type: entity_count
+    fact: t_003
+    entity: t_001.c02
+    entity_join: t_003 -> t_001
+    count_orders: COUNT(DISTINCT t_003.c01)
+    min_orders: 2
+    scope:
+      t_003.c03: delivered
+    time_via: t_003.c04
+    supported_grain:
+    - none
+    - d_003_001_c04
+    - d_003_001_c05
+    - d_003_002_c04
+    - d_003_002_c05
+    - d_003_c03
+    - d_004_001_c04
+    - d_004_001_c05
+    - d_004_002_c04
+    - d_004_002_c05
+    - d_004_003_c03
+    - d_004_007_c03
+    - d_004_008_c02
+    - d_004_008_c04
+    - d_004_009_c03
+    - d_005_001_c04
+    - d_005_001_c05
+    - d_005_003_c03
+    - d_005_c03
+    - d_005_c04
+    - d_006_001_c04
+    - d_006_001_c05
+    - d_006_003_c03
+    - d_006_c04
+    - d_doc_t_003_c07_c08
+    - month
+    unit: 人
+    additive: false
+    definition: 在已送达订单中下单次数不少于2次的去重客户数，客户按customer_unique_id识别。
+    synonyms:
+    - 复购客户数
+    - 复购客户
+    - 多次购买客户数
+    provenance: llm
+    confidence: 0.7
+    confirmed_at: '2026-11-11T21:07:01'
+    confirmed_by: publish
+    time_axis: 下单时间
+    default_time_axis: t_003.c04
+    data_health:
+      rows: 11890
+      generated_at: '2026-11-11T21:07:01'
+      measure_null_rate: 0.0
+      distinct_key: 11890
+      duplicate_key_ratio: 1.0
+      time_coverage:
+      - '2024-01-01'
+      - '2025-12-25'
+  m_llm_下单客户数:
+    name_zh: 下单客户数
+    type: aggregate
+    fact: t_001
+    expr: COUNT(DISTINCT t_001.c02)
+    scope:
+      t_003.c03: delivered
+    time_via: null
+    supported_grain:
+    - none
+    - d_003_001_c04
+    - d_003_001_c05
+    - d_003_002_c04
+    - d_003_002_c05
+    - d_003_c03
+    - d_004_001_c04
+    - d_004_001_c05
+    - d_004_002_c04
+    - d_004_002_c05
+    - d_004_003_c03
+    - d_004_007_c03
+    - d_004_008_c02
+    - d_004_008_c04
+    - d_004_009_c03
+    - d_005_001_c04
+    - d_005_001_c05
+    - d_005_003_c03
+    - d_005_c03
+    - d_005_c04
+    - d_006_001_c04
+    - d_006_001_c05
+    - d_006_003_c03
+    - d_006_c04
+    - d_doc_t_003_c07_c08
+    unit: 人
+    additive: false
+    definition: 产生已送达订单的去重客户数，客户按customer_unique_id识别。
+    synonyms:
+    - 下单客户数
+    - 成交客户数
+    provenance: llm
+    confidence: 0.7
+    confirmed_at: '2026-11-11T21:07:01'
+    confirmed_by: publish
+    data_health:
+      rows: 11890
+      generated_at: '2026-11-11T21:07:01'
+      measure_null_rate: 0.0
+      distinct_key: 11890
+      duplicate_key_ratio: 1.0
+  m_llm_一星评价数:
+    name_zh: 一星评价数
+    type: aggregate
+    fact: t_006
+    expr: COUNT(t_006.c01)
+    scope:
+      t_006.c03: 1
+    time_via: t_006.c06
+    supported_grain:
+    - none
+    - d_003_001_c04
+    - d_003_001_c05
+    - d_003_002_c04
+    - d_003_002_c05
+    - d_003_c03
+    - d_004_001_c04
+    - d_004_001_c05
+    - d_004_002_c04
+    - d_004_002_c05
+    - d_004_003_c03
+    - d_005_001_c04
+    - d_005_001_c05
+    - d_005_003_c03
+    - d_006_001_c04
+    - d_006_001_c05
+    - d_006_003_c03
+    - d_006_c04
+    - d_doc_t_003_c07_c08
+    - month
+    unit: 条
+    additive: true
+    definition: 评分为1星的评价数量。
+    synonyms:
+    - 一星评价数
+    - 1星评价数
+    provenance: llm
+    confidence: 0.7
+    confirmed_at: '2026-11-11T21:07:01'
+    confirmed_by: publish
+    time_axis: 评价时间
+    default_time_axis: t_006.c06
+    data_health:
+      rows: 9232
+      generated_at: '2026-11-11T21:07:01'
+      measure_null_rate: 0.0
+      distinct_key: 9232
+      duplicate_key_ratio: 1.0
+      time_coverage:
+      - '2024-01-08'
+      - '2026-01-07'
+  m_llm_动销商品数:
+    name_zh: 动销商品数
+    type: aggregate
+    fact: t_004
+    expr: COUNT(DISTINCT t_004.c03)
+    scope:
+      t_003.c03: delivered
+    time_via: t_004.c05
+    supported_grain:
+    - none
+    - d_003_001_c04
+    - d_003_001_c05
+    - d_003_002_c04
+    - d_003_002_c05
+    - d_003_c03
+    - d_004_001_c04
+    - d_004_001_c05
+    - d_004_002_c04
+    - d_004_002_c05
+    - d_004_003_c03
+    - d_004_007_c03
+    - d_004_008_c02
+    - d_004_008_c04
+    - d_004_009_c03
+    - d_005_001_c04
+    - d_005_001_c05
+    - d_005_003_c03
+    - d_005_c03
+    - d_005_c04
+    - d_006_001_c04
+    - d_006_001_c05
+    - d_006_003_c03
+    - d_006_c04
+    - d_doc_t_003_c07_c08
+    - month
+    unit: 个
+    additive: false
+    definition: 已送达订单中出现的去重商品数。
+    synonyms:
+    - 动销商品数
+    - 有销量商品数
+    provenance: llm
+    confidence: 0.7
+    confirmed_at: '2026-11-11T21:07:01'
+    confirmed_by: publish
+    time_axis: 发货截止时间
+    default_time_axis: t_004.c05
+    data_health:
+      rows: 20900
+      generated_at: '2026-11-11T21:07:01'
+      measure_null_rate: 0.0
+      distinct_key: 3
+      duplicate_key_ratio: 6966.667
+      time_coverage:
+      - '2024-01-04'
+      - '2025-12-28'
+  m_llm_活跃商家数:
+    name_zh: 活跃商家数
+    type: aggregate
+    fact: t_004
+    expr: COUNT(DISTINCT t_004.c04)
+    scope:
+      t_003.c03: delivered
+    time_via: t_004.c05
+    supported_grain:
+    - none
+    - d_003_001_c04
+    - d_003_001_c05
+    - d_003_002_c04
+    - d_003_002_c05
+    - d_003_c03
+    - d_004_001_c04
+    - d_004_001_c05
+    - d_004_002_c04
+    - d_004_002_c05
+    - d_004_003_c03
+    - d_004_007_c03
+    - d_004_008_c02
+    - d_004_008_c04
+    - d_004_009_c03
+    - d_005_001_c04
+    - d_005_001_c05
+    - d_005_003_c03
+    - d_005_c03
+    - d_005_c04
+    - d_006_001_c04
+    - d_006_001_c05
+    - d_006_003_c03
+    - d_006_c04
+    - d_doc_t_003_c07_c08
+    - month
+    unit: 家
+    additive: false
+    definition: 已送达订单中出现的去重商家数。
+    synonyms:
+    - 活跃商家数
+    - 有销量商家数
+    provenance: llm
+    confidence: 0.7
+    confirmed_at: '2026-11-11T21:07:01'
+    confirmed_by: publish
+    time_axis: 发货截止时间
+    default_time_axis: t_004.c05
+    data_health:
+      rows: 20900
+      generated_at: '2026-11-11T21:07:01'
+      measure_null_rate: 0.0
+      distinct_key: 3
+      duplicate_key_ratio: 6966.667
+      time_coverage:
+      - '2024-01-04'
+      - '2025-12-28'
+  m_doc_延迟订单:
+    fact: t_003
+    type: aggregate
+    supported_grain:
+    - none
+    - d_003_001_c04
+    - d_003_001_c05
+    - d_003_002_c04
+    - d_003_002_c05
+    - d_003_c03
+    - d_004_001_c04
+    - d_004_001_c05
+    - d_004_002_c04
+    - d_004_002_c05
+    - d_004_003_c03
+    - d_005_001_c04
+    - d_005_001_c05
+    - d_005_003_c03
+    - d_006_001_c04
+    - d_006_001_c05
+    - d_006_003_c03
+    - d_doc_t_003_c07_c08
+    - month
+    scope:
+      t_003.c03: delivered
+    time_via: t_003.c04
+    additive: true
+    confidence: 0.8
+    name_zh: 延迟订单
+    expr: COUNT(CASE WHEN t_003.c07 > t_003.c08 THEN 1 END)
+    unit: 单
+    definition: delivered_at 晚于 estimated_delivery_at 的订单。
+    synonyms:
+    - 延迟订单
+    - 延迟订单数
+    - 超时订单
+    provenance: documentation
+    doc_source: llm+document
+    confirmed_at: '2026-11-11T21:07:01'
+    confirmed_by: publish
+    time_axis: 下单时间
+    default_time_axis: t_003.c04
+    data_health:
+      rows: 11890
+      generated_at: '2026-11-11T21:07:01'
+      measure_null_rate: 0.0989
+      distinct_key: 11890
+      duplicate_key_ratio: 1.0
+      time_coverage:
+      - '2024-01-01'
+      - '2025-12-25'
+  m_doc_低分评价:
+    fact: t_006
+    type: aggregate
+    supported_grain:
+    - none
+    - d_003_001_c04
+    - d_003_001_c05
+    - d_003_002_c04
+    - d_003_002_c05
+    - d_003_c03
+    - d_004_001_c04
+    - d_004_001_c05
+    - d_004_002_c04
+    - d_004_002_c05
+    - d_004_003_c03
+    - d_005_001_c04
+    - d_005_001_c05
+    - d_005_003_c03
+    - d_006_001_c04
+    - d_006_001_c05
+    - d_006_003_c03
+    - d_006_c04
+    - d_doc_t_003_c07_c08
+    - month
+    scope: {}
+    time_via: t_006.c06
+    additive: true
+    confidence: 0.8
+    name_zh: 低分评价
+    expr: COUNT(CASE WHEN t_006.c03 <= 2 THEN 1 END)
+    unit: 条
+    definition: review_score 小于等于 2 的评价。
+    synonyms:
+    - 低分评价
+    - 低分评价数
+    - 差评数
+    provenance: documentation
+    doc_source: llm+document
+    confirmed_at: '2026-11-11T21:07:01'
+    confirmed_by: publish
+    time_axis: 评价时间
+    default_time_axis: t_006.c06
+    data_health:
+      rows: 9232
+      generated_at: '2026-11-11T21:07:01'
+      measure_null_rate: 0.0
+      distinct_key: 9232
+      duplicate_key_ratio: 1.0
+      time_coverage:
+      - '2024-01-08'
+      - '2026-01-07'
+  m_doc_复购客户:
+    name_zh: 复购客户
+    type: entity_count
+    fact: t_003
+    entity: t_001.c02
+    entity_join: t_003 -> t_001
+    count_orders: COUNT(DISTINCT t_003.c01)
+    min_orders: 2
+    scope:
+      t_003.c03: delivered
+    time_via: t_003.c04
+    supported_grain:
+    - none
+    - d_003_001_c04
+    - d_003_001_c05
+    - d_003_002_c04
+    - d_003_002_c05
+    - d_003_c03
+    - d_004_001_c04
+    - d_004_001_c05
+    - d_004_002_c04
+    - d_004_002_c05
+    - d_004_003_c03
+    - d_004_007_c03
+    - d_004_008_c02
+    - d_004_008_c04
+    - d_004_009_c03
+    - d_005_001_c04
+    - d_005_001_c05
+    - d_005_003_c03
+    - d_005_c03
+    - d_005_c04
+    - d_006_001_c04
+    - d_006_001_c05
+    - d_006_003_c03
+    - d_006_c04
+    - d_doc_t_003_c07_c08
+    - month
+    unit: 客户
+    additive: false
+    definition: 同一 customer_unique_id 完成至少 2 笔已送达订单的客户。
+    synonyms:
+    - 复购客户
+    - 复购客户数
+    - 重复购买客户
+    provenance: documentation
+    doc_source: llm+document
+    confirmed_at: '2026-11-11T21:07:01'
+    confirmed_by: publish
+    time_axis: 下单时间
+    default_time_axis: t_003.c04
+    data_health:
+      rows: 11890
+      generated_at: '2026-11-11T21:07:01'
+      measure_null_rate: 0.0
+      distinct_key: 11890
+      duplicate_key_ratio: 1.0
+      time_coverage:
+      - '2024-01-01'
+      - '2025-12-25'
+  entity_count_t_001:
+    name_zh: 自然客户数
+    type: entity_count
+    fact: t_003
+    entity: t_001.c02
+    entity_join: t_003 -> t_001
+    count_orders: COUNT(DISTINCT t_003.c01)
+    min_orders: 1
+    scope:
+      t_003.c03: delivered
+    time_via: t_003.c04
+    supported_grain:
+    - none
+    - d_003_001_c04
+    - d_003_001_c05
+    - d_003_002_c04
+    - d_003_002_c05
+    - d_003_c03
+    - d_004_001_c04
+    - d_004_001_c05
+    - d_004_002_c04
+    - d_004_002_c05
+    - d_004_003_c03
+    - d_004_007_c03
+    - d_004_008_c02
+    - d_004_008_c04
+    - d_004_009_c03
+    - d_005_001_c04
+    - d_005_001_c05
+    - d_005_003_c03
+    - d_005_c03
+    - d_005_c04
+    - d_006_001_c04
+    - d_006_001_c05
+    - d_006_003_c03
+    - d_006_c04
+    - d_doc_t_003_c07_c08
+    - month
+    unit: 人
+    definition: 按 c02 去重的客户数
+    synonyms:
+    - 自然客户
+    - 去重客户
+    - 自然客户数
+    provenance: derived
+    confidence: 0.7
+    confirmed_at: '2026-11-11T21:07:01'
+    confirmed_by: publish
+dimensions:
+  month:
+    id: month
+    name_zh: 月份
+    kind: time
+    format: '%Y-%m'
+    column_from: t_004.c05
+    synonyms:
+    - 月份
+    - 按月
+    - 月度
+    - month
+    selected: true
+    provenance: auto
+    confidence: 0.9
+    confirmed_at: '2026-11-11T21:07:01'
+    confirmed_by: publish
+  d_004_003_c03:
+    id: d_004_003_c03
+    name_zh: 订单状态
+    column: t_003.c03
+    filter_column: t_003.c03
+    filter_lookup: t_003.c03
+    value_source: t_003
+    join_path:
+    - t_004 -> t_003
+    synonyms:
+    - order_status
+    - 订单状态
+    - 状态
+    - orders
+    selected: true
+    provenance: auto
+    confidence: 0.9
+    confirmed_at: '2026-11-11T21:07:01'
+    confirmed_by: publish
+  d_004_007_c03:
+    id: d_004_007_c03
+    name_zh: 商品名称
+    column: t_007.c03
+    filter_column: t_007.c03
+    filter_lookup: t_007.c03
+    value_source: t_007
+    join_path:
+    - t_004 -> t_007
+    synonyms:
+    - product_name
+    - 商品
+    - 商品名称
+    - 产品
+    - products
+    selected: true
+    provenance: auto
+    confidence: 0.9
+    confirmed_at: '2026-11-11T21:07:01'
+    confirmed_by: publish
+  d_004_008_c02:
+    id: d_004_008_c02
+    name_zh: 商家名称
+    column: t_008.c02
+    filter_column: t_008.c02
+    filter_lookup: t_008.c02
+    value_source: t_008
+    join_path:
+    - t_004 -> t_008
+    synonyms:
+    - seller_name
+    - 商家
+    - 商家名称
+    - 卖家
+    - sellers
+    selected: true
+    provenance: auto
+    confidence: 0.9
+    confirmed_at: '2026-11-11T21:07:01'
+    confirmed_by: publish
+  d_004_008_c04:
+    id: d_004_008_c04
+    name_zh: 商家城市
+    column: t_008.c04
+    filter_column: t_008.c04
+    filter_lookup: t_008.c04
+    value_source: t_008
+    join_path:
+    - t_004 -> t_008
+    synonyms:
+    - seller_city
+    - 城市
+    - sellers
+    selected: true
+    provenance: auto
+    confidence: 0.9
+    confirmed_at: '2026-11-11T21:07:01'
+    confirmed_by: publish
+  d_004_001_c04:
+    id: d_004_001_c04
+    name_zh: 客户城市
+    column: t_001.c04
+    filter_column: t_001.c04
+    filter_lookup: t_001.c04
+    value_source: t_001
+    join_path:
+    - t_004 -> t_003
+    - t_003 -> t_001
+    synonyms:
+    - customer_city
+    - 客户城市
+    - 城市
+    - 地区
+    - customers
+    selected: true
+    provenance: auto
+    confidence: 0.75
+    confirmed_at: '2026-11-11T21:07:01'
+    confirmed_by: publish
+  d_004_001_c05:
+    id: d_004_001_c05
+    name_zh: 客户省份
+    column: t_001.c05
+    filter_column: t_001.c05
+    filter_lookup: t_001.c05
+    value_source: t_001
+    join_path:
+    - t_004 -> t_003
+    - t_003 -> t_001
+    synonyms:
+    - customer_state
+    - 客户省份
+    - 省份
+    - 州
+    - customers
+    selected: true
+    provenance: auto
+    confidence: 0.75
+    confirmed_at: '2026-11-11T21:07:01'
+    confirmed_by: publish
+  d_004_009_c03:
+    id: d_004_009_c03
+    name_zh: 品类
+    column: t_009.c03
+    filter_column: t_009.c03
+    filter_lookup: t_009.c03
+    value_source: t_009
+    join_path:
+    - t_004 -> t_007
+    - t_007 -> t_009
+    synonyms:
+    - category_name_zh
+    - 品类
+    - 类目
+    - 分类
+    - categories
+    selected: true
+    provenance: auto
+    confidence: 0.75
+    confirmed_at: '2026-11-11T21:07:01'
+    confirmed_by: publish
+  d_004_002_c04:
+    id: d_004_002_c04
+    name_zh: 城市
+    column: t_002.c04
+    filter_column: t_002.c04
+    filter_lookup: t_002.c04
+    value_source: t_002
+    join_path:
+    - t_004 -> t_008
+    - t_008 -> t_002
+    synonyms:
+    - city
+    - 城市
+    - geolocation
+    selected: true
+    provenance: auto
+    confidence: 0.75
+    confirmed_at: '2026-11-11T21:07:01'
+    confirmed_by: publish
+  d_004_002_c05:
+    id: d_004_002_c05
+    name_zh: 省份
+    column: t_002.c05
+    filter_column: t_002.c05
+    filter_lookup: t_002.c05
+    value_source: t_002
+    join_path:
+    - t_004 -> t_008
+    - t_008 -> t_002
+    synonyms:
+    - state
+    - 省份
+    - 州
+    - geolocation
+    selected: true
+    provenance: auto
+    confidence: 0.75
+    confirmed_at: '2026-11-11T21:07:01'
+    confirmed_by: publish
+  d_003_c03:
+    id: d_003_c03
+    name_zh: 订单状态
+    column: t_003.c03
+    filter_column: t_003.c03
+    filter_lookup: t_003.c03
+    value_source: t_003
+    synonyms:
+    - order_status
+    - 订单状态
+    - 状态
+    - orders
+    selected: true
+    provenance: auto
+    confidence: 0.95
+    confirmed_at: '2026-11-11T21:07:01'
+    confirmed_by: publish
+  d_003_001_c04:
+    id: d_003_001_c04
+    name_zh: 客户城市
+    column: t_001.c04
+    filter_column: t_001.c04
+    filter_lookup: t_001.c04
+    value_source: t_001
+    join_path:
+    - t_003 -> t_001
+    synonyms:
+    - customer_city
+    - 客户城市
+    - 城市
+    - 地区
+    - customers
+    selected: true
+    provenance: auto
+    confidence: 0.9
+    confirmed_at: '2026-11-11T21:07:01'
+    confirmed_by: publish
+  d_003_001_c05:
+    id: d_003_001_c05
+    name_zh: 客户省份
+    column: t_001.c05
+    filter_column: t_001.c05
+    filter_lookup: t_001.c05
+    value_source: t_001
+    join_path:
+    - t_003 -> t_001
+    synonyms:
+    - customer_state
+    - 客户省份
+    - 省份
+    - 州
+    - customers
+    selected: true
+    provenance: auto
+    confidence: 0.9
+    confirmed_at: '2026-11-11T21:07:01'
+    confirmed_by: publish
+  d_003_002_c04:
+    id: d_003_002_c04
+    name_zh: 城市
+    column: t_002.c04
+    filter_column: t_002.c04
+    filter_lookup: t_002.c04
+    value_source: t_002
+    join_path:
+    - t_003 -> t_001
+    - t_001 -> t_002
+    synonyms:
+    - city
+    - 城市
+    - geolocation
+    selected: true
+    provenance: auto
+    confidence: 0.75
+    confirmed_at: '2026-11-11T21:07:01'
+    confirmed_by: publish
+  d_003_002_c05:
+    id: d_003_002_c05
+    name_zh: 省份
+    column: t_002.c05
+    filter_column: t_002.c05
+    filter_lookup: t_002.c05
+    value_source: t_002
+    join_path:
+    - t_003 -> t_001
+    - t_001 -> t_002
+    synonyms:
+    - state
+    - 省份
+    - 州
+    - geolocation
+    selected: true
+    provenance: auto
+    confidence: 0.75
+    confirmed_at: '2026-11-11T21:07:01'
+    confirmed_by: publish
+  d_doc_t_003_c07_c08:
+    id: d_doc_t_003_c07_c08
+    name_zh: 是否延迟
+    kind: derived
+    expr: t_003.c07 > t_003.c08
+    requires: t_003
+    labels:
+      'true': 延迟
+      'false': 准时
+    synonyms:
+    - 延迟
+    - 准时
+    - 是否延迟
+    - 延迟订单
+    - 准时订单
+    - 延迟评价
+    selected: true
+    provenance: documentation
+    confidence: 0.8
+    definition: 延迟：t_003.c07 > t_003.c08；否则为准时。
+    confirmed_at: '2026-11-11T21:07:01'
+    confirmed_by: publish
+  d_005_001_c04:
+    id: d_005_001_c04
+    name_zh: 客户城市
+    column: t_001.c04
+    filter_column: t_001.c04
+    filter_lookup: t_001.c04
+    value_source: t_001
+    join_path:
+    - t_005 -> t_003
+    - t_003 -> t_001
+    synonyms:
+    - customer_city
+    - 客户城市
+    - 城市
+    - 地区
+    - customers
+    selected: false
+    provenance: auto
+    confidence: 0.75
+    confirmed_at: '2026-11-11T21:07:01'
+    confirmed_by: publish
+  d_005_001_c05:
+    id: d_005_001_c05
+    name_zh: 客户省份
+    column: t_001.c05
+    filter_column: t_001.c05
+    filter_lookup: t_001.c05
+    value_source: t_001
+    join_path:
+    - t_005 -> t_003
+    - t_003 -> t_001
+    synonyms:
+    - customer_state
+    - 客户省份
+    - 省份
+    - 州
+    - customers
+    selected: false
+    provenance: auto
+    confidence: 0.75
+    confirmed_at: '2026-11-11T21:07:01'
+    confirmed_by: publish
+  d_005_003_c03:
+    id: d_005_003_c03
+    name_zh: 订单状态
+    column: t_003.c03
+    filter_column: t_003.c03
+    filter_lookup: t_003.c03
+    value_source: t_003
+    join_path:
+    - t_005 -> t_003
+    synonyms:
+    - order_status
+    - 订单状态
+    - 状态
+    - orders
+    selected: false
+    provenance: auto
+    confidence: 0.9
+    confirmed_at: '2026-11-11T21:07:01'
+    confirmed_by: publish
+  d_005_c03:
+    id: d_005_c03
+    name_zh: 支付方式
+    column: t_005.c03
+    filter_column: t_005.c03
+    filter_lookup: t_005.c03
+    value_source: t_005
+    synonyms:
+    - payment_type
+    - 支付方式
+    - 付款方式
+    - order_payments
+    selected: false
+    provenance: auto
+    confidence: 0.95
+    confirmed_at: '2026-11-11T21:07:01'
+    confirmed_by: publish
+  d_005_c04:
+    id: d_005_c04
+    name_zh: 分期期数
+    column: t_005.c04
+    filter_column: t_005.c04
+    filter_lookup: t_005.c04
+    value_source: t_005
+    synonyms:
+    - payment_installments
+    - 分期期数
+    - 分期
+    - order_payments
+    selected: false
+    provenance: auto
+    confidence: 0.95
+    confirmed_at: '2026-11-11T21:07:01'
+    confirmed_by: publish
+  d_006_001_c04:
+    id: d_006_001_c04
+    name_zh: 客户城市
+    column: t_001.c04
+    filter_column: t_001.c04
+    filter_lookup: t_001.c04
+    value_source: t_001
+    join_path:
+    - t_006 -> t_003
+    - t_003 -> t_001
+    synonyms:
+    - customer_city
+    - 客户城市
+    - 城市
+    - 地区
+    - customers
+    selected: false
+    provenance: auto
+    confidence: 0.75
+    confirmed_at: '2026-11-11T21:07:01'
+    confirmed_by: publish
+  d_006_001_c05:
+    id: d_006_001_c05
+    name_zh: 客户省份
+    column: t_001.c05
+    filter_column: t_001.c05
+    filter_lookup: t_001.c05
+    value_source: t_001
+    join_path:
+    - t_006 -> t_003
+    - t_003 -> t_001
+    synonyms:
+    - customer_state
+    - 客户省份
+    - 省份
+    - 州
+    - customers
+    selected: false
+    provenance: auto
+    confidence: 0.75
+    confirmed_at: '2026-11-11T21:07:01'
+    confirmed_by: publish
+  d_006_003_c03:
+    id: d_006_003_c03
+    name_zh: 订单状态
+    column: t_003.c03
+    filter_column: t_003.c03
+    filter_lookup: t_003.c03
+    value_source: t_003
+    join_path:
+    - t_006 -> t_003
+    synonyms:
+    - order_status
+    - 订单状态
+    - 状态
+    - orders
+    selected: false
+    provenance: auto
+    confidence: 0.9
+    confirmed_at: '2026-11-11T21:07:01'
+    confirmed_by: publish
+  d_006_c04:
+    id: d_006_c04
+    name_zh: review_title
+    column: t_006.c04
+    filter_column: t_006.c04
+    filter_lookup: t_006.c04
+    value_source: t_006
+    synonyms:
+    - review_title
+    - order_reviews
+    selected: false
+    provenance: auto
+    confidence: 0.95
+    confirmed_at: '2026-11-11T21:07:01'
+    confirmed_by: publish
+policies:
+  ambiguity: ask_once_then_remember
+  missing_year: latest_occurrence_in_range
+  ratio_grain: order
+  max_retry: 1
+generic: true
+documentation:
+  source: metrics.md
+  parsed_at: '2026-11-11T20:56:40'
+  applied_at: '2026-11-11T21:01:15'
+  rules: 7
+entities:
+  t_001:
+    table: t_001
+    key: c02
+    label: 客户
+    aliases:
+    - 客户
+    - 自然客户
+    - 去重客户
+    unit: 人
+    event:
+      fact: t_003
+      key: t_003.c01
+      scope:
+        t_003.c03: delivered
+      time_via: t_003.c04
+      join: t_003 -> t_001
+published_at: '2026-11-11T21:07:02'
+dimension_groups:
+  订单状态:
+  - d_003_c03
+  - d_004_003_c03
+  - d_005_003_c03
+  - d_006_003_c03
+  客户城市:
+  - d_003_001_c04
+  - d_004_001_c04
+  - d_005_001_c04
+  - d_006_001_c04
+  客户省份:
+  - d_003_001_c05
+  - d_004_001_c05
+  - d_005_001_c05
+  - d_006_001_c05
+  城市:
+  - d_003_002_c04
+  - d_004_002_c04
+  省份:
+  - d_003_002_c05
+  - d_004_002_c05
+time_axes:
+- ref: t_003.c04
+  label: purchase_at
+  name_zh: 下单时间
+  coverage:
+  - '2024-01-01'
+  - '2025-12-25'
+- ref: t_003.c05
+  label: approved_at
+  name_zh: 审批时间
+  coverage:
+  - '2024-01-02'
+  - '2025-12-26'
+- ref: t_003.c06
+  label: shipped_at
+  name_zh: 发货时间
+  coverage:
+  - '2024-01-03'
+  - '2025-12-29'
+- ref: t_003.c07
+  label: delivered_at
+  name_zh: 送达时间
+  coverage:
+  - '2024-01-07'
+  - '2026-01-06'
+- ref: t_003.c08
+  label: estimated_delivery_at
+  name_zh: estimated_delivery_at
+  coverage:
+  - '2024-01-11'
+  - '2026-01-04'
+- ref: t_004.c05
+  label: shipping_limit_at
+  name_zh: 发货截止时间
+  coverage:
+  - '2024-01-04'
+  - '2025-12-28'
+- ref: t_006.c06
+  label: review_created_at
+  name_zh: 评价时间
+  coverage:
+  - '2024-01-08'
+  - '2026-01-07'
+- ref: t_006.c07
+  label: seller_answered_at
+  name_zh: seller_answered_at
+  coverage:
+  - '2024-01-09'
+  - '2026-01-08'

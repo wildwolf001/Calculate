@@ -1,0 +1,547 @@
+version: 1
+dataset_id: ds_d7390c8574a4
+name: CSV_Demo
+files:
+- path: raw\categories.csv
+  sha256: c4d60b023e7f3587b61ecf367ee31ba0424e522e17d3195c042564c741370897
+  size: 217
+- path: raw\customers.csv
+  sha256: d019adaff28867c9ab303731ab83b065b01f87143c2dae21bcff0be8a85d228a
+  size: 6198
+- path: raw\geolocation.csv
+  sha256: 54cc6858428e1083e9a47c9bab1888b39a8a971efedbe76fc1eeb1d88c18b1aa
+  size: 419
+- path: raw\order_items.csv
+  sha256: 825c3354d3cd65ddb84fdce2c427fbd1643aae36d7060d0da4c65b49e283d023
+  size: 18927
+- path: raw\order_payments.csv
+  sha256: 6143d4fff8521b26f2f7ae24437dac56fda7200989c11293123c914d2fc2b444
+  size: 5435
+- path: raw\order_reviews.csv
+  sha256: 1eb5e2aa4c9972e34871fac3246de0ffedbdbb4377f05c28db203057a9c2eb60
+  size: 13538
+- path: raw\orders.csv
+  sha256: fc3b3d73c174b1ee107f783c377dfbce3b55ac573becbd56c0111990d2bd13ca
+  size: 21423
+- path: raw\products.csv
+  sha256: f0b39efc97a5ac35aa61adb71353853542f6d4ed1c44fafecc80e4e9f58d81be
+  size: 1658
+- path: raw\sellers.csv
+  sha256: f67560c753b4bf6e1e5acc47033c46c44fd42ddcb45142cd9a79148493e49f03
+  size: 375
+tables:
+  t_001:
+    label: categories
+    source:
+      file: raw\categories.csv
+      sheet: null
+    header_row: 0
+    grain:
+    - c01
+    role: dimension
+    columns:
+    - physical: c01
+      label: category_id
+      type: varchar
+      unit: null
+      pii: false
+    - physical: c02
+      label: category_name_en
+      type: varchar
+      unit: null
+      pii: false
+    - physical: c03
+      label: category_name_zh
+      type: varchar
+      unit: null
+      pii: false
+  t_002:
+    label: customers
+    source:
+      file: raw\customers.csv
+      sheet: null
+    header_row: 0
+    grain:
+    - c01
+    role: dimension
+    columns:
+    - physical: c01
+      label: customer_id
+      type: varchar
+      unit: null
+      pii: false
+    - physical: c02
+      label: customer_unique_id
+      type: varchar
+      unit: null
+      pii: false
+    - physical: c03
+      label: customer_zip_code
+      type: integer
+      unit: null
+      pii: false
+    - physical: c04
+      label: customer_city
+      type: varchar
+      unit: null
+      pii: false
+    - physical: c05
+      label: customer_state
+      type: varchar
+      unit: null
+      pii: false
+  t_003:
+    label: geolocation
+    source:
+      file: raw\geolocation.csv
+      sheet: null
+    header_row: 0
+    grain:
+    - c01
+    role: dimension
+    columns:
+    - physical: c01
+      label: zip_code
+      type: integer
+      unit: null
+      pii: false
+    - physical: c02
+      label: latitude
+      type: decimal
+      unit: null
+      pii: false
+    - physical: c03
+      label: longitude
+      type: decimal
+      unit: null
+      pii: false
+    - physical: c04
+      label: city
+      type: varchar
+      unit: null
+      pii: false
+    - physical: c05
+      label: state
+      type: varchar
+      unit: null
+      pii: false
+  t_004:
+    label: order_items
+    source:
+      file: raw\order_items.csv
+      sheet: null
+    header_row: 0
+    grain:
+    - c02
+    - c01
+    role: fact
+    columns:
+    - physical: c01
+      label: order_id
+      type: varchar
+      unit: null
+      pii: false
+    - physical: c02
+      label: order_item_id
+      type: integer
+      unit: null
+      pii: false
+    - physical: c03
+      label: product_id
+      type: varchar
+      unit: null
+      pii: false
+    - physical: c04
+      label: seller_id
+      type: varchar
+      unit: null
+      pii: false
+    - physical: c05
+      label: shipping_limit_at
+      type: datetime
+      unit: null
+      pii: false
+    - physical: c06
+      label: price
+      type: decimal
+      unit: null
+      pii: false
+    - physical: c07
+      label: freight_value
+      type: decimal
+      unit: null
+      pii: false
+  t_005:
+    label: order_payments
+    source:
+      file: raw\order_payments.csv
+      sheet: null
+    header_row: 0
+    grain:
+    - c01
+    - c02
+    role: fact
+    columns:
+    - physical: c01
+      label: order_id
+      type: varchar
+      unit: null
+      pii: false
+    - physical: c02
+      label: payment_sequence
+      type: integer
+      unit: null
+      pii: false
+    - physical: c03
+      label: payment_type
+      type: varchar
+      unit: null
+      pii: false
+    - physical: c04
+      label: payment_installments
+      type: integer
+      unit: null
+      pii: false
+    - physical: c05
+      label: payment_value
+      type: decimal
+      unit: null
+      pii: false
+  t_006:
+    label: order_reviews
+    source:
+      file: raw\order_reviews.csv
+      sheet: null
+    header_row: 0
+    grain:
+    - c01
+    role: fact
+    columns:
+    - physical: c01
+      label: review_id
+      type: varchar
+      unit: null
+      pii: false
+    - physical: c02
+      label: order_id
+      type: varchar
+      unit: null
+      pii: false
+    - physical: c03
+      label: review_score
+      type: integer
+      unit: null
+      pii: false
+    - physical: c04
+      label: review_title
+      type: varchar
+      unit: null
+      pii: false
+    - physical: c05
+      label: review_message
+      type: varchar
+      unit: null
+      pii: false
+    - physical: c06
+      label: review_created_at
+      type: datetime
+      unit: null
+      pii: false
+    - physical: c07
+      label: seller_answered_at
+      type: datetime
+      unit: null
+      pii: false
+  t_007:
+    label: orders
+    source:
+      file: raw\orders.csv
+      sheet: null
+    header_row: 0
+    grain:
+    - c01
+    role: fact
+    columns:
+    - physical: c01
+      label: order_id
+      type: varchar
+      unit: null
+      pii: false
+    - physical: c02
+      label: customer_id
+      type: varchar
+      unit: null
+      pii: false
+    - physical: c03
+      label: order_status
+      type: varchar
+      unit: null
+      pii: false
+    - physical: c04
+      label: purchase_at
+      type: datetime
+      unit: null
+      pii: false
+    - physical: c05
+      label: approved_at
+      type: datetime
+      unit: null
+      pii: false
+    - physical: c06
+      label: shipped_at
+      type: datetime
+      unit: null
+      pii: false
+    - physical: c07
+      label: delivered_at
+      type: datetime
+      unit: null
+      pii: false
+    - physical: c08
+      label: estimated_delivery_at
+      type: datetime
+      unit: null
+      pii: false
+  t_008:
+    label: products
+    source:
+      file: raw\products.csv
+      sheet: null
+    header_row: 0
+    grain:
+    - c01
+    role: dimension
+    columns:
+    - physical: c01
+      label: product_id
+      type: varchar
+      unit: null
+      pii: false
+    - physical: c02
+      label: category_id
+      type: varchar
+      unit: null
+      pii: false
+    - physical: c03
+      label: product_name
+      type: varchar
+      unit: null
+      pii: false
+    - physical: c04
+      label: product_name_length
+      type: integer
+      unit: null
+      pii: false
+    - physical: c05
+      label: product_description_length
+      type: integer
+      unit: null
+      pii: false
+    - physical: c06
+      label: product_photos_count
+      type: integer
+      unit: null
+      pii: false
+    - physical: c07
+      label: product_weight_g
+      type: integer
+      unit: null
+      pii: false
+    - physical: c08
+      label: product_length_cm
+      type: integer
+      unit: null
+      pii: false
+    - physical: c09
+      label: product_height_cm
+      type: integer
+      unit: null
+      pii: false
+    - physical: c10
+      label: product_width_cm
+      type: integer
+      unit: null
+      pii: false
+    - physical: c11
+      label: base_price
+      type: integer
+      unit: null
+      pii: false
+  t_009:
+    label: sellers
+    source:
+      file: raw\sellers.csv
+      sheet: null
+    header_row: 0
+    grain:
+    - c01
+    role: dimension
+    columns:
+    - physical: c01
+      label: seller_id
+      type: varchar
+      unit: null
+      pii: false
+    - physical: c02
+      label: seller_name
+      type: varchar
+      unit: null
+      pii: false
+    - physical: c03
+      label: seller_zip_code
+      type: integer
+      unit: null
+      pii: false
+    - physical: c04
+      label: seller_city
+      type: varchar
+      unit: null
+      pii: false
+    - physical: c05
+      label: seller_state
+      type: varchar
+      unit: null
+      pii: false
+relationships:
+- child: t_002
+  child_col: c03
+  child_label: customer_zip_code
+  parent: t_003
+  parent_col: c01
+  parent_label: zip_code
+  containment: 1.0
+  score: 0.98
+  child_rows: 180
+  joined_rows: 180
+  amplified: false
+  accepted: true
+  card: N:1
+  reason: ''
+- child: t_004
+  child_col: c01
+  child_label: order_id
+  parent: t_007
+  parent_col: c01
+  parent_label: order_id
+  containment: 1.0
+  score: 1.0
+  child_rows: 359
+  joined_rows: 359
+  amplified: false
+  accepted: true
+  card: N:1
+  reason: ''
+- child: t_004
+  child_col: c03
+  child_label: product_id
+  parent: t_008
+  parent_col: c01
+  parent_label: product_id
+  containment: 1.0
+  score: 1.0
+  child_rows: 359
+  joined_rows: 359
+  amplified: false
+  accepted: true
+  card: N:1
+  reason: ''
+- child: t_004
+  child_col: c04
+  child_label: seller_id
+  parent: t_009
+  parent_col: c01
+  parent_label: seller_id
+  containment: 1.0
+  score: 1.0
+  child_rows: 359
+  joined_rows: 359
+  amplified: false
+  accepted: true
+  card: N:1
+  reason: ''
+- child: t_005
+  child_col: c01
+  child_label: order_id
+  parent: t_007
+  parent_col: c01
+  parent_label: order_id
+  containment: 1.0
+  score: 1.0
+  child_rows: 182
+  joined_rows: 182
+  amplified: false
+  accepted: true
+  card: N:1
+  reason: ''
+- child: t_006
+  child_col: c02
+  child_label: order_id
+  parent: t_007
+  parent_col: c01
+  parent_label: order_id
+  containment: 1.0
+  score: 1.0
+  child_rows: 142
+  joined_rows: 142
+  amplified: false
+  accepted: true
+  card: N:1
+  reason: ''
+- child: t_007
+  child_col: c02
+  child_label: customer_id
+  parent: t_002
+  parent_col: c01
+  parent_label: customer_id
+  containment: 1.0
+  score: 1.0
+  child_rows: 180
+  joined_rows: 180
+  amplified: false
+  accepted: true
+  card: N:1
+  reason: ''
+- child: t_008
+  child_col: c02
+  child_label: category_id
+  parent: t_001
+  parent_col: c01
+  parent_label: category_id
+  containment: 1.0
+  score: 1.0
+  child_rows: 30
+  joined_rows: 30
+  amplified: false
+  accepted: true
+  card: N:1
+  reason: ''
+- child: t_009
+  child_col: c03
+  child_label: seller_zip_code
+  parent: t_003
+  parent_col: c01
+  parent_label: zip_code
+  containment: 1.0
+  score: 0.98
+  child_rows: 8
+  joined_rows: 8
+  amplified: false
+  accepted: true
+  card: N:1
+  reason: ''
+options:
+  totals_policy: exclude
+  pii_policy: mask
+  include_files:
+  - categories.csv
+  - customers.csv
+  - geolocation.csv
+  - order_items.csv
+  - order_payments.csv
+  - order_reviews.csv
+  - orders.csv
+  - products.csv
+  - sellers.csv
+  include_suspected: false
+skipped_sources: []
+notes: []

@@ -1,0 +1,259 @@
+{
+  "source": "metrics.md",
+  "parsed_at": "2026-11-11T20:56:40",
+  "parser": "llm+deterministic",
+  "rules": [
+    {
+      "name": "商品销售额",
+      "aliases": [
+        "销售额",
+        "商品销售总额"
+      ],
+      "definition": "状态为 delivered 的订单明细 price 合计，不含运费。",
+      "aggregation": "sum",
+      "table": "ecommerce_agent_demo/order_items",
+      "columns": [
+        "price",
+        "order_id"
+      ],
+      "filters": {
+        "order_status": "delivered"
+      },
+      "formula": null,
+      "unit": "货币",
+      "notes": [
+        "不含运费"
+      ],
+      "raw": "商品销售额：状态为 `delivered` 的订单明细 `price` 合计，不含运费。",
+      "source": "llm+document",
+      "table_id": "t_004",
+      "resolved_columns": [
+        {
+          "table": "t_004",
+          "column": "c06",
+          "label": "price"
+        },
+        {
+          "table": "t_004",
+          "column": "c01",
+          "label": "order_id"
+        }
+      ]
+    },
+    {
+      "name": "订单数",
+      "aliases": [
+        "订单量",
+        "订单总数"
+      ],
+      "definition": "按 order_id 去重计数。",
+      "aggregation": "count_distinct",
+      "table": "ecommerce_agent_demo/orders",
+      "columns": [
+        "order_id"
+      ],
+      "filters": {},
+      "formula": null,
+      "unit": "单",
+      "notes": [],
+      "raw": "订单数：按 `order_id` 去重。",
+      "source": "llm+document",
+      "table_id": "t_003",
+      "resolved_columns": [
+        {
+          "table": "t_003",
+          "column": "c01",
+          "label": "order_id"
+        }
+      ]
+    },
+    {
+      "name": "延迟订单",
+      "aliases": [
+        "延迟订单数",
+        "超时订单"
+      ],
+      "definition": "delivered_at 晚于 estimated_delivery_at 的订单。",
+      "aggregation": "count",
+      "table": "ecommerce_agent_demo/orders",
+      "columns": [
+        "order_id",
+        "delivered_at",
+        "estimated_delivery_at"
+      ],
+      "filters": {
+        "order_status": "delivered"
+      },
+      "formula": "delivered_at > estimated_delivery_at",
+      "unit": "单",
+      "notes": [],
+      "raw": "延迟订单：`delivered_at > estimated_delivery_at`。",
+      "source": "llm+document",
+      "table_id": "t_003",
+      "resolved_columns": [
+        {
+          "table": "t_003",
+          "column": "c01",
+          "label": "order_id"
+        },
+        {
+          "table": "t_003",
+          "column": "c07",
+          "label": "delivered_at"
+        },
+        {
+          "table": "t_003",
+          "column": "c08",
+          "label": "estimated_delivery_at"
+        }
+      ]
+    },
+    {
+      "name": "延迟率",
+      "aliases": [
+        "延迟订单率",
+        "超时率"
+      ],
+      "definition": "延迟的已送达订单数除以已送达订单数。",
+      "aggregation": "ratio",
+      "table": "ecommerce_agent_demo/orders",
+      "columns": [
+        "order_id",
+        "delivered_at",
+        "estimated_delivery_at"
+      ],
+      "filters": {
+        "order_status": "delivered"
+      },
+      "formula": "delivered_at > estimated_delivery_at",
+      "unit": "比率",
+      "notes": [],
+      "raw": "延迟率：延迟的已送达订单数 / 已送达订单数。",
+      "source": "llm+document",
+      "table_id": "t_003",
+      "resolved_columns": [
+        {
+          "table": "t_003",
+          "column": "c01",
+          "label": "order_id"
+        },
+        {
+          "table": "t_003",
+          "column": "c07",
+          "label": "delivered_at"
+        },
+        {
+          "table": "t_003",
+          "column": "c08",
+          "label": "estimated_delivery_at"
+        }
+      ]
+    },
+    {
+      "name": "低分评价",
+      "aliases": [
+        "低分评价数",
+        "差评数"
+      ],
+      "definition": "review_score 小于等于 2 的评价。",
+      "aggregation": "count",
+      "table": "ecommerce_agent_demo/order_reviews",
+      "columns": [
+        "review_id",
+        "review_score"
+      ],
+      "filters": {},
+      "formula": "review_score <= 2",
+      "unit": "条",
+      "notes": [],
+      "raw": "低分评价：`review_score <= 2`。",
+      "source": "llm+document",
+      "table_id": "t_006",
+      "resolved_columns": [
+        {
+          "table": "t_006",
+          "column": "c01",
+          "label": "review_id"
+        },
+        {
+          "table": "t_006",
+          "column": "c03",
+          "label": "review_score"
+        }
+      ]
+    },
+    {
+      "name": "复购客户",
+      "aliases": [
+        "复购客户数",
+        "重复购买客户"
+      ],
+      "definition": "同一 customer_unique_id 完成至少 2 笔已送达订单的客户。",
+      "aggregation": "count_distinct",
+      "table": "ecommerce_agent_demo/customers",
+      "columns": [
+        "customer_unique_id",
+        "customer_id"
+      ],
+      "filters": {
+        "order_status": "delivered"
+      },
+      "formula": null,
+      "unit": "客户",
+      "notes": [],
+      "raw": "复购客户：同一 `customer_unique_id` 完成至少 2 笔已送达订单。",
+      "source": "llm+document",
+      "table_id": "t_001",
+      "resolved_columns": [
+        {
+          "table": "t_001",
+          "column": "c02",
+          "label": "customer_unique_id"
+        },
+        {
+          "table": "t_001",
+          "column": "c01",
+          "label": "customer_id"
+        }
+      ]
+    },
+    {
+      "name": "支付金额",
+      "aliases": [
+        "支付总额",
+        "付款金额",
+        "支付金额合计"
+      ],
+      "definition": "按 order_id 先汇总 payment_value，不能与多行订单明细直接关联后求和。",
+      "aggregation": "sum",
+      "table": "ecommerce_agent_demo/order_payments",
+      "columns": [
+        "order_id",
+        "payment_value"
+      ],
+      "filters": {},
+      "formula": null,
+      "unit": "货币",
+      "notes": [],
+      "raw": "支付金额：按订单先汇总 `payment_value`，不能与多行订单明细直接关联后求和。",
+      "source": "llm+document",
+      "table_id": "t_005",
+      "resolved_columns": [
+        {
+          "table": "t_005",
+          "column": "c01",
+          "label": "order_id"
+        },
+        {
+          "table": "t_005",
+          "column": "c05",
+          "label": "payment_value"
+        }
+      ]
+    }
+  ],
+  "notes": [],
+  "warnings": [],
+  "size": 499,
+  "path": "docs\\metrics.md"
+}

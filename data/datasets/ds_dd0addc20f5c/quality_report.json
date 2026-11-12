@@ -1,0 +1,93 @@
+{
+  "checks": [
+    {
+      "id": "no_unique_key",
+      "severity": "warn",
+      "title": "部分表没有唯一主键",
+      "count": 0,
+      "detail": []
+    },
+    {
+      "id": "duplicate_full_rows",
+      "severity": "warn",
+      "title": "存在重复整行",
+      "count": 0,
+      "detail": {}
+    },
+    {
+      "id": "empty_columns",
+      "severity": "warn",
+      "title": "存在全空列",
+      "count": 0,
+      "detail": {}
+    },
+    {
+      "id": "missing_values",
+      "severity": "warn",
+      "title": "部分字段存在缺失值，聚合结果按可用记录计算",
+      "count": 2830,
+      "detail": {
+        "t_003": {
+          "c05": 827,
+          "c06": 827,
+          "c07": 1176
+        }
+      }
+    },
+    {
+      "id": "constant_columns",
+      "severity": "info",
+      "title": "存在常量列",
+      "count": 0,
+      "detail": {}
+    },
+    {
+      "id": "negative_values",
+      "severity": "warn",
+      "title": "数值列存在负值（可能是退款/修正，也可能出错）",
+      "count": 0,
+      "detail": {}
+    },
+    {
+      "id": "pii_columns",
+      "severity": "info",
+      "title": "疑似个人信息列，样例已按配置脱敏（数据本身未删除）",
+      "count": 0,
+      "detail": {}
+    },
+    {
+      "id": "low_confidence_columns",
+      "severity": "info",
+      "title": "类型推断置信度不足或存在转换告警",
+      "count": 0,
+      "detail": {}
+    },
+    {
+      "id": "totals_rows",
+      "severity": "info",
+      "title": "检测到合计/小计行（已从分析表排除，避免重复计数）",
+      "count": 0,
+      "detail": {}
+    },
+    {
+      "id": "relation_orphans",
+      "severity": "info",
+      "title": "外键存在无法关联的孤儿值",
+      "count": 0,
+      "detail": {}
+    },
+    {
+      "id": "join_amplification",
+      "severity": "info",
+      "title": "连接后行数放大",
+      "count": 0,
+      "detail": {}
+    }
+  ],
+  "warnings": [],
+  "policy": {
+    "pii": "mask",
+    "totals": "exclude"
+  },
+  "generated_at": "2026-11-11T20:40:54"
+}

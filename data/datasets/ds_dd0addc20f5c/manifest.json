@@ -1,0 +1,77 @@
+{
+  "dataset_id": "ds_dd0addc20f5c",
+  "name": "Excel_Demo",
+  "data_version": "sha256:bb186f54c70a7374",
+  "semantic_version": 2,
+  "compiler_version": 1,
+  "generated_at": "2026-11-11T20:41:31",
+  "generator_version": "generic-m3",
+  "options": {
+    "totals_policy": "exclude",
+    "pii_policy": "mask",
+    "include_files": [
+      "ecommerce_agent_demo.xlsx"
+    ],
+    "include_suspected": false
+  },
+  "source_files": [
+    {
+      "path": "raw\\ecommerce_agent_demo.xlsx",
+      "sha256": "a1b1c4fe6d826c37fd477ed068d2b3ac3b86e25a7b63384d9339458cddd93c15"
+    }
+  ],
+  "tables": [
+    {
+      "table_id": "t_001",
+      "rows": 11890,
+      "columns": 5
+    },
+    {
+      "table_id": "t_002",
+      "rows": 10,
+      "columns": 5
+    },
+    {
+      "table_id": "t_003",
+      "rows": 11890,
+      "columns": 8
+    },
+    {
+      "table_id": "t_004",
+      "rows": 20900,
+      "columns": 7
+    },
+    {
+      "table_id": "t_005",
+      "rows": 12494,
+      "columns": 5
+    },
+    {
+      "table_id": "t_006",
+      "rows": 9232,
+      "columns": 7
+    },
+    {
+      "table_id": "t_007",
+      "rows": 600,
+      "columns": 11
+    },
+    {
+      "table_id": "t_008",
+      "rows": 120,
+      "columns": 5
+    },
+    {
+      "table_id": "t_009",
+      "rows": 6,
+      "columns": 3
+    }
+  ],
+  "quality_summary": {
+    "error": 0,
+    "warn": 5,
+    "info": 6
+  },
+  "status": "published",
+  "updated_at": "2026-11-11T21:07:02"
+}

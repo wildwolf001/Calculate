@@ -1,0 +1,117 @@
+{
+  "dataset_id": "ds_d7390c8574a4",
+  "name": "CSV_Demo",
+  "data_version": "sha256:19c27310c21d5074",
+  "semantic_version": 2,
+  "compiler_version": 1,
+  "generated_at": "2026-11-11T19:56:53",
+  "generator_version": "generic-m3",
+  "options": {
+    "totals_policy": "exclude",
+    "pii_policy": "mask",
+    "include_files": [
+      "categories.csv",
+      "customers.csv",
+      "geolocation.csv",
+      "order_items.csv",
+      "order_payments.csv",
+      "order_reviews.csv",
+      "orders.csv",
+      "products.csv",
+      "sellers.csv"
+    ],
+    "include_suspected": false
+  },
+  "source_files": [
+    {
+      "path": "raw\\categories.csv",
+      "sha256": "c4d60b023e7f3587b61ecf367ee31ba0424e522e17d3195c042564c741370897"
+    },
+    {
+      "path": "raw\\customers.csv",
+      "sha256": "d019adaff28867c9ab303731ab83b065b01f87143c2dae21bcff0be8a85d228a"
+    },
+    {
+      "path": "raw\\geolocation.csv",
+      "sha256": "54cc6858428e1083e9a47c9bab1888b39a8a971efedbe76fc1eeb1d88c18b1aa"
+    },
+    {
+      "path": "raw\\order_items.csv",
+      "sha256": "825c3354d3cd65ddb84fdce2c427fbd1643aae36d7060d0da4c65b49e283d023"
+    },
+    {
+      "path": "raw\\order_payments.csv",
+      "sha256": "6143d4fff8521b26f2f7ae24437dac56fda7200989c11293123c914d2fc2b444"
+    },
+    {
+      "path": "raw\\order_reviews.csv",
+      "sha256": "1eb5e2aa4c9972e34871fac3246de0ffedbdbb4377f05c28db203057a9c2eb60"
+    },
+    {
+      "path": "raw\\orders.csv",
+      "sha256": "fc3b3d73c174b1ee107f783c377dfbce3b55ac573becbd56c0111990d2bd13ca"
+    },
+    {
+      "path": "raw\\products.csv",
+      "sha256": "f0b39efc97a5ac35aa61adb71353853542f6d4ed1c44fafecc80e4e9f58d81be"
+    },
+    {
+      "path": "raw\\sellers.csv",
+      "sha256": "f67560c753b4bf6e1e5acc47033c46c44fd42ddcb45142cd9a79148493e49f03"
+    }
+  ],
+  "tables": [
+    {
+      "table_id": "t_001",
+      "rows": 6,
+      "columns": 3
+    },
+    {
+      "table_id": "t_002",
+      "rows": 180,
+      "columns": 5
+    },
+    {
+      "table_id": "t_003",
+      "rows": 10,
+      "columns": 5
+    },
+    {
+      "table_id": "t_004",
+      "rows": 359,
+      "columns": 7
+    },
+    {
+      "table_id": "t_005",
+      "rows": 182,
+      "columns": 5
+    },
+    {
+      "table_id": "t_006",
+      "rows": 142,
+      "columns": 7
+    },
+    {
+      "table_id": "t_007",
+      "rows": 180,
+      "columns": 8
+    },
+    {
+      "table_id": "t_008",
+      "rows": 30,
+      "columns": 11
+    },
+    {
+      "table_id": "t_009",
+      "rows": 8,
+      "columns": 5
+    }
+  ],
+  "quality_summary": {
+    "error": 0,
+    "warn": 5,
+    "info": 6
+  },
+  "status": "published",
+  "updated_at": "2026-11-11T19:58:57"
+}

@@ -1,0 +1,4322 @@
+{
+  "status": "published",
+  "dataset_id": "ds_d7390c8574a4",
+  "dataset": "客户数",
+  "generated_at": "2026-11-11T19:56:22",
+  "facts": [
+    "t_004",
+    "t_006",
+    "t_005",
+    "t_007"
+  ],
+  "dimensions": [
+    {
+      "id": "month",
+      "name_zh": "月份",
+      "kind": "time",
+      "format": "%Y-%m",
+      "column_from": "t_004.c05",
+      "synonyms": [
+        "月份",
+        "按月",
+        "月度",
+        "month"
+      ],
+      "selected": true,
+      "provenance": "auto",
+      "confidence": 0.9
+    },
+    {
+      "id": "d_004_007_c03",
+      "name_zh": "订单状态",
+      "column": "t_007.c03",
+      "filter_column": "t_007.c03",
+      "filter_lookup": "t_007.c03",
+      "value_source": "t_007",
+      "join_path": [
+        "t_004 -> t_007"
+      ],
+      "synonyms": [
+        "order_status",
+        "订单状态",
+        "状态",
+        "orders"
+      ],
+      "selected": true,
+      "provenance": "auto",
+      "confidence": 0.9
+    },
+    {
+      "id": "d_004_008_c03",
+      "name_zh": "商品名称",
+      "column": "t_008.c03",
+      "filter_column": "t_008.c03",
+      "filter_lookup": "t_008.c03",
+      "value_source": "t_008",
+      "join_path": [
+        "t_004 -> t_008"
+      ],
+      "synonyms": [
+        "product_name",
+        "商品",
+        "商品名称",
+        "产品",
+        "products"
+      ],
+      "selected": true,
+      "provenance": "auto",
+      "confidence": 0.9
+    },
+    {
+      "id": "d_004_009_c02",
+      "name_zh": "商家名称",
+      "column": "t_009.c02",
+      "filter_column": "t_009.c02",
+      "filter_lookup": "t_009.c02",
+      "value_source": "t_009",
+      "join_path": [
+        "t_004 -> t_009"
+      ],
+      "synonyms": [
+        "seller_name",
+        "商家",
+        "商家名称",
+        "卖家",
+        "sellers"
+      ],
+      "selected": true,
+      "provenance": "auto",
+      "confidence": 0.9
+    },
+    {
+      "id": "d_004_009_c04",
+      "name_zh": "商家城市",
+      "column": "t_009.c04",
+      "filter_column": "t_009.c04",
+      "filter_lookup": "t_009.c04",
+      "value_source": "t_009",
+      "join_path": [
+        "t_004 -> t_009"
+      ],
+      "synonyms": [
+        "seller_city",
+        "城市",
+        "sellers"
+      ],
+      "selected": true,
+      "provenance": "auto",
+      "confidence": 0.9
+    },
+    {
+      "id": "d_004_002_c04",
+      "name_zh": "客户城市",
+      "column": "t_002.c04",
+      "filter_column": "t_002.c04",
+      "filter_lookup": "t_002.c04",
+      "value_source": "t_002",
+      "join_path": [
+        "t_004 -> t_007",
+        "t_007 -> t_002"
+      ],
+      "synonyms": [
+        "customer_city",
+        "客户城市",
+        "城市",
+        "地区",
+        "customers"
+      ],
+      "selected": true,
+      "provenance": "auto",
+      "confidence": 0.75
+    },
+    {
+      "id": "d_004_002_c05",
+      "name_zh": "客户省份",
+      "column": "t_002.c05",
+      "filter_column": "t_002.c05",
+      "filter_lookup": "t_002.c05",
+      "value_source": "t_002",
+      "join_path": [
+        "t_004 -> t_007",
+        "t_007 -> t_002"
+      ],
+      "synonyms": [
+        "customer_state",
+        "客户省份",
+        "省份",
+        "州",
+        "customers"
+      ],
+      "selected": true,
+      "provenance": "auto",
+      "confidence": 0.75
+    },
+    {
+      "id": "d_004_001_c03",
+      "name_zh": "品类",
+      "column": "t_001.c03",
+      "filter_column": "t_001.c03",
+      "filter_lookup": "t_001.c03",
+      "value_source": "t_001",
+      "join_path": [
+        "t_004 -> t_008",
+        "t_008 -> t_001"
+      ],
+      "synonyms": [
+        "category_name_zh",
+        "品类",
+        "类目",
+        "分类",
+        "categories"
+      ],
+      "selected": true,
+      "provenance": "auto",
+      "confidence": 0.75
+    },
+    {
+      "id": "d_004_003_c04",
+      "name_zh": "城市",
+      "column": "t_003.c04",
+      "filter_column": "t_003.c04",
+      "filter_lookup": "t_003.c04",
+      "value_source": "t_003",
+      "join_path": [
+        "t_004 -> t_009",
+        "t_009 -> t_003"
+      ],
+      "synonyms": [
+        "city",
+        "城市",
+        "geolocation"
+      ],
+      "selected": true,
+      "provenance": "auto",
+      "confidence": 0.75
+    },
+    {
+      "id": "d_004_003_c05",
+      "name_zh": "省份",
+      "column": "t_003.c05",
+      "filter_column": "t_003.c05",
+      "filter_lookup": "t_003.c05",
+      "value_source": "t_003",
+      "join_path": [
+        "t_004 -> t_009",
+        "t_009 -> t_003"
+      ],
+      "synonyms": [
+        "state",
+        "省份",
+        "州",
+        "geolocation"
+      ],
+      "selected": true,
+      "provenance": "auto",
+      "confidence": 0.75
+    },
+    {
+      "id": "d_006_c04",
+      "name_zh": "review_title",
+      "column": "t_006.c04",
+      "filter_column": "t_006.c04",
+      "filter_lookup": "t_006.c04",
+      "value_source": "t_006",
+      "synonyms": [
+        "review_title",
+        "order_reviews"
+      ],
+      "selected": false,
+      "provenance": "auto",
+      "confidence": 0.95
+    },
+    {
+      "id": "d_006_007_c03",
+      "name_zh": "订单状态",
+      "column": "t_007.c03",
+      "filter_column": "t_007.c03",
+      "filter_lookup": "t_007.c03",
+      "value_source": "t_007",
+      "join_path": [
+        "t_006 -> t_007"
+      ],
+      "synonyms": [
+        "order_status",
+        "订单状态",
+        "状态",
+        "orders"
+      ],
+      "selected": false,
+      "provenance": "auto",
+      "confidence": 0.9
+    },
+    {
+      "id": "d_006_002_c04",
+      "name_zh": "客户城市",
+      "column": "t_002.c04",
+      "filter_column": "t_002.c04",
+      "filter_lookup": "t_002.c04",
+      "value_source": "t_002",
+      "join_path": [
+        "t_006 -> t_007",
+        "t_007 -> t_002"
+      ],
+      "synonyms": [
+        "customer_city",
+        "客户城市",
+        "城市",
+        "地区",
+        "customers"
+      ],
+      "selected": false,
+      "provenance": "auto",
+      "confidence": 0.75
+    },
+    {
+      "id": "d_006_002_c05",
+      "name_zh": "客户省份",
+      "column": "t_002.c05",
+      "filter_column": "t_002.c05",
+      "filter_lookup": "t_002.c05",
+      "value_source": "t_002",
+      "join_path": [
+        "t_006 -> t_007",
+        "t_007 -> t_002"
+      ],
+      "synonyms": [
+        "customer_state",
+        "客户省份",
+        "省份",
+        "州",
+        "customers"
+      ],
+      "selected": false,
+      "provenance": "auto",
+      "confidence": 0.75
+    },
+    {
+      "id": "d_005_c03",
+      "name_zh": "支付方式",
+      "column": "t_005.c03",
+      "filter_column": "t_005.c03",
+      "filter_lookup": "t_005.c03",
+      "value_source": "t_005",
+      "synonyms": [
+        "payment_type",
+        "支付方式",
+        "付款方式",
+        "order_payments"
+      ],
+      "selected": false,
+      "provenance": "auto",
+      "confidence": 0.95
+    },
+    {
+      "id": "d_005_c04",
+      "name_zh": "分期期数",
+      "column": "t_005.c04",
+      "filter_column": "t_005.c04",
+      "filter_lookup": "t_005.c04",
+      "value_source": "t_005",
+      "synonyms": [
+        "payment_installments",
+        "分期期数",
+        "分期",
+        "order_payments"
+      ],
+      "selected": false,
+      "provenance": "auto",
+      "confidence": 0.95
+    },
+    {
+      "id": "d_005_007_c03",
+      "name_zh": "订单状态",
+      "column": "t_007.c03",
+      "filter_column": "t_007.c03",
+      "filter_lookup": "t_007.c03",
+      "value_source": "t_007",
+      "join_path": [
+        "t_005 -> t_007"
+      ],
+      "synonyms": [
+        "order_status",
+        "订单状态",
+        "状态",
+        "orders"
+      ],
+      "selected": false,
+      "provenance": "auto",
+      "confidence": 0.9
+    },
+    {
+      "id": "d_005_002_c04",
+      "name_zh": "客户城市",
+      "column": "t_002.c04",
+      "filter_column": "t_002.c04",
+      "filter_lookup": "t_002.c04",
+      "value_source": "t_002",
+      "join_path": [
+        "t_005 -> t_007",
+        "t_007 -> t_002"
+      ],
+      "synonyms": [
+        "customer_city",
+        "客户城市",
+        "城市",
+        "地区",
+        "customers"
+      ],
+      "selected": false,
+      "provenance": "auto",
+      "confidence": 0.75
+    },
+    {
+      "id": "d_005_002_c05",
+      "name_zh": "客户省份",
+      "column": "t_002.c05",
+      "filter_column": "t_002.c05",
+      "filter_lookup": "t_002.c05",
+      "value_source": "t_002",
+      "join_path": [
+        "t_005 -> t_007",
+        "t_007 -> t_002"
+      ],
+      "synonyms": [
+        "customer_state",
+        "客户省份",
+        "省份",
+        "州",
+        "customers"
+      ],
+      "selected": false,
+      "provenance": "auto",
+      "confidence": 0.75
+    },
+    {
+      "id": "d_007_c03",
+      "name_zh": "订单状态",
+      "column": "t_007.c03",
+      "filter_column": "t_007.c03",
+      "filter_lookup": "t_007.c03",
+      "value_source": "t_007",
+      "synonyms": [
+        "order_status",
+        "订单状态",
+        "状态",
+        "orders"
+      ],
+      "selected": true,
+      "provenance": "auto",
+      "confidence": 0.95
+    },
+    {
+      "id": "d_007_002_c04",
+      "name_zh": "客户城市",
+      "column": "t_002.c04",
+      "filter_column": "t_002.c04",
+      "filter_lookup": "t_002.c04",
+      "value_source": "t_002",
+      "join_path": [
+        "t_007 -> t_002"
+      ],
+      "synonyms": [
+        "customer_city",
+        "客户城市",
+        "城市",
+        "地区",
+        "customers"
+      ],
+      "selected": true,
+      "provenance": "auto",
+      "confidence": 0.9
+    },
+    {
+      "id": "d_007_002_c05",
+      "name_zh": "客户省份",
+      "column": "t_002.c05",
+      "filter_column": "t_002.c05",
+      "filter_lookup": "t_002.c05",
+      "value_source": "t_002",
+      "join_path": [
+        "t_007 -> t_002"
+      ],
+      "synonyms": [
+        "customer_state",
+        "客户省份",
+        "省份",
+        "州",
+        "customers"
+      ],
+      "selected": true,
+      "provenance": "auto",
+      "confidence": 0.9
+    },
+    {
+      "id": "d_007_003_c04",
+      "name_zh": "城市",
+      "column": "t_003.c04",
+      "filter_column": "t_003.c04",
+      "filter_lookup": "t_003.c04",
+      "value_source": "t_003",
+      "join_path": [
+        "t_007 -> t_002",
+        "t_002 -> t_003"
+      ],
+      "synonyms": [
+        "city",
+        "城市",
+        "geolocation"
+      ],
+      "selected": true,
+      "provenance": "auto",
+      "confidence": 0.75
+    },
+    {
+      "id": "d_007_003_c05",
+      "name_zh": "省份",
+      "column": "t_003.c05",
+      "filter_column": "t_003.c05",
+      "filter_lookup": "t_003.c05",
+      "value_source": "t_003",
+      "join_path": [
+        "t_007 -> t_002",
+        "t_002 -> t_003"
+      ],
+      "synonyms": [
+        "state",
+        "省份",
+        "州",
+        "geolocation"
+      ],
+      "selected": true,
+      "provenance": "auto",
+      "confidence": 0.75
+    },
+    {
+      "id": "d_doc_t_007_c07_c08",
+      "name_zh": "是否延迟",
+      "kind": "derived",
+      "selected": true,
+      "confidence": 0.8,
+      "provenance": "auto"
+    }
+  ],
+  "dimension_candidates": [
+    {
+      "id": "month",
+      "name_zh": "月份",
+      "kind": "time",
+      "table": "t_004",
+      "column": "c05",
+      "selected": true,
+      "confidence": 0.9
+    },
+    {
+      "id": "d_004_007_c03",
+      "name_zh": "订单状态",
+      "kind": "categorical",
+      "table": "t_007",
+      "column": "c03",
+      "join_path": [
+        "t_004 -> t_007"
+      ],
+      "synonyms": [
+        "order_status",
+        "订单状态",
+        "状态",
+        "orders"
+      ],
+      "selected": true,
+      "confidence": 0.9
+    },
+    {
+      "id": "d_004_008_c03",
+      "name_zh": "商品名称",
+      "kind": "categorical",
+      "table": "t_008",
+      "column": "c03",
+      "join_path": [
+        "t_004 -> t_008"
+      ],
+      "synonyms": [
+        "product_name",
+        "商品",
+        "商品名称",
+        "产品",
+        "products"
+      ],
+      "selected": true,
+      "confidence": 0.9
+    },
+    {
+      "id": "d_004_009_c02",
+      "name_zh": "商家名称",
+      "kind": "categorical",
+      "table": "t_009",
+      "column": "c02",
+      "join_path": [
+        "t_004 -> t_009"
+      ],
+      "synonyms": [
+        "seller_name",
+        "商家",
+        "商家名称",
+        "卖家",
+        "sellers"
+      ],
+      "selected": true,
+      "confidence": 0.9
+    },
+    {
+      "id": "d_004_009_c04",
+      "name_zh": "商家城市",
+      "kind": "categorical",
+      "table": "t_009",
+      "column": "c04",
+      "join_path": [
+        "t_004 -> t_009"
+      ],
+      "synonyms": [
+        "seller_city",
+        "城市",
+        "sellers"
+      ],
+      "selected": true,
+      "confidence": 0.9
+    },
+    {
+      "id": "d_004_002_c04",
+      "name_zh": "客户城市",
+      "kind": "categorical",
+      "table": "t_002",
+      "column": "c04",
+      "join_path": [
+        "t_004 -> t_007",
+        "t_007 -> t_002"
+      ],
+      "synonyms": [
+        "customer_city",
+        "客户城市",
+        "城市",
+        "地区",
+        "customers"
+      ],
+      "selected": true,
+      "confidence": 0.75
+    },
+    {
+      "id": "d_004_002_c05",
+      "name_zh": "客户省份",
+      "kind": "categorical",
+      "table": "t_002",
+      "column": "c05",
+      "join_path": [
+        "t_004 -> t_007",
+        "t_007 -> t_002"
+      ],
+      "synonyms": [
+        "customer_state",
+        "客户省份",
+        "省份",
+        "州",
+        "customers"
+      ],
+      "selected": true,
+      "confidence": 0.75
+    },
+    {
+      "id": "d_004_001_c03",
+      "name_zh": "品类",
+      "kind": "categorical",
+      "table": "t_001",
+      "column": "c03",
+      "join_path": [
+        "t_004 -> t_008",
+        "t_008 -> t_001"
+      ],
+      "synonyms": [
+        "category_name_zh",
+        "品类",
+        "类目",
+        "分类",
+        "categories"
+      ],
+      "selected": true,
+      "confidence": 0.75
+    },
+    {
+      "id": "d_004_003_c04",
+      "name_zh": "城市",
+      "kind": "categorical",
+      "table": "t_003",
+      "column": "c04",
+      "join_path": [
+        "t_004 -> t_009",
+        "t_009 -> t_003"
+      ],
+      "synonyms": [
+        "city",
+        "城市",
+        "geolocation"
+      ],
+      "selected": true,
+      "confidence": 0.75
+    },
+    {
+      "id": "d_004_003_c05",
+      "name_zh": "省份",
+      "kind": "categorical",
+      "table": "t_003",
+      "column": "c05",
+      "join_path": [
+        "t_004 -> t_009",
+        "t_009 -> t_003"
+      ],
+      "synonyms": [
+        "state",
+        "省份",
+        "州",
+        "geolocation"
+      ],
+      "selected": true,
+      "confidence": 0.75
+    },
+    {
+      "id": "d_006_c04",
+      "name_zh": "review_title",
+      "kind": "categorical",
+      "table": "t_006",
+      "column": "c04",
+      "cardinality": 2,
+      "synonyms": [
+        "review_title",
+        "order_reviews"
+      ],
+      "selected": false,
+      "confidence": 0.95
+    },
+    {
+      "id": "d_006_007_c03",
+      "name_zh": "订单状态",
+      "kind": "categorical",
+      "table": "t_007",
+      "column": "c03",
+      "join_path": [
+        "t_006 -> t_007"
+      ],
+      "synonyms": [
+        "order_status",
+        "订单状态",
+        "状态",
+        "orders"
+      ],
+      "selected": false,
+      "confidence": 0.9
+    },
+    {
+      "id": "d_006_002_c04",
+      "name_zh": "客户城市",
+      "kind": "categorical",
+      "table": "t_002",
+      "column": "c04",
+      "join_path": [
+        "t_006 -> t_007",
+        "t_007 -> t_002"
+      ],
+      "synonyms": [
+        "customer_city",
+        "客户城市",
+        "城市",
+        "地区",
+        "customers"
+      ],
+      "selected": false,
+      "confidence": 0.75
+    },
+    {
+      "id": "d_006_002_c05",
+      "name_zh": "客户省份",
+      "kind": "categorical",
+      "table": "t_002",
+      "column": "c05",
+      "join_path": [
+        "t_006 -> t_007",
+        "t_007 -> t_002"
+      ],
+      "synonyms": [
+        "customer_state",
+        "客户省份",
+        "省份",
+        "州",
+        "customers"
+      ],
+      "selected": false,
+      "confidence": 0.75
+    },
+    {
+      "id": "d_005_c03",
+      "name_zh": "支付方式",
+      "kind": "categorical",
+      "table": "t_005",
+      "column": "c03",
+      "cardinality": 4,
+      "synonyms": [
+        "payment_type",
+        "支付方式",
+        "付款方式",
+        "order_payments"
+      ],
+      "selected": false,
+      "confidence": 0.95
+    },
+    {
+      "id": "d_005_c04",
+      "name_zh": "分期期数",
+      "kind": "categorical",
+      "table": "t_005",
+      "column": "c04",
+      "cardinality": 8,
+      "synonyms": [
+        "payment_installments",
+        "分期期数",
+        "分期",
+        "order_payments"
+      ],
+      "selected": false,
+      "confidence": 0.95
+    },
+    {
+      "id": "d_005_007_c03",
+      "name_zh": "订单状态",
+      "kind": "categorical",
+      "table": "t_007",
+      "column": "c03",
+      "join_path": [
+        "t_005 -> t_007"
+      ],
+      "synonyms": [
+        "order_status",
+        "订单状态",
+        "状态",
+        "orders"
+      ],
+      "selected": false,
+      "confidence": 0.9
+    },
+    {
+      "id": "d_005_002_c04",
+      "name_zh": "客户城市",
+      "kind": "categorical",
+      "table": "t_002",
+      "column": "c04",
+      "join_path": [
+        "t_005 -> t_007",
+        "t_007 -> t_002"
+      ],
+      "synonyms": [
+        "customer_city",
+        "客户城市",
+        "城市",
+        "地区",
+        "customers"
+      ],
+      "selected": false,
+      "confidence": 0.75
+    },
+    {
+      "id": "d_005_002_c05",
+      "name_zh": "客户省份",
+      "kind": "categorical",
+      "table": "t_002",
+      "column": "c05",
+      "join_path": [
+        "t_005 -> t_007",
+        "t_007 -> t_002"
+      ],
+      "synonyms": [
+        "customer_state",
+        "客户省份",
+        "省份",
+        "州",
+        "customers"
+      ],
+      "selected": false,
+      "confidence": 0.75
+    },
+    {
+      "id": "d_007_c03",
+      "name_zh": "订单状态",
+      "kind": "categorical",
+      "table": "t_007",
+      "column": "c03",
+      "cardinality": 4,
+      "synonyms": [
+        "order_status",
+        "订单状态",
+        "状态",
+        "orders"
+      ],
+      "selected": true,
+      "confidence": 0.95
+    },
+    {
+      "id": "d_007_002_c04",
+      "name_zh": "客户城市",
+      "kind": "categorical",
+      "table": "t_002",
+      "column": "c04",
+      "join_path": [
+        "t_007 -> t_002"
+      ],
+      "synonyms": [
+        "customer_city",
+        "客户城市",
+        "城市",
+        "地区",
+        "customers"
+      ],
+      "selected": true,
+      "confidence": 0.9
+    },
+    {
+      "id": "d_007_002_c05",
+      "name_zh": "客户省份",
+      "kind": "categorical",
+      "table": "t_002",
+      "column": "c05",
+      "join_path": [
+        "t_007 -> t_002"
+      ],
+      "synonyms": [
+        "customer_state",
+        "客户省份",
+        "省份",
+        "州",
+        "customers"
+      ],
+      "selected": true,
+      "confidence": 0.9
+    },
+    {
+      "id": "d_007_003_c04",
+      "name_zh": "城市",
+      "kind": "categorical",
+      "table": "t_003",
+      "column": "c04",
+      "join_path": [
+        "t_007 -> t_002",
+        "t_002 -> t_003"
+      ],
+      "synonyms": [
+        "city",
+        "城市",
+        "geolocation"
+      ],
+      "selected": true,
+      "confidence": 0.75
+    },
+    {
+      "id": "d_007_003_c05",
+      "name_zh": "省份",
+      "kind": "categorical",
+      "table": "t_003",
+      "column": "c05",
+      "join_path": [
+        "t_007 -> t_002",
+        "t_002 -> t_003"
+      ],
+      "synonyms": [
+        "state",
+        "省份",
+        "州",
+        "geolocation"
+      ],
+      "selected": true,
+      "confidence": 0.75
+    }
+  ],
+  "relations": [
+    {
+      "child": "t_002",
+      "child_col": "c03",
+      "child_label": "customer_zip_code",
+      "parent": "t_003",
+      "parent_col": "c01",
+      "parent_label": "zip_code",
+      "containment": 1.0,
+      "score": 0.98,
+      "child_rows": 180,
+      "joined_rows": 180,
+      "amplified": false,
+      "accepted": true,
+      "card": "N:1",
+      "reason": ""
+    },
+    {
+      "child": "t_004",
+      "child_col": "c01",
+      "child_label": "order_id",
+      "parent": "t_007",
+      "parent_col": "c01",
+      "parent_label": "order_id",
+      "containment": 1.0,
+      "score": 1.0,
+      "child_rows": 359,
+      "joined_rows": 359,
+      "amplified": false,
+      "accepted": true,
+      "card": "N:1",
+      "reason": ""
+    },
+    {
+      "child": "t_004",
+      "child_col": "c03",
+      "child_label": "product_id",
+      "parent": "t_008",
+      "parent_col": "c01",
+      "parent_label": "product_id",
+      "containment": 1.0,
+      "score": 1.0,
+      "child_rows": 359,
+      "joined_rows": 359,
+      "amplified": false,
+      "accepted": true,
+      "card": "N:1",
+      "reason": ""
+    },
+    {
+      "child": "t_004",
+      "child_col": "c04",
+      "child_label": "seller_id",
+      "parent": "t_009",
+      "parent_col": "c01",
+      "parent_label": "seller_id",
+      "containment": 1.0,
+      "score": 1.0,
+      "child_rows": 359,
+      "joined_rows": 359,
+      "amplified": false,
+      "accepted": true,
+      "card": "N:1",
+      "reason": ""
+    },
+    {
+      "child": "t_005",
+      "child_col": "c01",
+      "child_label": "order_id",
+      "parent": "t_007",
+      "parent_col": "c01",
+      "parent_label": "order_id",
+      "containment": 1.0,
+      "score": 1.0,
+      "child_rows": 182,
+      "joined_rows": 182,
+      "amplified": false,
+      "accepted": true,
+      "card": "N:1",
+      "reason": ""
+    },
+    {
+      "child": "t_006",
+      "child_col": "c02",
+      "child_label": "order_id",
+      "parent": "t_007",
+      "parent_col": "c01",
+      "parent_label": "order_id",
+      "containment": 1.0,
+      "score": 1.0,
+      "child_rows": 142,
+      "joined_rows": 142,
+      "amplified": false,
+      "accepted": true,
+      "card": "N:1",
+      "reason": ""
+    },
+    {
+      "child": "t_007",
+      "child_col": "c02",
+      "child_label": "customer_id",
+      "parent": "t_002",
+      "parent_col": "c01",
+      "parent_label": "customer_id",
+      "containment": 1.0,
+      "score": 1.0,
+      "child_rows": 180,
+      "joined_rows": 180,
+      "amplified": false,
+      "accepted": true,
+      "card": "N:1",
+      "reason": ""
+    },
+    {
+      "child": "t_008",
+      "child_col": "c02",
+      "child_label": "category_id",
+      "parent": "t_001",
+      "parent_col": "c01",
+      "parent_label": "category_id",
+      "containment": 1.0,
+      "score": 1.0,
+      "child_rows": 30,
+      "joined_rows": 30,
+      "amplified": false,
+      "accepted": true,
+      "card": "N:1",
+      "reason": ""
+    },
+    {
+      "child": "t_009",
+      "child_col": "c03",
+      "child_label": "seller_zip_code",
+      "parent": "t_003",
+      "parent_col": "c01",
+      "parent_label": "zip_code",
+      "containment": 1.0,
+      "score": 0.98,
+      "child_rows": 8,
+      "joined_rows": 8,
+      "amplified": false,
+      "accepted": true,
+      "card": "N:1",
+      "reason": ""
+    }
+  ],
+  "metrics": [
+    {
+      "id": "m_004_row_count",
+      "name_zh": "记录数",
+      "name": "记录数",
+      "aggregation": "COUNT",
+      "fact": "t_004",
+      "expr": "COUNT(*)",
+      "synonyms": [
+        "行数",
+        "记录数",
+        "数据行数"
+      ],
+      "confidence": 0.95,
+      "selected": true,
+      "provenance": "auto"
+    },
+    {
+      "id": "m_004_c01_distinct",
+      "name_zh": "订单数",
+      "name": "订单数",
+      "aggregation": "COUNT DISTINCT",
+      "fact": "t_004",
+      "expr": "COUNT(DISTINCT t_004.c01)",
+      "unit": "个",
+      "synonyms": [
+        "order_id",
+        "订单数",
+        "订单量",
+        "订单笔数"
+      ],
+      "confidence": 0.9,
+      "selected": false,
+      "provenance": "auto",
+      "evidence": {
+        "column": "c01",
+        "label": "order_id",
+        "null_rate": 0.0,
+        "distinct": 180,
+        "samples": [
+          "O00001",
+          "O00002",
+          "O00003",
+          "O00004",
+          "O00005"
+        ]
+      }
+    },
+    {
+      "id": "m_004_c03_distinct",
+      "name_zh": "商品数",
+      "name": "商品数",
+      "aggregation": "COUNT DISTINCT",
+      "fact": "t_004",
+      "expr": "COUNT(DISTINCT t_004.c03)",
+      "unit": "个",
+      "synonyms": [
+        "product_id",
+        "商品数",
+        "商品种类",
+        "几种商品",
+        "商品款数"
+      ],
+      "confidence": 0.9,
+      "selected": true,
+      "provenance": "auto",
+      "evidence": {
+        "column": "c03",
+        "label": "product_id",
+        "null_rate": 0.0,
+        "distinct": 30,
+        "samples": [
+          "P0003",
+          "P0027",
+          "P0025",
+          "P0022",
+          "P0016"
+        ]
+      }
+    },
+    {
+      "id": "m_004_c04_distinct",
+      "name_zh": "商家数",
+      "name": "商家数",
+      "aggregation": "COUNT DISTINCT",
+      "fact": "t_004",
+      "expr": "COUNT(DISTINCT t_004.c04)",
+      "unit": "个",
+      "synonyms": [
+        "seller_id",
+        "商家数",
+        "卖家数"
+      ],
+      "confidence": 0.9,
+      "selected": true,
+      "provenance": "auto",
+      "evidence": {
+        "column": "c04",
+        "label": "seller_id",
+        "null_rate": 0.0,
+        "distinct": 8,
+        "samples": [
+          "S004",
+          "S005",
+          "S008",
+          "S002",
+          "S006"
+        ]
+      }
+    },
+    {
+      "id": "m_004_c06_sum",
+      "name_zh": "销售额",
+      "name": "销售额",
+      "aggregation": "SUM",
+      "fact": "t_004",
+      "expr": "SUM(t_004.c06)",
+      "unit": "元",
+      "synonyms": [
+        "price",
+        "销售额",
+        "商品销售额",
+        "销售金额",
+        "GMV",
+        "营收",
+        "price合计"
+      ],
+      "confidence": 0.9,
+      "selected": true,
+      "provenance": "documentation",
+      "evidence": {
+        "column": "c06",
+        "label": "price",
+        "null_rate": 0.0,
+        "distinct": 325,
+        "samples": [
+          502.88,
+          82.7,
+          429.05,
+          546.87,
+          252.48
+        ]
+      },
+      "definition": "已送达订单的 order_items.price 合计，不含运费；数据范围为 2025-01 至 2025-06。"
+    },
+    {
+      "id": "m_004_c07_sum",
+      "name_zh": "运费合计",
+      "name": "运费合计",
+      "aggregation": "SUM",
+      "fact": "t_004",
+      "expr": "SUM(t_004.c07)",
+      "unit": "元",
+      "synonyms": [
+        "freight_value",
+        "运费",
+        "物流费",
+        "freight_value合计",
+        "运费合计"
+      ],
+      "confidence": 0.9,
+      "selected": true,
+      "provenance": "auto",
+      "evidence": {
+        "column": "c07",
+        "label": "freight_value",
+        "null_rate": 0.0,
+        "distinct": 319,
+        "samples": [
+          22.71,
+          27.23,
+          30.99,
+          30.91,
+          28.5
+        ]
+      }
+    },
+    {
+      "id": "m_006_row_count",
+      "name_zh": "记录数",
+      "name": "记录数",
+      "aggregation": "COUNT",
+      "fact": "t_006",
+      "expr": "COUNT(*)",
+      "synonyms": [
+        "行数",
+        "记录数",
+        "数据行数"
+      ],
+      "confidence": 0.95,
+      "selected": false,
+      "provenance": "auto"
+    },
+    {
+      "id": "m_006_c01_distinct",
+      "name_zh": "评价数",
+      "name": "评价数",
+      "aggregation": "COUNT DISTINCT",
+      "fact": "t_006",
+      "expr": "COUNT(DISTINCT t_006.c01)",
+      "unit": "个",
+      "synonyms": [
+        "review_id",
+        "评价数",
+        "评论数"
+      ],
+      "confidence": 0.9,
+      "selected": false,
+      "provenance": "auto",
+      "evidence": {
+        "column": "c01",
+        "label": "review_id",
+        "null_rate": 0.0,
+        "distinct": 142,
+        "samples": [
+          "R00001",
+          "R00002",
+          "R00003",
+          "R00004",
+          "R00005"
+        ]
+      }
+    },
+    {
+      "id": "m_006_c02_distinct",
+      "name_zh": "订单数",
+      "name": "订单数",
+      "aggregation": "COUNT DISTINCT",
+      "fact": "t_006",
+      "expr": "COUNT(DISTINCT t_006.c02)",
+      "unit": "个",
+      "synonyms": [
+        "order_id",
+        "订单数",
+        "订单量",
+        "订单笔数"
+      ],
+      "confidence": 0.9,
+      "selected": false,
+      "provenance": "auto",
+      "evidence": {
+        "column": "c02",
+        "label": "order_id",
+        "null_rate": 0.0,
+        "distinct": 142,
+        "samples": [
+          "O00001",
+          "O00002",
+          "O00003",
+          "O00004",
+          "O00005"
+        ]
+      }
+    },
+    {
+      "id": "m_006_c03_avg",
+      "name_zh": "平均评分",
+      "name": "平均评分",
+      "aggregation": "AVG",
+      "fact": "t_006",
+      "expr": "AVG(t_006.c03)",
+      "unit": "分",
+      "synonyms": [
+        "review_score",
+        "评分",
+        "评价分数",
+        "review_score平均值",
+        "平均评分"
+      ],
+      "confidence": 0.9,
+      "selected": false,
+      "provenance": "auto",
+      "evidence": {
+        "column": "c03",
+        "label": "review_score",
+        "null_rate": 0.0,
+        "distinct": 5,
+        "samples": [
+          3,
+          4,
+          1,
+          2,
+          5
+        ]
+      }
+    },
+    {
+      "id": "m_005_row_count",
+      "name_zh": "记录数",
+      "name": "记录数",
+      "aggregation": "COUNT",
+      "fact": "t_005",
+      "expr": "COUNT(*)",
+      "synonyms": [
+        "行数",
+        "记录数",
+        "数据行数"
+      ],
+      "confidence": 0.95,
+      "selected": false,
+      "provenance": "auto"
+    },
+    {
+      "id": "m_005_c01_distinct",
+      "name_zh": "订单数",
+      "name": "订单数",
+      "aggregation": "COUNT DISTINCT",
+      "fact": "t_005",
+      "expr": "COUNT(DISTINCT t_005.c01)",
+      "unit": "个",
+      "synonyms": [
+        "order_id",
+        "订单数",
+        "订单量",
+        "订单笔数"
+      ],
+      "confidence": 0.9,
+      "selected": false,
+      "provenance": "auto",
+      "evidence": {
+        "column": "c01",
+        "label": "order_id",
+        "null_rate": 0.0,
+        "distinct": 164,
+        "samples": [
+          "O00001",
+          "O00002",
+          "O00003",
+          "O00004",
+          "O00005"
+        ]
+      }
+    },
+    {
+      "id": "m_005_c04_sum",
+      "name_zh": "payment_installments合计",
+      "name": "payment_installments合计",
+      "aggregation": "SUM",
+      "fact": "t_005",
+      "expr": "SUM(t_005.c04)",
+      "unit": null,
+      "synonyms": [
+        "payment_installments",
+        "payment_installments合计"
+      ],
+      "confidence": 0.55,
+      "selected": false,
+      "provenance": "auto",
+      "evidence": {
+        "column": "c04",
+        "label": "payment_installments",
+        "null_rate": 0.0,
+        "distinct": 8,
+        "samples": [
+          7,
+          1,
+          4,
+          6,
+          8
+        ]
+      }
+    },
+    {
+      "id": "m_005_c05_sum",
+      "name_zh": "支付金额",
+      "name": "支付金额",
+      "aggregation": "SUM",
+      "fact": "t_005",
+      "expr": "SUM(t_005.c05)",
+      "unit": "元",
+      "synonyms": [
+        "payment_value",
+        "支付金额",
+        "实付金额",
+        "payment_value合计"
+      ],
+      "confidence": 0.9,
+      "selected": false,
+      "provenance": "auto",
+      "evidence": {
+        "column": "c05",
+        "label": "payment_value",
+        "null_rate": 0.0,
+        "distinct": 182,
+        "samples": [
+          635.52,
+          65.37,
+          972.45,
+          509.04,
+          559.95
+        ]
+      }
+    },
+    {
+      "id": "m_007_row_count",
+      "name_zh": "记录数",
+      "name": "记录数",
+      "aggregation": "COUNT",
+      "fact": "t_007",
+      "expr": "COUNT(*)",
+      "synonyms": [
+        "行数",
+        "记录数",
+        "数据行数"
+      ],
+      "confidence": 0.95,
+      "selected": false,
+      "provenance": "auto"
+    },
+    {
+      "id": "m_007_c01_distinct",
+      "name_zh": "订单数",
+      "name": "订单数",
+      "aggregation": "COUNT DISTINCT",
+      "fact": "t_007",
+      "expr": "COUNT(DISTINCT t_007.c01)",
+      "unit": "个",
+      "synonyms": [
+        "order_id",
+        "订单数",
+        "订单量",
+        "订单笔数"
+      ],
+      "confidence": 0.9,
+      "selected": false,
+      "provenance": "auto",
+      "evidence": {
+        "column": "c01",
+        "label": "order_id",
+        "null_rate": 0.0,
+        "distinct": 180,
+        "samples": [
+          "O00001",
+          "O00002",
+          "O00003",
+          "O00004",
+          "O00005"
+        ]
+      }
+    },
+    {
+      "id": "m_007_c02_distinct",
+      "name_zh": "客户数",
+      "name": "客户数",
+      "aggregation": "COUNT DISTINCT",
+      "fact": "t_007",
+      "expr": "COUNT(DISTINCT t_007.c02)",
+      "unit": "个",
+      "synonyms": [
+        "customer_id",
+        "客户数",
+        "买家数",
+        "客户人数"
+      ],
+      "confidence": 0.9,
+      "selected": true,
+      "provenance": "auto",
+      "evidence": {
+        "column": "c02",
+        "label": "customer_id",
+        "null_rate": 0.0,
+        "distinct": 180,
+        "samples": [
+          "C00001",
+          "C00002",
+          "C00003",
+          "C00004",
+          "C00005"
+        ]
+      }
+    },
+    {
+      "id": "m_004_001_distinct",
+      "name_zh": "品类数",
+      "name": "品类数",
+      "aggregation": "COUNT DISTINCT",
+      "fact": "t_004",
+      "expr": "COUNT(DISTINCT t_001.c01)",
+      "synonyms": [
+        "品类数",
+        "几种品类",
+        "多少种品类"
+      ],
+      "confidence": 0.8,
+      "selected": true,
+      "provenance": "auto"
+    },
+    {
+      "id": "m_llm_已交付商品销售额",
+      "name_zh": "已交付商品销售额",
+      "name": "已交付商品销售额",
+      "aggregation": "AGGREGATE",
+      "fact": "t_004",
+      "expr": "SUM(t_004.c06)",
+      "unit": "元",
+      "definition": "已送达订单中商品价格合计，不含运费。",
+      "synonyms": [
+        "已交付商品销售额",
+        "销售额",
+        "GMV",
+        "商品成交额"
+      ],
+      "confidence": 0.7,
+      "selected": true,
+      "provenance": "llm"
+    },
+    {
+      "id": "m_llm_已交付运费合计",
+      "name_zh": "已交付运费合计",
+      "name": "已交付运费合计",
+      "aggregation": "AGGREGATE",
+      "fact": "t_004",
+      "expr": "SUM(t_004.c07)",
+      "unit": "元",
+      "definition": "已送达订单中运费合计。",
+      "synonyms": [
+        "已交付运费合计",
+        "运费",
+        "物流费用"
+      ],
+      "confidence": 0.7,
+      "selected": true,
+      "provenance": "llm"
+    },
+    {
+      "id": "m_llm_平均商品单价",
+      "name_zh": "平均商品单价",
+      "name": "平均商品单价",
+      "aggregation": "AGGREGATE",
+      "fact": "t_004",
+      "expr": "AVG(t_004.c06)",
+      "unit": "元",
+      "definition": "已送达订单明细中商品价格的平均值。",
+      "synonyms": [
+        "平均商品单价",
+        "平均售价",
+        "件均价"
+      ],
+      "confidence": 0.7,
+      "selected": true,
+      "provenance": "llm"
+    },
+    {
+      "id": "m_llm_已交付支付金额",
+      "name_zh": "已交付支付金额",
+      "name": "已交付支付金额",
+      "aggregation": "AGGREGATE",
+      "fact": "t_005",
+      "expr": "SUM(t_005.c05)",
+      "unit": "元",
+      "definition": "已送达订单的支付流水金额合计。",
+      "synonyms": [
+        "已交付支付金额",
+        "支付总额",
+        "收款金额"
+      ],
+      "confidence": 0.7,
+      "selected": true,
+      "provenance": "llm"
+    },
+    {
+      "id": "m_llm_延迟交付率",
+      "name_zh": "延迟交付率",
+      "name": "延迟交付率",
+      "aggregation": "RATIO",
+      "fact": "t_007",
+      "expr": "COUNT(CASE WHEN t_007.c07 > t_007.c08 THEN 1 END)",
+      "unit": "%",
+      "definition": "已送达订单中，实际送达时间晚于预计送达时间的订单占比。",
+      "synonyms": [
+        "延迟交付率",
+        "超时交付率",
+        "延迟率"
+      ],
+      "confidence": 0.7,
+      "selected": true,
+      "provenance": "llm"
+    },
+    {
+      "id": "m_llm_已交付订单平均评分",
+      "name_zh": "已交付订单平均评分",
+      "name": "已交付订单平均评分",
+      "aggregation": "AGGREGATE",
+      "fact": "t_006",
+      "expr": "AVG(t_006.c03)",
+      "unit": "分",
+      "definition": "已送达订单关联评价的平均评分。",
+      "synonyms": [
+        "已交付订单平均评分",
+        "平均评分",
+        "评价得分"
+      ],
+      "confidence": 0.7,
+      "selected": true,
+      "provenance": "llm"
+    },
+    {
+      "id": "m_llm_低分评价率",
+      "name_zh": "低分评价率",
+      "name": "低分评价率",
+      "aggregation": "RATIO",
+      "fact": "t_006",
+      "expr": "COUNT(CASE WHEN t_006.c03 < 3 THEN 1 END)",
+      "unit": "%",
+      "definition": "已送达订单评价中，评分低于3分的评价占比。",
+      "synonyms": [
+        "低分评价率",
+        "差评率",
+        "低分率"
+      ],
+      "confidence": 0.7,
+      "selected": true,
+      "provenance": "llm"
+    },
+    {
+      "id": "m_llm_好评率",
+      "name_zh": "好评率",
+      "name": "好评率",
+      "aggregation": "RATIO",
+      "fact": "t_006",
+      "expr": "COUNT(CASE WHEN t_006.c03 > 3 THEN 1 END)",
+      "unit": "%",
+      "definition": "已送达订单评价中，评分高于3分的评价占比。",
+      "synonyms": [
+        "好评率",
+        "高评分率",
+        "满意率"
+      ],
+      "confidence": 0.7,
+      "selected": true,
+      "provenance": "llm"
+    },
+    {
+      "id": "m_llm_复购客户数",
+      "name_zh": "复购客户数",
+      "name": "复购客户数",
+      "aggregation": "ENTITY_COUNT",
+      "fact": "t_007",
+      "expr": null,
+      "unit": "人",
+      "definition": "在已送达订单中，下单次数不少于2次的去重客户数。",
+      "synonyms": [
+        "复购客户数",
+        "复购人数",
+        "多次购买客户数"
+      ],
+      "confidence": 0.7,
+      "selected": true,
+      "provenance": "llm"
+    },
+    {
+      "id": "m_llm_动销商品数",
+      "name_zh": "动销商品数",
+      "name": "动销商品数",
+      "aggregation": "AGGREGATE",
+      "fact": "t_004",
+      "expr": "COUNT(DISTINCT t_004.c03)",
+      "unit": "个",
+      "definition": "已送达订单中出现过的去重商品数。",
+      "synonyms": [
+        "动销商品数",
+        "有销商品数",
+        "在售动销商品数"
+      ],
+      "confidence": 0.7,
+      "selected": true,
+      "provenance": "llm"
+    },
+    {
+      "id": "m_llm_动销商家数",
+      "name_zh": "动销商家数",
+      "name": "动销商家数",
+      "aggregation": "AGGREGATE",
+      "fact": "t_004",
+      "expr": "COUNT(DISTINCT t_004.c04)",
+      "unit": "个",
+      "definition": "已送达订单中出现过的去重商家数。",
+      "synonyms": [
+        "动销商家数",
+        "有销商家数",
+        "活跃商家数"
+      ],
+      "confidence": 0.7,
+      "selected": true,
+      "provenance": "llm"
+    },
+    {
+      "id": "m_llm_平均分期期数",
+      "name_zh": "平均分期期数",
+      "name": "平均分期期数",
+      "aggregation": "AGGREGATE",
+      "fact": "t_005",
+      "expr": "AVG(t_005.c04)",
+      "unit": "期",
+      "definition": "已送达订单支付记录的平均分期期数。",
+      "synonyms": [
+        "平均分期期数",
+        "平均分期数",
+        "平均期数"
+      ],
+      "confidence": 0.7,
+      "selected": true,
+      "provenance": "llm"
+    },
+    {
+      "id": "m_llm_优惠券支付订单数",
+      "name_zh": "优惠券支付订单数",
+      "name": "优惠券支付订单数",
+      "aggregation": "AGGREGATE",
+      "fact": "t_005",
+      "expr": "COUNT(DISTINCT t_005.c01)",
+      "unit": "单",
+      "definition": "已送达订单中使用优惠券支付的去重订单数。",
+      "synonyms": [
+        "优惠券支付订单数",
+        "voucher订单数",
+        "券支付订单数"
+      ],
+      "confidence": 0.7,
+      "selected": true,
+      "provenance": "llm"
+    },
+    {
+      "id": "m_llm_信用卡支付金额",
+      "name_zh": "信用卡支付金额",
+      "name": "信用卡支付金额",
+      "aggregation": "AGGREGATE",
+      "fact": "t_005",
+      "expr": "SUM(t_005.c05)",
+      "unit": "元",
+      "definition": "已送达订单中信用卡支付方式的支付金额合计。",
+      "synonyms": [
+        "信用卡支付金额",
+        "信用卡收款",
+        "credit_card支付金额"
+      ],
+      "confidence": 0.7,
+      "selected": true,
+      "provenance": "llm"
+    },
+    {
+      "id": "m_doc_延迟订单",
+      "name_zh": "延迟订单",
+      "name": "延迟订单",
+      "aggregation": "AGGREGATE",
+      "fact": "t_007",
+      "expr": "COUNT(CASE WHEN t_007.c07 > t_007.c08 THEN 1 END)",
+      "selected": true,
+      "provenance": "documentation",
+      "definition": "已送达时间晚于预计送达时间的订单；延迟判定为 delivered_at > estimated_delivery_at。"
+    },
+    {
+      "id": "m_doc_低分评价",
+      "name_zh": "低分评价",
+      "name": "低分评价",
+      "aggregation": "AGGREGATE",
+      "fact": "t_006",
+      "expr": "COUNT(CASE WHEN t_006.c03 <= 2 THEN 1 END)",
+      "selected": true,
+      "provenance": "documentation",
+      "definition": "评价分数小于等于 2 的评价；低分判定为 review_score <= 2。"
+    },
+    {
+      "id": "m_doc_订单数",
+      "name_zh": "订单数",
+      "name": "订单数",
+      "aggregation": "AGGREGATE",
+      "fact": "t_007",
+      "expr": "COUNT(t_007.c01)",
+      "selected": true,
+      "provenance": "documentation",
+      "definition": "统计范围内订单数量；数据范围为 2025-01 至 2025-06。"
+    }
+  ],
+  "tables": [
+    {
+      "table_id": "t_001",
+      "label": "categories",
+      "source": {
+        "file": "raw\\categories.csv",
+        "sheet": null
+      },
+      "rows": 6,
+      "columns": [
+        {
+          "physical": "c01",
+          "label": "category_id",
+          "index": 0,
+          "inferred_type": "varchar",
+          "confidence": 1.0,
+          "null_count": 0,
+          "null_rate": 0.0,
+          "distinct": 6,
+          "samples": [
+            "electronics",
+            "home",
+            "food",
+            "beauty",
+            "sports",
+            "books"
+          ],
+          "unit": null,
+          "warnings": [],
+          "role": "key",
+          "is_pii": false,
+          "minimum": "beauty",
+          "maximum": "sports",
+          "top_values": [
+            {
+              "value": "food",
+              "count": 1
+            },
+            {
+              "value": "home",
+              "count": 1
+            },
+            {
+              "value": "sports",
+              "count": 1
+            },
+            {
+              "value": "books",
+              "count": 1
+            },
+            {
+              "value": "beauty",
+              "count": 1
+            }
+          ]
+        },
+        {
+          "physical": "c02",
+          "label": "category_name_en",
+          "index": 1,
+          "inferred_type": "varchar",
+          "confidence": 1.0,
+          "null_count": 0,
+          "null_rate": 0.0,
+          "distinct": 6,
+          "samples": [
+            "Electronics",
+            "Home & Living",
+            "Food",
+            "Beauty",
+            "Sports",
+            "Books"
+          ],
+          "unit": null,
+          "warnings": [],
+          "role": "dimension",
+          "is_pii": false,
+          "minimum": "Beauty",
+          "maximum": "Sports",
+          "top_values": [
+            {
+              "value": "Electronics",
+              "count": 1
+            },
+            {
+              "value": "Home & Living",
+              "count": 1
+            },
+            {
+              "value": "Sports",
+              "count": 1
+            },
+            {
+              "value": "Books",
+              "count": 1
+            },
+            {
+              "value": "Beauty",
+              "count": 1
+            }
+          ]
+        },
+        {
+          "physical": "c03",
+          "label": "category_name_zh",
+          "index": 2,
+          "inferred_type": "varchar",
+          "confidence": 1.0,
+          "null_count": 0,
+          "null_rate": 0.0,
+          "distinct": 6,
+          "samples": [
+            "数码家电",
+            "家居生活",
+            "食品饮料",
+            "美妆个护",
+            "运动户外",
+            "图书文教"
+          ],
+          "unit": null,
+          "warnings": [],
+          "role": "dimension",
+          "is_pii": false,
+          "minimum": "图书文教",
+          "maximum": "食品饮料",
+          "top_values": [
+            {
+              "value": "数码家电",
+              "count": 1
+            },
+            {
+              "value": "运动户外",
+              "count": 1
+            },
+            {
+              "value": "食品饮料",
+              "count": 1
+            },
+            {
+              "value": "图书文教",
+              "count": 1
+            },
+            {
+              "value": "家居生活",
+              "count": 1
+            }
+          ]
+        }
+      ],
+      "header_row": 0,
+      "skipped_rows": 1,
+      "grain": [
+        "c01"
+      ],
+      "duplicate_rows": 0,
+      "totals_rows": [],
+      "warnings": [],
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "hidden": false,
+      "role": "dimension"
+    },
+    {
+      "table_id": "t_002",
+      "label": "customers",
+      "source": {
+        "file": "raw\\customers.csv",
+        "sheet": null
+      },
+      "rows": 180,
+      "columns": [
+        {
+          "physical": "c01",
+          "label": "customer_id",
+          "index": 0,
+          "inferred_type": "varchar",
+          "confidence": 1.0,
+          "null_count": 0,
+          "null_rate": 0.0,
+          "distinct": 180,
+          "samples": [
+            "C00001",
+            "C00002",
+            "C00003",
+            "C00004",
+            "C00005",
+            "C00006",
+            "C00007",
+            "C00008"
+          ],
+          "unit": null,
+          "warnings": [],
+          "role": "key",
+          "is_pii": false,
+          "minimum": "C00001",
+          "maximum": "C00180",
+          "top_values": []
+        },
+        {
+          "physical": "c02",
+          "label": "customer_unique_id",
+          "index": 1,
+          "inferred_type": "varchar",
+          "confidence": 1.0,
+          "null_count": 0,
+          "null_rate": 0.0,
+          "distinct": 70,
+          "samples": [
+            "U0002",
+            "U0041",
+            "U0030",
+            "U0007",
+            "U0018",
+            "U0070",
+            "U0026",
+            "U0020"
+          ],
+          "unit": null,
+          "warnings": [],
+          "role": "unknown",
+          "is_pii": false,
+          "minimum": "U0001",
+          "maximum": "U0080",
+          "top_values": []
+        },
+        {
+          "physical": "c03",
+          "label": "customer_zip_code",
+          "index": 2,
+          "inferred_type": "integer",
+          "confidence": 1.0,
+          "null_count": 0,
+          "null_rate": 0.0,
+          "distinct": 10,
+          "samples": [
+            200001,
+            100001,
+            410000,
+            430000,
+            210000,
+            610000,
+            518000,
+            510000
+          ],
+          "unit": null,
+          "warnings": [],
+          "role": "fk",
+          "is_pii": false,
+          "minimum": 100001,
+          "maximum": 710000,
+          "top_values": [
+            {
+              "value": 100001,
+              "count": 36
+            },
+            {
+              "value": 410000,
+              "count": 20
+            },
+            {
+              "value": 610000,
+              "count": 19
+            },
+            {
+              "value": 200001,
+              "count": 17
+            },
+            {
+              "value": 510000,
+              "count": 17
+            }
+          ]
+        },
+        {
+          "physical": "c04",
+          "label": "customer_city",
+          "index": 3,
+          "inferred_type": "varchar",
+          "confidence": 1.0,
+          "null_count": 0,
+          "null_rate": 0.0,
+          "distinct": 10,
+          "samples": [
+            "上海",
+            "北京",
+            "长沙",
+            "武汉",
+            "南京",
+            "成都",
+            "深圳",
+            "广州"
+          ],
+          "unit": null,
+          "warnings": [],
+          "role": "dimension",
+          "is_pii": false,
+          "minimum": "上海",
+          "maximum": "长沙",
+          "top_values": [
+            {
+              "value": "北京",
+              "count": 36
+            },
+            {
+              "value": "长沙",
+              "count": 20
+            },
+            {
+              "value": "成都",
+              "count": 19
+            },
+            {
+              "value": "广州",
+              "count": 17
+            },
+            {
+              "value": "上海",
+              "count": 17
+            }
+          ]
+        },
+        {
+          "physical": "c05",
+          "label": "customer_state",
+          "index": 4,
+          "inferred_type": "varchar",
+          "confidence": 1.0,
+          "null_count": 0,
+          "null_rate": 0.0,
+          "distinct": 9,
+          "samples": [
+            "上海",
+            "北京",
+            "湖南",
+            "湖北",
+            "江苏",
+            "四川",
+            "广东",
+            "陕西"
+          ],
+          "unit": null,
+          "warnings": [],
+          "role": "dimension",
+          "is_pii": false,
+          "minimum": "上海",
+          "maximum": "陕西",
+          "top_values": [
+            {
+              "value": "北京",
+              "count": 36
+            },
+            {
+              "value": "广东",
+              "count": 31
+            },
+            {
+              "value": "湖南",
+              "count": 20
+            },
+            {
+              "value": "四川",
+              "count": 19
+            },
+            {
+              "value": "上海",
+              "count": 17
+            }
+          ]
+        }
+      ],
+      "header_row": 0,
+      "skipped_rows": 1,
+      "grain": [
+        "c01"
+      ],
+      "duplicate_rows": 0,
+      "totals_rows": [],
+      "warnings": [],
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "hidden": false,
+      "role": "dimension"
+    },
+    {
+      "table_id": "t_003",
+      "label": "geolocation",
+      "source": {
+        "file": "raw\\geolocation.csv",
+        "sheet": null
+      },
+      "rows": 10,
+      "columns": [
+        {
+          "physical": "c01",
+          "label": "zip_code",
+          "index": 0,
+          "inferred_type": "integer",
+          "confidence": 1.0,
+          "null_count": 0,
+          "null_rate": 0.0,
+          "distinct": 10,
+          "samples": [
+            100001,
+            200001,
+            310000,
+            510000,
+            518000,
+            610000,
+            430000,
+            210000
+          ],
+          "unit": null,
+          "warnings": [],
+          "role": "key",
+          "is_pii": false,
+          "minimum": 100001,
+          "maximum": 710000,
+          "top_values": [
+            {
+              "value": 310000,
+              "count": 1
+            },
+            {
+              "value": 510000,
+              "count": 1
+            },
+            {
+              "value": 518000,
+              "count": 1
+            },
+            {
+              "value": 200001,
+              "count": 1
+            },
+            {
+              "value": 610000,
+              "count": 1
+            }
+          ]
+        },
+        {
+          "physical": "c02",
+          "label": "latitude",
+          "index": 1,
+          "inferred_type": "decimal",
+          "confidence": 1.0,
+          "null_count": 0,
+          "null_rate": 0.0,
+          "distinct": 10,
+          "samples": [
+            39.9042,
+            31.2304,
+            30.2741,
+            23.1291,
+            22.5431,
+            30.5728,
+            30.5928,
+            32.0603
+          ],
+          "unit": null,
+          "warnings": [],
+          "role": "measure",
+          "is_pii": false,
+          "minimum": 22.5431,
+          "maximum": 39.9042,
+          "top_values": [
+            {
+              "value": 32.0603,
+              "count": 1
+            },
+            {
+              "value": 30.5728,
+              "count": 1
+            },
+            {
+              "value": 39.9042,
+              "count": 1
+            },
+            {
+              "value": 30.2741,
+              "count": 1
+            },
+            {
+              "value": 34.3416,
+              "count": 1
+            }
+          ]
+        },
+        {
+          "physical": "c03",
+          "label": "longitude",
+          "index": 2,
+          "inferred_type": "decimal",
+          "confidence": 1.0,
+          "null_count": 0,
+          "null_rate": 0.0,
+          "distinct": 10,
+          "samples": [
+            116.4074,
+            121.4737,
+            120.1551,
+            113.2644,
+            114.0579,
+            104.0668,
+            114.3055,
+            118.7969
+          ],
+          "unit": null,
+          "warnings": [],
+          "role": "measure",
+          "is_pii": false,
+          "minimum": 104.0668,
+          "maximum": 121.4737,
+          "top_values": [
+            {
+              "value": 104.0668,
+              "count": 1
+            },
+            {
+              "value": 114.0579,
+              "count": 1
+            },
+            {
+              "value": 108.9398,
+              "count": 1
+            },
+            {
+              "value": 116.4074,
+              "count": 1
+            },
+            {
+              "value": 118.7969,
+              "count": 1
+            }
+          ]
+        },
+        {
+          "physical": "c04",
+          "label": "city",
+          "index": 3,
+          "inferred_type": "varchar",
+          "confidence": 1.0,
+          "null_count": 0,
+          "null_rate": 0.0,
+          "distinct": 10,
+          "samples": [
+            "北京",
+            "上海",
+            "杭州",
+            "广州",
+            "深圳",
+            "成都",
+            "武汉",
+            "南京"
+          ],
+          "unit": null,
+          "warnings": [],
+          "role": "dimension",
+          "is_pii": false,
+          "minimum": "上海",
+          "maximum": "长沙",
+          "top_values": [
+            {
+              "value": "深圳",
+              "count": 1
+            },
+            {
+              "value": "西安",
+              "count": 1
+            },
+            {
+              "value": "杭州",
+              "count": 1
+            },
+            {
+              "value": "成都",
+              "count": 1
+            },
+            {
+              "value": "广州",
+              "count": 1
+            }
+          ]
+        },
+        {
+          "physical": "c05",
+          "label": "state",
+          "index": 4,
+          "inferred_type": "varchar",
+          "confidence": 1.0,
+          "null_count": 0,
+          "null_rate": 0.0,
+          "distinct": 9,
+          "samples": [
+            "北京",
+            "上海",
+            "浙江",
+            "广东",
+            "四川",
+            "湖北",
+            "江苏",
+            "陕西"
+          ],
+          "unit": null,
+          "warnings": [],
+          "role": "dimension",
+          "is_pii": false,
+          "minimum": "上海",
+          "maximum": "陕西",
+          "top_values": [
+            {
+              "value": "广东",
+              "count": 2
+            },
+            {
+              "value": "湖北",
+              "count": 1
+            },
+            {
+              "value": "浙江",
+              "count": 1
+            },
+            {
+              "value": "北京",
+              "count": 1
+            },
+            {
+              "value": "四川",
+              "count": 1
+            }
+          ]
+        }
+      ],
+      "header_row": 0,
+      "skipped_rows": 1,
+      "grain": [
+        "c01"
+      ],
+      "duplicate_rows": 0,
+      "totals_rows": [],
+      "warnings": [],
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "hidden": false,
+      "role": "dimension"
+    },
+    {
+      "table_id": "t_004",
+      "label": "order_items",
+      "source": {
+        "file": "raw\\order_items.csv",
+        "sheet": null
+      },
+      "rows": 359,
+      "columns": [
+        {
+          "physical": "c01",
+          "label": "order_id",
+          "index": 0,
+          "inferred_type": "varchar",
+          "confidence": 1.0,
+          "null_count": 0,
+          "null_rate": 0.0,
+          "distinct": 180,
+          "samples": [
+            "O00001",
+            "O00002",
+            "O00003",
+            "O00004",
+            "O00005",
+            "O00006",
+            "O00007",
+            "O00008"
+          ],
+          "unit": null,
+          "warnings": [],
+          "role": "fk",
+          "is_pii": false,
+          "minimum": "O00001",
+          "maximum": "O00180",
+          "top_values": []
+        },
+        {
+          "physical": "c02",
+          "label": "order_item_id",
+          "index": 1,
+          "inferred_type": "integer",
+          "confidence": 1.0,
+          "null_count": 0,
+          "null_rate": 0.0,
+          "distinct": 3,
+          "samples": [
+            1,
+            2,
+            3
+          ],
+          "unit": null,
+          "warnings": [],
+          "role": "key",
+          "is_pii": false,
+          "minimum": 1,
+          "maximum": 3,
+          "top_values": [
+            {
+              "value": 1,
+              "count": 180
+            },
+            {
+              "value": 2,
+              "count": 123
+            },
+            {
+              "value": 3,
+              "count": 56
+            }
+          ]
+        },
+        {
+          "physical": "c03",
+          "label": "product_id",
+          "index": 2,
+          "inferred_type": "varchar",
+          "confidence": 1.0,
+          "null_count": 0,
+          "null_rate": 0.0,
+          "distinct": 30,
+          "samples": [
+            "P0003",
+            "P0027",
+            "P0025",
+            "P0022",
+            "P0016",
+            "P0006",
+            "P0008",
+            "P0010"
+          ],
+          "unit": null,
+          "warnings": [],
+          "role": "fk",
+          "is_pii": false,
+          "minimum": "P0001",
+          "maximum": "P0030",
+          "top_values": [
+            {
+              "value": "P0004",
+              "count": 28
+            },
+            {
+              "value": "P0002",
+              "count": 19
+            },
+            {
+              "value": "P0027",
+              "count": 17
+            },
+            {
+              "value": "P0003",
+              "count": 16
+            },
+            {
+              "value": "P0001",
+              "count": 16
+            }
+          ]
+        },
+        {
+          "physical": "c04",
+          "label": "seller_id",
+          "index": 3,
+          "inferred_type": "varchar",
+          "confidence": 1.0,
+          "null_count": 0,
+          "null_rate": 0.0,
+          "distinct": 8,
+          "samples": [
+            "S004",
+            "S005",
+            "S008",
+            "S002",
+            "S006",
+            "S007",
+            "S001",
+            "S003"
+          ],
+          "unit": null,
+          "warnings": [],
+          "role": "fk",
+          "is_pii": false,
+          "minimum": "S001",
+          "maximum": "S008",
+          "top_values": [
+            {
+              "value": "S008",
+              "count": 87
+            },
+            {
+              "value": "S004",
+              "count": 81
+            },
+            {
+              "value": "S001",
+              "count": 51
+            },
+            {
+              "value": "S006",
+              "count": 33
+            },
+            {
+              "value": "S003",
+              "count": 32
+            }
+          ]
+        },
+        {
+          "physical": "c05",
+          "label": "shipping_limit_at",
+          "index": 4,
+          "inferred_type": "datetime",
+          "confidence": 1.0,
+          "null_count": 0,
+          "null_rate": 0.0,
+          "distinct": 180,
+          "samples": [
+            "2025-01-04T16:49:00",
+            "2025-01-10T10:32:00",
+            "2025-01-17T09:05:00",
+            "2025-01-11T09:18:00",
+            "2025-01-04T11:20:00",
+            "2025-01-16T19:05:00",
+            "2025-01-22T12:55:00",
+            "2025-01-14T19:58:00"
+          ],
+          "unit": null,
+          "warnings": [],
+          "role": "unknown",
+          "is_pii": false,
+          "minimum": "2025-01-04T11:20:00",
+          "maximum": "2025-06-28T18:12:00",
+          "top_values": []
+        },
+        {
+          "physical": "c06",
+          "label": "price",
+          "index": 5,
+          "inferred_type": "decimal",
+          "confidence": 1.0,
+          "null_count": 0,
+          "null_rate": 0.0,
+          "distinct": 325,
+          "samples": [
+            502.88,
+            82.7,
+            429.05,
+            546.87,
+            252.48,
+            203.75,
+            531.67,
+            83.66
+          ],
+          "unit": null,
+          "warnings": [],
+          "role": "measure",
+          "is_pii": false,
+          "minimum": 55.57,
+          "maximum": 838.89,
+          "top_values": []
+        },
+        {
+          "physical": "c07",
+          "label": "freight_value",
+          "index": 6,
+          "inferred_type": "decimal",
+          "confidence": 1.0,
+          "null_count": 0,
+          "null_rate": 0.0,
+          "distinct": 319,
+          "samples": [
+            22.71,
+            27.23,
+            30.99,
+            30.91,
+            28.5,
+            24.31,
+            28.28,
+            32.35
+          ],
+          "unit": null,
+          "warnings": [],
+          "role": "measure",
+          "is_pii": false,
+          "minimum": 12.35,
+          "maximum": 51.6,
+          "top_values": []
+        }
+      ],
+      "header_row": 0,
+      "skipped_rows": 1,
+      "grain": [
+        "c02",
+        "c01"
+      ],
+      "duplicate_rows": 0,
+      "totals_rows": [],
+      "warnings": [],
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "hidden": false,
+      "role": "fact"
+    },
+    {
+      "table_id": "t_005",
+      "label": "order_payments",
+      "source": {
+        "file": "raw\\order_payments.csv",
+        "sheet": null
+      },
+      "rows": 182,
+      "columns": [
+        {
+          "physical": "c01",
+          "label": "order_id",
+          "index": 0,
+          "inferred_type": "varchar",
+          "confidence": 1.0,
+          "null_count": 0,
+          "null_rate": 0.0,
+          "distinct": 164,
+          "samples": [
+            "O00001",
+            "O00002",
+            "O00003",
+            "O00004",
+            "O00005",
+            "O00006",
+            "O00007",
+            "O00009"
+          ],
+          "unit": null,
+          "warnings": [],
+          "role": "fk",
+          "is_pii": false,
+          "minimum": "O00001",
+          "maximum": "O00180",
+          "top_values": []
+        },
+        {
+          "physical": "c02",
+          "label": "payment_sequence",
+          "index": 1,
+          "inferred_type": "integer",
+          "confidence": 1.0,
+          "null_count": 0,
+          "null_rate": 0.0,
+          "distinct": 2,
+          "samples": [
+            1,
+            2
+          ],
+          "unit": null,
+          "warnings": [],
+          "role": "key",
+          "is_pii": false,
+          "minimum": 1,
+          "maximum": 2,
+          "top_values": [
+            {
+              "value": 1,
+              "count": 164
+            },
+            {
+              "value": 2,
+              "count": 18
+            }
+          ]
+        },
+        {
+          "physical": "c03",
+          "label": "payment_type",
+          "index": 2,
+          "inferred_type": "varchar",
+          "confidence": 1.0,
+          "null_count": 0,
+          "null_rate": 0.0,
+          "distinct": 4,
+          "samples": [
+            "credit_card",
+            "voucher",
+            "bank_transfer",
+            "debit_card"
+          ],
+          "unit": null,
+          "warnings": [],
+          "role": "dimension",
+          "is_pii": false,
+          "minimum": "bank_transfer",
+          "maximum": "voucher",
+          "top_values": [
+            {
+              "value": "credit_card",
+              "count": 125
+            },
+            {
+              "value": "debit_card",
+              "count": 25
+            },
+            {
+              "value": "voucher",
+              "count": 18
+            },
+            {
+              "value": "bank_transfer",
+              "count": 14
+            }
+          ]
+        },
+        {
+          "physical": "c04",
+          "label": "payment_installments",
+          "index": 3,
+          "inferred_type": "integer",
+          "confidence": 1.0,
+          "null_count": 0,
+          "null_rate": 0.0,
+          "distinct": 8,
+          "samples": [
+            7,
+            1,
+            4,
+            6,
+            8,
+            3,
+            2,
+            5
+          ],
+          "unit": null,
+          "warnings": [],
+          "role": "measure",
+          "is_pii": false,
+          "minimum": 1,
+          "maximum": 8,
+          "top_values": [
+            {
+              "value": 1,
+              "count": 67
+            },
+            {
+              "value": 3,
+              "count": 22
+            },
+            {
+              "value": 4,
+              "count": 21
+            },
+            {
+              "value": 8,
+              "count": 18
+            },
+            {
+              "value": 2,
+              "count": 16
+            }
+          ]
+        },
+        {
+          "physical": "c05",
+          "label": "payment_value",
+          "index": 4,
+          "inferred_type": "decimal",
+          "confidence": 1.0,
+          "null_count": 0,
+          "null_rate": 0.0,
+          "distinct": 182,
+          "samples": [
+            635.52,
+            65.37,
+            972.45,
+            509.04,
+            559.95,
+            59.09,
+            605.61,
+            317.59
+          ],
+          "unit": null,
+          "warnings": [],
+          "role": "measure",
+          "is_pii": false,
+          "minimum": 27.55,
+          "maximum": 1939.86,
+          "top_values": []
+        }
+      ],
+      "header_row": 0,
+      "skipped_rows": 1,
+      "grain": [
+        "c01",
+        "c02"
+      ],
+      "duplicate_rows": 0,
+      "totals_rows": [],
+      "warnings": [],
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "hidden": false,
+      "role": "fact"
+    },
+    {
+      "table_id": "t_006",
+      "label": "order_reviews",
+      "source": {
+        "file": "raw\\order_reviews.csv",
+        "sheet": null
+      },
+      "rows": 142,
+      "columns": [
+        {
+          "physical": "c01",
+          "label": "review_id",
+          "index": 0,
+          "inferred_type": "varchar",
+          "confidence": 1.0,
+          "null_count": 0,
+          "null_rate": 0.0,
+          "distinct": 142,
+          "samples": [
+            "R00001",
+            "R00002",
+            "R00003",
+            "R00004",
+            "R00005",
+            "R00006",
+            "R00007",
+            "R00008"
+          ],
+          "unit": null,
+          "warnings": [],
+          "role": "key",
+          "is_pii": false,
+          "minimum": "R00001",
+          "maximum": "R00142",
+          "top_values": []
+        },
+        {
+          "physical": "c02",
+          "label": "order_id",
+          "index": 1,
+          "inferred_type": "varchar",
+          "confidence": 1.0,
+          "null_count": 0,
+          "null_rate": 0.0,
+          "distinct": 142,
+          "samples": [
+            "O00001",
+            "O00002",
+            "O00003",
+            "O00004",
+            "O00005",
+            "O00006",
+            "O00007",
+            "O00009"
+          ],
+          "unit": null,
+          "warnings": [],
+          "role": "fk",
+          "is_pii": false,
+          "minimum": "O00001",
+          "maximum": "O00180",
+          "top_values": []
+        },
+        {
+          "physical": "c03",
+          "label": "review_score",
+          "index": 2,
+          "inferred_type": "integer",
+          "confidence": 1.0,
+          "null_count": 0,
+          "null_rate": 0.0,
+          "distinct": 5,
+          "samples": [
+            3,
+            4,
+            1,
+            2,
+            5
+          ],
+          "unit": null,
+          "warnings": [],
+          "role": "measure",
+          "is_pii": false,
+          "minimum": 1,
+          "maximum": 5,
+          "top_values": [
+            {
+              "value": 4,
+              "count": 42
+            },
+            {
+              "value": 3,
+              "count": 37
+            },
+            {
+              "value": 5,
+              "count": 26
+            },
+            {
+              "value": 1,
+              "count": 19
+            },
+            {
+              "value": 2,
+              "count": 18
+            }
+          ]
+        },
+        {
+          "physical": "c04",
+          "label": "review_title",
+          "index": 3,
+          "inferred_type": "varchar",
+          "confidence": 1.0,
+          "null_count": 0,
+          "null_rate": 0.0,
+          "distinct": 2,
+          "samples": [
+            "购买反馈",
+            "体验不佳"
+          ],
+          "unit": null,
+          "warnings": [],
+          "role": "dimension",
+          "is_pii": false,
+          "minimum": "体验不佳",
+          "maximum": "购买反馈",
+          "top_values": [
+            {
+              "value": "购买反馈",
+              "count": 105
+            },
+            {
+              "value": "体验不佳",
+              "count": 37
+            }
+          ]
+        },
+        {
+          "physical": "c05",
+          "label": "review_message",
+          "index": 4,
+          "inferred_type": "varchar",
+          "confidence": 1.0,
+          "null_count": 0,
+          "null_rate": 0.0,
+          "distinct": 3,
+          "samples": [
+            "整体一般",
+            "商品和配送体验不错",
+            "配送较慢，体验需要改进"
+          ],
+          "unit": null,
+          "warnings": [],
+          "role": "dimension",
+          "is_pii": false,
+          "minimum": "商品和配送体验不错",
+          "maximum": "配送较慢，体验需要改进",
+          "top_values": [
+            {
+              "value": "商品和配送体验不错",
+              "count": 68
+            },
+            {
+              "value": "配送较慢，体验需要改进",
+              "count": 37
+            },
+            {
+              "value": "整体一般",
+              "count": 37
+            }
+          ]
+        },
+        {
+          "physical": "c06",
+          "label": "review_created_at",
+          "index": 5,
+          "inferred_type": "datetime",
+          "confidence": 1.0,
+          "null_count": 0,
+          "null_rate": 0.0,
+          "distinct": 142,
+          "samples": [
+            "2025-01-13T16:49:00",
+            "2025-01-13T10:32:00",
+            "2025-01-27T09:05:00",
+            "2025-01-14T09:18:00",
+            "2025-01-09T11:20:00",
+            "2025-01-26T19:05:00",
+            "2025-01-31T12:55:00",
+            "2025-01-27T14:59:00"
+          ],
+          "unit": null,
+          "warnings": [],
+          "role": "unknown",
+          "is_pii": false,
+          "minimum": "2025-01-09T11:20:00",
+          "maximum": "2025-07-08T13:44:00",
+          "top_values": []
+        },
+        {
+          "physical": "c07",
+          "label": "seller_answered_at",
+          "index": 6,
+          "inferred_type": "datetime",
+          "confidence": 1.0,
+          "null_count": 0,
+          "null_rate": 0.0,
+          "distinct": 142,
+          "samples": [
+            "2025-01-14T16:49:00",
+            "2025-01-14T10:32:00",
+            "2025-01-28T09:05:00",
+            "2025-01-15T09:18:00",
+            "2025-01-10T11:20:00",
+            "2025-01-27T19:05:00",
+            "2025-02-01T12:55:00",
+            "2025-01-28T14:59:00"
+          ],
+          "unit": null,
+          "warnings": [],
+          "role": "unknown",
+          "is_pii": false,
+          "minimum": "2025-01-10T11:20:00",
+          "maximum": "2025-07-09T13:44:00",
+          "top_values": []
+        }
+      ],
+      "header_row": 0,
+      "skipped_rows": 1,
+      "grain": [
+        "c01"
+      ],
+      "duplicate_rows": 0,
+      "totals_rows": [],
+      "warnings": [],
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "hidden": false,
+      "role": "fact"
+    },
+    {
+      "table_id": "t_007",
+      "label": "orders",
+      "source": {
+        "file": "raw\\orders.csv",
+        "sheet": null
+      },
+      "rows": 180,
+      "columns": [
+        {
+          "physical": "c01",
+          "label": "order_id",
+          "index": 0,
+          "inferred_type": "varchar",
+          "confidence": 1.0,
+          "null_count": 0,
+          "null_rate": 0.0,
+          "distinct": 180,
+          "samples": [
+            "O00001",
+            "O00002",
+            "O00003",
+            "O00004",
+            "O00005",
+            "O00006",
+            "O00007",
+            "O00008"
+          ],
+          "unit": null,
+          "warnings": [],
+          "role": "key",
+          "is_pii": false,
+          "minimum": "O00001",
+          "maximum": "O00180",
+          "top_values": []
+        },
+        {
+          "physical": "c02",
+          "label": "customer_id",
+          "index": 1,
+          "inferred_type": "varchar",
+          "confidence": 1.0,
+          "null_count": 0,
+          "null_rate": 0.0,
+          "distinct": 180,
+          "samples": [
+            "C00001",
+            "C00002",
+            "C00003",
+            "C00004",
+            "C00005",
+            "C00006",
+            "C00007",
+            "C00008"
+          ],
+          "unit": null,
+          "warnings": [],
+          "role": "fk",
+          "is_pii": false,
+          "minimum": "C00001",
+          "maximum": "C00180",
+          "top_values": []
+        },
+        {
+          "physical": "c03",
+          "label": "order_status",
+          "index": 2,
+          "inferred_type": "varchar",
+          "confidence": 1.0,
+          "null_count": 0,
+          "null_rate": 0.0,
+          "distinct": 4,
+          "samples": [
+            "delivered",
+            "unavailable",
+            "shipped",
+            "cancelled"
+          ],
+          "unit": null,
+          "warnings": [],
+          "role": "dimension",
+          "is_pii": false,
+          "minimum": "cancelled",
+          "maximum": "unavailable",
+          "top_values": [
+            {
+              "value": "delivered",
+              "count": 159
+            },
+            {
+              "value": "cancelled",
+              "count": 8
+            },
+            {
+              "value": "unavailable",
+              "count": 8
+            },
+            {
+              "value": "shipped",
+              "count": 5
+            }
+          ]
+        },
+        {
+          "physical": "c04",
+          "label": "purchase_at",
+          "index": 3,
+          "inferred_type": "datetime",
+          "confidence": 1.0,
+          "null_count": 0,
+          "null_rate": 0.0,
+          "distinct": 180,
+          "samples": [
+            "2025-01-01T16:49:00",
+            "2025-01-07T10:32:00",
+            "2025-01-14T09:05:00",
+            "2025-01-08T09:18:00",
+            "2025-01-01T11:20:00",
+            "2025-01-13T19:05:00",
+            "2025-01-19T12:55:00",
+            "2025-01-11T19:58:00"
+          ],
+          "unit": null,
+          "warnings": [],
+          "role": "unknown",
+          "is_pii": false,
+          "minimum": "2025-01-01T11:20:00",
+          "maximum": "2025-06-25T18:12:00",
+          "top_values": []
+        },
+        {
+          "physical": "c05",
+          "label": "approved_at",
+          "index": 4,
+          "inferred_type": "datetime",
+          "confidence": 1.0,
+          "null_count": 16,
+          "null_rate": 0.0889,
+          "distinct": 164,
+          "samples": [
+            "2025-01-02T16:49:00",
+            "2025-01-08T10:32:00",
+            "2025-01-15T09:05:00",
+            "2025-01-09T09:18:00",
+            "2025-01-02T11:20:00",
+            "2025-01-14T19:05:00",
+            "2025-01-20T12:55:00",
+            "2025-01-22T14:59:00"
+          ],
+          "unit": null,
+          "warnings": [],
+          "role": "unknown",
+          "is_pii": false,
+          "minimum": "2025-01-02T11:20:00",
+          "maximum": "2025-06-26T18:12:00",
+          "top_values": []
+        },
+        {
+          "physical": "c06",
+          "label": "shipped_at",
+          "index": 5,
+          "inferred_type": "datetime",
+          "confidence": 1.0,
+          "null_count": 16,
+          "null_rate": 0.0889,
+          "distinct": 164,
+          "samples": [
+            "2025-01-05T16:49:00",
+            "2025-01-11T10:32:00",
+            "2025-01-17T09:05:00",
+            "2025-01-11T09:18:00",
+            "2025-01-04T11:20:00",
+            "2025-01-17T19:05:00",
+            "2025-01-23T12:55:00",
+            "2025-01-24T14:59:00"
+          ],
+          "unit": null,
+          "warnings": [],
+          "role": "unknown",
+          "is_pii": false,
+          "minimum": "2025-01-04T11:20:00",
+          "maximum": "2025-06-29T18:12:00",
+          "top_values": []
+        },
+        {
+          "physical": "c07",
+          "label": "delivered_at",
+          "index": 6,
+          "inferred_type": "datetime",
+          "confidence": 1.0,
+          "null_count": 21,
+          "null_rate": 0.1167,
+          "distinct": 159,
+          "samples": [
+            "2025-01-12T16:49:00",
+            "2025-01-12T10:32:00",
+            "2025-01-26T09:05:00",
+            "2025-01-13T09:18:00",
+            "2025-01-08T11:20:00",
+            "2025-01-25T19:05:00",
+            "2025-01-30T12:55:00",
+            "2025-01-26T14:59:00"
+          ],
+          "unit": null,
+          "warnings": [],
+          "role": "unknown",
+          "is_pii": false,
+          "minimum": "2025-01-07T16:37:00",
+          "maximum": "2025-07-07T13:44:00",
+          "top_values": []
+        },
+        {
+          "physical": "c08",
+          "label": "estimated_delivery_at",
+          "index": 7,
+          "inferred_type": "datetime",
+          "confidence": 1.0,
+          "null_count": 0,
+          "null_rate": 0.0,
+          "distinct": 180,
+          "samples": [
+            "2025-01-11T16:49:00",
+            "2025-01-17T10:32:00",
+            "2025-01-24T09:05:00",
+            "2025-01-18T09:18:00",
+            "2025-01-11T11:20:00",
+            "2025-01-23T19:05:00",
+            "2025-01-29T12:55:00",
+            "2025-01-21T19:58:00"
+          ],
+          "unit": null,
+          "warnings": [],
+          "role": "unknown",
+          "is_pii": false,
+          "minimum": "2025-01-11T11:20:00",
+          "maximum": "2025-07-05T18:12:00",
+          "top_values": []
+        }
+      ],
+      "header_row": 0,
+      "skipped_rows": 1,
+      "grain": [
+        "c01"
+      ],
+      "duplicate_rows": 0,
+      "totals_rows": [],
+      "warnings": [],
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "hidden": false,
+      "role": "fact"
+    },
+    {
+      "table_id": "t_008",
+      "label": "products",
+      "source": {
+        "file": "raw\\products.csv",
+        "sheet": null
+      },
+      "rows": 30,
+      "columns": [
+        {
+          "physical": "c01",
+          "label": "product_id",
+          "index": 0,
+          "inferred_type": "varchar",
+          "confidence": 1.0,
+          "null_count": 0,
+          "null_rate": 0.0,
+          "distinct": 30,
+          "samples": [
+            "P0001",
+            "P0002",
+            "P0003",
+            "P0004",
+            "P0005",
+            "P0006",
+            "P0007",
+            "P0008"
+          ],
+          "unit": null,
+          "warnings": [],
+          "role": "key",
+          "is_pii": false,
+          "minimum": "P0001",
+          "maximum": "P0030",
+          "top_values": [
+            {
+              "value": "P0010",
+              "count": 1
+            },
+            {
+              "value": "P0001",
+              "count": 1
+            },
+            {
+              "value": "P0004",
+              "count": 1
+            },
+            {
+              "value": "P0017",
+              "count": 1
+            },
+            {
+              "value": "P0019",
+              "count": 1
+            }
+          ]
+        },
+        {
+          "physical": "c02",
+          "label": "category_id",
+          "index": 1,
+          "inferred_type": "varchar",
+          "confidence": 1.0,
+          "null_count": 0,
+          "null_rate": 0.0,
+          "distinct": 6,
+          "samples": [
+            "electronics",
+            "home",
+            "food",
+            "beauty",
+            "sports",
+            "books"
+          ],
+          "unit": null,
+          "warnings": [],
+          "role": "fk",
+          "is_pii": false,
+          "minimum": "beauty",
+          "maximum": "sports",
+          "top_values": [
+            {
+              "value": "electronics",
+              "count": 5
+            },
+            {
+              "value": "sports",
+              "count": 5
+            },
+            {
+              "value": "beauty",
+              "count": 5
+            },
+            {
+              "value": "home",
+              "count": 5
+            },
+            {
+              "value": "books",
+              "count": 5
+            }
+          ]
+        },
+        {
+          "physical": "c03",
+          "label": "product_name",
+          "index": 2,
+          "inferred_type": "varchar",
+          "confidence": 1.0,
+          "null_count": 0,
+          "null_rate": 0.0,
+          "distinct": 30,
+          "samples": [
+            "无线耳机",
+            "机械键盘",
+            "智能手环",
+            "移动电源",
+            "蓝牙音箱",
+            "护眼台灯",
+            "办公椅",
+            "纯棉四件套"
+          ],
+          "unit": null,
+          "warnings": [],
+          "role": "dimension",
+          "is_pii": false,
+          "minimum": "世界文学",
+          "maximum": "龙井茶",
+          "top_values": [
+            {
+              "value": "空气炸锅",
+              "count": 1
+            },
+            {
+              "value": "运动水杯",
+              "count": 1
+            },
+            {
+              "value": "机械键盘",
+              "count": 1
+            },
+            {
+              "value": "防晒霜",
+              "count": 1
+            },
+            {
+              "value": "商业分析",
+              "count": 1
+            }
+          ]
+        },
+        {
+          "physical": "c04",
+          "label": "product_name_length",
+          "index": 3,
+          "inferred_type": "integer",
+          "confidence": 1.0,
+          "null_count": 0,
+          "null_rate": 0.0,
+          "distinct": 4,
+          "samples": [
+            4,
+            3,
+            5,
+            2
+          ],
+          "unit": null,
+          "warnings": [],
+          "role": "measure",
+          "is_pii": false,
+          "minimum": 2,
+          "maximum": 5,
+          "top_values": [
+            {
+              "value": 4,
+              "count": 16
+            },
+            {
+              "value": 3,
+              "count": 12
+            },
+            {
+              "value": 2,
+              "count": 1
+            },
+            {
+              "value": 5,
+              "count": 1
+            }
+          ]
+        },
+        {
+          "physical": "c05",
+          "label": "product_description_length",
+          "index": 4,
+          "inferred_type": "integer",
+          "confidence": 1.0,
+          "null_count": 0,
+          "null_rate": 0.0,
+          "distinct": 30,
+          "samples": [
+            169,
+            174,
+            148,
+            87,
+            150,
+            254,
+            252,
+            114
+          ],
+          "unit": null,
+          "warnings": [],
+          "role": "measure",
+          "is_pii": false,
+          "minimum": 85,
+          "maximum": 295,
+          "top_values": [
+            {
+              "value": 85,
+              "count": 1
+            },
+            {
+              "value": 87,
+              "count": 1
+            },
+            {
+              "value": 88,
+              "count": 1
+            },
+            {
+              "value": 108,
+              "count": 1
+            },
+            {
+              "value": 110,
+              "count": 1
+            }
+          ]
+        },
+        {
+          "physical": "c06",
+          "label": "product_photos_count",
+          "index": 5,
+          "inferred_type": "integer",
+          "confidence": 1.0,
+          "null_count": 0,
+          "null_rate": 0.0,
+          "distinct": 5,
+          "samples": [
+            1,
+            4,
+            5,
+            3,
+            2
+          ],
+          "unit": null,
+          "warnings": [],
+          "role": "measure",
+          "is_pii": false,
+          "minimum": 1,
+          "maximum": 5,
+          "top_values": [
+            {
+              "value": 5,
+              "count": 8
+            },
+            {
+              "value": 2,
+              "count": 6
+            },
+            {
+              "value": 3,
+              "count": 6
+            },
+            {
+              "value": 1,
+              "count": 5
+            },
+            {
+              "value": 4,
+              "count": 5
+            }
+          ]
+        },
+        {
+          "physical": "c07",
+          "label": "product_weight_g",
+          "index": 6,
+          "inferred_type": "integer",
+          "confidence": 1.0,
+          "null_count": 0,
+          "null_rate": 0.0,
+          "distinct": 29,
+          "samples": [
+            320,
+            920,
+            85,
+            240,
+            610,
+            1250,
+            12000,
+            2600
+          ],
+          "unit": null,
+          "warnings": [],
+          "role": "measure",
+          "is_pii": false,
+          "minimum": 45,
+          "maximum": 12000,
+          "top_values": [
+            {
+              "value": 610,
+              "count": 2
+            },
+            {
+              "value": 2600,
+              "count": 1
+            },
+            {
+              "value": 220,
+              "count": 1
+            },
+            {
+              "value": 280,
+              "count": 1
+            },
+            {
+              "value": 1400,
+              "count": 1
+            }
+          ]
+        },
+        {
+          "physical": "c08",
+          "label": "product_length_cm",
+          "index": 7,
+          "inferred_type": "integer",
+          "confidence": 1.0,
+          "null_count": 0,
+          "null_rate": 0.0,
+          "distinct": 21,
+          "samples": [
+            11,
+            24,
+            44,
+            31,
+            10,
+            16,
+            17,
+            38
+          ],
+          "unit": null,
+          "warnings": [],
+          "role": "measure",
+          "is_pii": false,
+          "minimum": 10,
+          "maximum": 44,
+          "top_values": [
+            {
+              "value": 30,
+              "count": 3
+            },
+            {
+              "value": 39,
+              "count": 3
+            },
+            {
+              "value": 32,
+              "count": 2
+            },
+            {
+              "value": 24,
+              "count": 2
+            },
+            {
+              "value": 38,
+              "count": 2
+            }
+          ]
+        },
+        {
+          "physical": "c09",
+          "label": "product_height_cm",
+          "index": 8,
+          "inferred_type": "integer",
+          "confidence": 1.0,
+          "null_count": 0,
+          "null_rate": 0.0,
+          "distinct": 17,
+          "samples": [
+            9,
+            15,
+            13,
+            4,
+            17,
+            22,
+            12,
+            10
+          ],
+          "unit": null,
+          "warnings": [],
+          "role": "measure",
+          "is_pii": false,
+          "minimum": 3,
+          "maximum": 22,
+          "top_values": [
+            {
+              "value": 10,
+              "count": 4
+            },
+            {
+              "value": 11,
+              "count": 3
+            },
+            {
+              "value": 8,
+              "count": 3
+            },
+            {
+              "value": 9,
+              "count": 2
+            },
+            {
+              "value": 12,
+              "count": 2
+            }
+          ]
+        },
+        {
+          "physical": "c10",
+          "label": "product_width_cm",
+          "index": 9,
+          "inferred_type": "integer",
+          "confidence": 1.0,
+          "null_count": 0,
+          "null_rate": 0.0,
+          "distinct": 15,
+          "samples": [
+            25,
+            37,
+            32,
+            35,
+            36,
+            31,
+            16,
+            28
+          ],
+          "unit": null,
+          "warnings": [],
+          "role": "measure",
+          "is_pii": false,
+          "minimum": 8,
+          "maximum": 37,
+          "top_values": [
+            {
+              "value": 28,
+              "count": 4
+            },
+            {
+              "value": 23,
+              "count": 3
+            },
+            {
+              "value": 35,
+              "count": 3
+            },
+            {
+              "value": 32,
+              "count": 3
+            },
+            {
+              "value": 37,
+              "count": 3
+            }
+          ]
+        },
+        {
+          "physical": "c11",
+          "label": "base_price",
+          "index": 10,
+          "inferred_type": "integer",
+          "confidence": 1.0,
+          "null_count": 0,
+          "null_rate": 0.0,
+          "distinct": 20,
+          "samples": [
+            299,
+            399,
+            459,
+            169,
+            259,
+            189,
+            799,
+            499
+          ],
+          "unit": null,
+          "warnings": [],
+          "role": "measure",
+          "is_pii": false,
+          "minimum": 59,
+          "maximum": 799,
+          "top_values": [
+            {
+              "value": 99,
+              "count": 3
+            },
+            {
+              "value": 89,
+              "count": 3
+            },
+            {
+              "value": 79,
+              "count": 2
+            },
+            {
+              "value": 69,
+              "count": 2
+            },
+            {
+              "value": 169,
+              "count": 2
+            }
+          ]
+        }
+      ],
+      "header_row": 0,
+      "skipped_rows": 1,
+      "grain": [
+        "c01"
+      ],
+      "duplicate_rows": 0,
+      "totals_rows": [],
+      "warnings": [],
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "hidden": false,
+      "role": "dimension"
+    },
+    {
+      "table_id": "t_009",
+      "label": "sellers",
+      "source": {
+        "file": "raw\\sellers.csv",
+        "sheet": null
+      },
+      "rows": 8,
+      "columns": [
+        {
+          "physical": "c01",
+          "label": "seller_id",
+          "index": 0,
+          "inferred_type": "varchar",
+          "confidence": 1.0,
+          "null_count": 0,
+          "null_rate": 0.0,
+          "distinct": 8,
+          "samples": [
+            "S001",
+            "S002",
+            "S003",
+            "S004",
+            "S005",
+            "S006",
+            "S007",
+            "S008"
+          ],
+          "unit": null,
+          "warnings": [],
+          "role": "key",
+          "is_pii": false,
+          "minimum": "S001",
+          "maximum": "S008",
+          "top_values": [
+            {
+              "value": "S006",
+              "count": 1
+            },
+            {
+              "value": "S005",
+              "count": 1
+            },
+            {
+              "value": "S001",
+              "count": 1
+            },
+            {
+              "value": "S004",
+              "count": 1
+            },
+            {
+              "value": "S007",
+              "count": 1
+            }
+          ]
+        },
+        {
+          "physical": "c02",
+          "label": "seller_name",
+          "index": 1,
+          "inferred_type": "varchar",
+          "confidence": 1.0,
+          "null_count": 0,
+          "null_rate": 0.0,
+          "distinct": 8,
+          "samples": [
+            "京华数码",
+            "沪上家居",
+            "杭城食品",
+            "岭南好物",
+            "深湾美妆",
+            "蓉城运动",
+            "金陵书局",
+            "长安优选"
+          ],
+          "unit": null,
+          "warnings": [],
+          "role": "dimension",
+          "is_pii": false,
+          "minimum": "京华数码",
+          "maximum": "长安优选",
+          "top_values": [
+            {
+              "value": "金陵书局",
+              "count": 1
+            },
+            {
+              "value": "深湾美妆",
+              "count": 1
+            },
+            {
+              "value": "京华数码",
+              "count": 1
+            },
+            {
+              "value": "杭城食品",
+              "count": 1
+            },
+            {
+              "value": "长安优选",
+              "count": 1
+            }
+          ]
+        },
+        {
+          "physical": "c03",
+          "label": "seller_zip_code",
+          "index": 2,
+          "inferred_type": "integer",
+          "confidence": 1.0,
+          "null_count": 0,
+          "null_rate": 0.0,
+          "distinct": 8,
+          "samples": [
+            100001,
+            200001,
+            310000,
+            510000,
+            518000,
+            610000,
+            210000,
+            710000
+          ],
+          "unit": null,
+          "warnings": [],
+          "role": "fk",
+          "is_pii": false,
+          "minimum": 100001,
+          "maximum": 710000,
+          "top_values": [
+            {
+              "value": 210000,
+              "count": 1
+            },
+            {
+              "value": 710000,
+              "count": 1
+            },
+            {
+              "value": 200001,
+              "count": 1
+            },
+            {
+              "value": 610000,
+              "count": 1
+            },
+            {
+              "value": 310000,
+              "count": 1
+            }
+          ]
+        },
+        {
+          "physical": "c04",
+          "label": "seller_city",
+          "index": 3,
+          "inferred_type": "varchar",
+          "confidence": 1.0,
+          "null_count": 0,
+          "null_rate": 0.0,
+          "distinct": 8,
+          "samples": [
+            "北京",
+            "上海",
+            "杭州",
+            "广州",
+            "深圳",
+            "成都",
+            "南京",
+            "西安"
+          ],
+          "unit": null,
+          "warnings": [],
+          "role": "dimension",
+          "is_pii": false,
+          "minimum": "上海",
+          "maximum": "西安",
+          "top_values": [
+            {
+              "value": "成都",
+              "count": 1
+            },
+            {
+              "value": "上海",
+              "count": 1
+            },
+            {
+              "value": "西安",
+              "count": 1
+            },
+            {
+              "value": "广州",
+              "count": 1
+            },
+            {
+              "value": "北京",
+              "count": 1
+            }
+          ]
+        },
+        {
+          "physical": "c05",
+          "label": "seller_state",
+          "index": 4,
+          "inferred_type": "varchar",
+          "confidence": 1.0,
+          "null_count": 0,
+          "null_rate": 0.0,
+          "distinct": 7,
+          "samples": [
+            "北京",
+            "上海",
+            "浙江",
+            "广东",
+            "四川",
+            "江苏",
+            "陕西"
+          ],
+          "unit": null,
+          "warnings": [],
+          "role": "dimension",
+          "is_pii": false,
+          "minimum": "上海",
+          "maximum": "陕西",
+          "top_values": [
+            {
+              "value": "广东",
+              "count": 2
+            },
+            {
+              "value": "四川",
+              "count": 1
+            },
+            {
+              "value": "上海",
+              "count": 1
+            },
+            {
+              "value": "江苏",
+              "count": 1
+            },
+            {
+              "value": "陕西",
+              "count": 1
+            }
+          ]
+        }
+      ],
+      "header_row": 0,
+      "skipped_rows": 1,
+      "grain": [
+        "c01"
+      ],
+      "duplicate_rows": 0,
+      "totals_rows": [],
+      "warnings": [],
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "hidden": false,
+      "role": "dimension"
+    }
+  ],
+  "warnings": [
+    "模型生成了 14 个指标口径，请在发布前核对；仅接受通过执行探针的候选。"
+  ],
+  "semantic_version": 1,
+  "provenance": "auto",
+  "selected_dimensions": [
+    "month",
+    "d_004_007_c03",
+    "d_004_008_c03",
+    "d_004_009_c02",
+    "d_004_009_c04",
+    "d_004_002_c04",
+    "d_004_002_c05",
+    "d_004_001_c03",
+    "d_004_003_c04",
+    "d_004_003_c05",
+    "d_007_c03",
+    "d_007_002_c04",
+    "d_007_002_c05",
+    "d_007_003_c04",
+    "d_007_003_c05",
+    "d_doc_t_007_c07_c08",
+    "d_005_002_c04",
+    "d_005_002_c05",
+    "d_005_007_c03",
+    "d_005_c03",
+    "d_005_c04",
+    "d_006_002_c04",
+    "d_006_002_c05",
+    "d_006_007_c03",
+    "d_006_c04"
+  ],
+  "documentation": {
+    "source": "README.md",
+    "parsed_at": "2026-11-11T19:57:58",
+    "applied_at": "2026-11-11T19:58:23",
+    "rules": 4
+  },
+  "selected_metrics": [
+    "m_004_row_count",
+    "m_004_c03_distinct",
+    "m_004_c04_distinct",
+    "m_004_c06_sum",
+    "m_004_c07_sum",
+    "m_007_c02_distinct",
+    "m_004_001_distinct",
+    "m_llm_已交付商品销售额",
+    "m_llm_已交付运费合计",
+    "m_llm_平均商品单价",
+    "m_llm_已交付支付金额",
+    "m_llm_延迟交付率",
+    "m_llm_已交付订单平均评分",
+    "m_llm_低分评价率",
+    "m_llm_好评率",
+    "m_llm_复购客户数",
+    "m_llm_动销商品数",
+    "m_llm_动销商家数",
+    "m_llm_平均分期期数",
+    "m_llm_优惠券支付订单数",
+    "m_llm_信用卡支付金额",
+    "m_doc_延迟订单",
+    "m_doc_低分评价",
+    "m_doc_订单数",
+    "entity_count_t_002"
+  ],
+  "published_at": "2026-11-11T19:58:57"
+}

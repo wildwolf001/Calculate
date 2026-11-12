@@ -1,0 +1,517 @@
+version: 1
+dataset_id: ds_dd0addc20f5c
+name: Excel_Demo
+files:
+- path: raw\ecommerce_agent_demo.xlsx
+  sha256: a1b1c4fe6d826c37fd477ed068d2b3ac3b86e25a7b63384d9339458cddd93c15
+  size: 2511887
+tables:
+  t_001:
+    label: ecommerce_agent_demo/customers
+    source:
+      file: raw\ecommerce_agent_demo.xlsx
+      sheet: customers
+    header_row: 0
+    grain:
+    - c01
+    role: dimension
+    columns:
+    - physical: c01
+      label: customer_id
+      type: varchar
+      unit: null
+      pii: false
+    - physical: c02
+      label: customer_unique_id
+      type: varchar
+      unit: null
+      pii: false
+    - physical: c03
+      label: customer_zip_code
+      type: integer
+      unit: null
+      pii: false
+    - physical: c04
+      label: customer_city
+      type: varchar
+      unit: null
+      pii: false
+    - physical: c05
+      label: customer_state
+      type: varchar
+      unit: null
+      pii: false
+  t_002:
+    label: ecommerce_agent_demo/geolocation
+    source:
+      file: raw\ecommerce_agent_demo.xlsx
+      sheet: geolocation
+    header_row: 0
+    grain:
+    - c01
+    role: dimension
+    columns:
+    - physical: c01
+      label: zip_code
+      type: integer
+      unit: null
+      pii: false
+    - physical: c02
+      label: latitude
+      type: decimal
+      unit: null
+      pii: false
+    - physical: c03
+      label: longitude
+      type: decimal
+      unit: null
+      pii: false
+    - physical: c04
+      label: city
+      type: varchar
+      unit: null
+      pii: false
+    - physical: c05
+      label: state
+      type: varchar
+      unit: null
+      pii: false
+  t_003:
+    label: ecommerce_agent_demo/orders
+    source:
+      file: raw\ecommerce_agent_demo.xlsx
+      sheet: orders
+    header_row: 0
+    grain:
+    - c01
+    role: fact
+    columns:
+    - physical: c01
+      label: order_id
+      type: varchar
+      unit: null
+      pii: false
+    - physical: c02
+      label: customer_id
+      type: varchar
+      unit: null
+      pii: false
+    - physical: c03
+      label: order_status
+      type: varchar
+      unit: null
+      pii: false
+    - physical: c04
+      label: purchase_at
+      type: datetime
+      unit: null
+      pii: false
+    - physical: c05
+      label: approved_at
+      type: datetime
+      unit: null
+      pii: false
+    - physical: c06
+      label: shipped_at
+      type: datetime
+      unit: null
+      pii: false
+    - physical: c07
+      label: delivered_at
+      type: datetime
+      unit: null
+      pii: false
+    - physical: c08
+      label: estimated_delivery_at
+      type: datetime
+      unit: null
+      pii: false
+  t_004:
+    label: ecommerce_agent_demo/order_items
+    source:
+      file: raw\ecommerce_agent_demo.xlsx
+      sheet: order_items
+    header_row: 0
+    grain:
+    - c02
+    - c01
+    role: fact
+    columns:
+    - physical: c01
+      label: order_id
+      type: varchar
+      unit: null
+      pii: false
+    - physical: c02
+      label: order_item_id
+      type: integer
+      unit: null
+      pii: false
+    - physical: c03
+      label: product_id
+      type: varchar
+      unit: null
+      pii: false
+    - physical: c04
+      label: seller_id
+      type: varchar
+      unit: null
+      pii: false
+    - physical: c05
+      label: shipping_limit_at
+      type: datetime
+      unit: null
+      pii: false
+    - physical: c06
+      label: price
+      type: decimal
+      unit: null
+      pii: false
+    - physical: c07
+      label: freight_value
+      type: decimal
+      unit: null
+      pii: false
+  t_005:
+    label: ecommerce_agent_demo/order_payments
+    source:
+      file: raw\ecommerce_agent_demo.xlsx
+      sheet: order_payments
+    header_row: 0
+    grain:
+    - c01
+    - c02
+    role: fact
+    columns:
+    - physical: c01
+      label: order_id
+      type: varchar
+      unit: null
+      pii: false
+    - physical: c02
+      label: payment_sequence
+      type: integer
+      unit: null
+      pii: false
+    - physical: c03
+      label: payment_type
+      type: varchar
+      unit: null
+      pii: false
+    - physical: c04
+      label: payment_installments
+      type: integer
+      unit: null
+      pii: false
+    - physical: c05
+      label: payment_value
+      type: decimal
+      unit: null
+      pii: false
+  t_006:
+    label: ecommerce_agent_demo/order_reviews
+    source:
+      file: raw\ecommerce_agent_demo.xlsx
+      sheet: order_reviews
+    header_row: 0
+    grain:
+    - c01
+    role: fact
+    columns:
+    - physical: c01
+      label: review_id
+      type: varchar
+      unit: null
+      pii: false
+    - physical: c02
+      label: order_id
+      type: varchar
+      unit: null
+      pii: false
+    - physical: c03
+      label: review_score
+      type: integer
+      unit: null
+      pii: false
+    - physical: c04
+      label: review_title
+      type: varchar
+      unit: null
+      pii: false
+    - physical: c05
+      label: review_message
+      type: varchar
+      unit: null
+      pii: false
+    - physical: c06
+      label: review_created_at
+      type: datetime
+      unit: null
+      pii: false
+    - physical: c07
+      label: seller_answered_at
+      type: datetime
+      unit: null
+      pii: false
+  t_007:
+    label: ecommerce_agent_demo/products
+    source:
+      file: raw\ecommerce_agent_demo.xlsx
+      sheet: products
+    header_row: 0
+    grain:
+    - c01
+    role: dimension
+    columns:
+    - physical: c01
+      label: product_id
+      type: varchar
+      unit: null
+      pii: false
+    - physical: c02
+      label: category_id
+      type: varchar
+      unit: null
+      pii: false
+    - physical: c03
+      label: product_name
+      type: varchar
+      unit: null
+      pii: false
+    - physical: c04
+      label: product_name_length
+      type: integer
+      unit: null
+      pii: false
+    - physical: c05
+      label: product_description_length
+      type: integer
+      unit: null
+      pii: false
+    - physical: c06
+      label: product_photos_count
+      type: integer
+      unit: null
+      pii: false
+    - physical: c07
+      label: product_weight_g
+      type: integer
+      unit: null
+      pii: false
+    - physical: c08
+      label: product_length_cm
+      type: integer
+      unit: null
+      pii: false
+    - physical: c09
+      label: product_height_cm
+      type: integer
+      unit: null
+      pii: false
+    - physical: c10
+      label: product_width_cm
+      type: integer
+      unit: null
+      pii: false
+    - physical: c11
+      label: base_price
+      type: decimal
+      unit: null
+      pii: false
+  t_008:
+    label: ecommerce_agent_demo/sellers
+    source:
+      file: raw\ecommerce_agent_demo.xlsx
+      sheet: sellers
+    header_row: 0
+    grain:
+    - c01
+    role: dimension
+    columns:
+    - physical: c01
+      label: seller_id
+      type: varchar
+      unit: null
+      pii: false
+    - physical: c02
+      label: seller_name
+      type: varchar
+      unit: null
+      pii: false
+    - physical: c03
+      label: seller_zip_code
+      type: integer
+      unit: null
+      pii: false
+    - physical: c04
+      label: seller_city
+      type: varchar
+      unit: null
+      pii: false
+    - physical: c05
+      label: seller_state
+      type: varchar
+      unit: null
+      pii: false
+  t_009:
+    label: ecommerce_agent_demo/categories
+    source:
+      file: raw\ecommerce_agent_demo.xlsx
+      sheet: categories
+    header_row: 0
+    grain:
+    - c01
+    role: dimension
+    columns:
+    - physical: c01
+      label: category_id
+      type: varchar
+      unit: null
+      pii: false
+    - physical: c02
+      label: category_name_en
+      type: varchar
+      unit: null
+      pii: false
+    - physical: c03
+      label: category_name_zh
+      type: varchar
+      unit: null
+      pii: false
+relationships:
+- child: t_001
+  child_col: c03
+  child_label: customer_zip_code
+  parent: t_002
+  parent_col: c01
+  parent_label: zip_code
+  containment: 1.0
+  score: 0.98
+  child_rows: 11890
+  joined_rows: 11890
+  amplified: false
+  accepted: true
+  card: N:1
+  reason: ''
+- child: t_003
+  child_col: c02
+  child_label: customer_id
+  parent: t_001
+  parent_col: c01
+  parent_label: customer_id
+  containment: 1.0
+  score: 1.0
+  child_rows: 11890
+  joined_rows: 11890
+  amplified: false
+  accepted: true
+  card: N:1
+  reason: ''
+- child: t_004
+  child_col: c01
+  child_label: order_id
+  parent: t_003
+  parent_col: c01
+  parent_label: order_id
+  containment: 1.0
+  score: 1.0
+  child_rows: 20900
+  joined_rows: 20900
+  amplified: false
+  accepted: true
+  card: N:1
+  reason: ''
+- child: t_004
+  child_col: c03
+  child_label: product_id
+  parent: t_007
+  parent_col: c01
+  parent_label: product_id
+  containment: 1.0
+  score: 1.0
+  child_rows: 20900
+  joined_rows: 20900
+  amplified: false
+  accepted: true
+  card: N:1
+  reason: ''
+- child: t_004
+  child_col: c04
+  child_label: seller_id
+  parent: t_008
+  parent_col: c01
+  parent_label: seller_id
+  containment: 1.0
+  score: 1.0
+  child_rows: 20900
+  joined_rows: 20900
+  amplified: false
+  accepted: true
+  card: N:1
+  reason: ''
+- child: t_005
+  child_col: c01
+  child_label: order_id
+  parent: t_003
+  parent_col: c01
+  parent_label: order_id
+  containment: 1.0
+  score: 1.0
+  child_rows: 12494
+  joined_rows: 12494
+  amplified: false
+  accepted: true
+  card: N:1
+  reason: ''
+- child: t_006
+  child_col: c02
+  child_label: order_id
+  parent: t_003
+  parent_col: c01
+  parent_label: order_id
+  containment: 1.0
+  score: 1.0
+  child_rows: 9232
+  joined_rows: 9232
+  amplified: false
+  accepted: true
+  card: N:1
+  reason: ''
+- child: t_007
+  child_col: c02
+  child_label: category_id
+  parent: t_009
+  parent_col: c01
+  parent_label: category_id
+  containment: 1.0
+  score: 1.0
+  child_rows: 600
+  joined_rows: 600
+  amplified: false
+  accepted: true
+  card: N:1
+  reason: ''
+- child: t_008
+  child_col: c03
+  child_label: seller_zip_code
+  parent: t_002
+  parent_col: c01
+  parent_label: zip_code
+  containment: 1.0
+  score: 0.98
+  child_rows: 120
+  joined_rows: 120
+  amplified: false
+  accepted: true
+  card: N:1
+  reason: ''
+options:
+  totals_policy: exclude
+  pii_policy: mask
+  include_files:
+  - ecommerce_agent_demo.xlsx
+  include_suspected: false
+skipped_sources:
+- ecommerce_agent_demo/说明
+- ecommerce_agent_demo/练习题
+notes: []

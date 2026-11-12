@@ -1,0 +1,38 @@
+{
+  "dataset_id": "ds_d7390c8574a4",
+  "name": "CSV_Demo",
+  "status": "published",
+  "engine": "duckdb",
+  "semantic": "semantic.yaml",
+  "binding": "binding.yaml",
+  "warehouse": "warehouse.duckdb",
+  "capabilities": {
+    "member_list": true,
+    "ratio": true,
+    "entity_count": true,
+    "compare": true,
+    "business_checks": [],
+    "member_list_coverage": null
+  },
+  "options": {
+    "totals_policy": "exclude",
+    "pii_policy": "mask",
+    "include_files": [
+      "categories.csv",
+      "customers.csv",
+      "geolocation.csv",
+      "order_items.csv",
+      "order_payments.csv",
+      "order_reviews.csv",
+      "orders.csv",
+      "products.csv",
+      "sellers.csv"
+    ],
+    "include_suspected": false
+  },
+  "skipped_sources": [],
+  "created_at": "2026-11-11T19:56:53",
+  "documentation": "README.md",
+  "documentation_applied_at": "2026-11-11T19:58:23",
+  "published_at": "2026-11-11T19:58:57"
+}
