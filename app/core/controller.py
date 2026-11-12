@@ -10,6 +10,7 @@ import re
 import threading
 import traceback
 from dataclasses import replace
+from datetime import date
 from typing import AsyncIterator
 
 from app.config.settings import (
@@ -672,6 +673,163 @@ class Controller:
             notes=tuple(data.get("notes") or []),
         )
 
+    def _cross_field_boundary(self, question: str) -> str | None:
+        """Return a boundary explanation for comparisons between two fields."""
+        text = str(question or "")
+        if not re.search(r"不一致|不同|不相等|不等于|有差异|相同|一致", text):
+            return None
+        matches: list[tuple[str, str]] = []
+        for dim in self.sem.dimensions.values():
+            raw = getattr(dim, "raw", {}) or {}
+            aliases = [
+                str(dim.id),
+                str(raw.get("name_zh") or ""),
+                *[str(x) for x in (raw.get("synonyms") or [])],
+            ]
+            aliases = [a for a in aliases if len(a) >= 2 and a in text]
+            if aliases:
+                matches.append((max(aliases, key=len), str(dim.id)))
+        # "商家" is a substring of "商家城市"; keep the longest mention so the
+        # boundary message names the actual two city fields.
+        matched_aliases = {alias for alias, _ in matches}
+        matches = [
+            (alias, dim_id) for alias, dim_id in matches
+            if not any(
+                alias != other and alias in other for other in matched_aliases
+            )
+        ]
+        labels = list(dict.fromkeys(alias for alias, _ in matches))
+        if len(labels) < 2:
+            return None
+        left, right = labels[0], labels[1]
+        return (
+            f"当前语义层不支持直接比较两个维度字段（例如「{left} != {right}」）。"
+            "可以分别按这两个维度分组查看，再人工比对差异；"
+            "这样的跨字段条件不会生成查询。"
+        )
+
+    def _salvage_dimensions(self, question: str, slots: dict) -> None:
+        """Recover an obvious grouping noun when the parser omits dimensions."""
+        if slots.get("dimensions"):
+            return
+        text = str(question or "")
+        by_alias: dict[str, list[str]] = {}
+        for dim in self.sem.dimensions.values():
+            raw = getattr(dim, "raw", {}) or {}
+            aliases = [
+                str(dim.id),
+                str(raw.get("name_zh") or ""),
+                *[str(x) for x in (raw.get("synonyms") or [])],
+            ]
+            for alias in aliases:
+                alias = alias.strip()
+                if len(alias) < 2 or alias not in text:
+                    continue
+                by_alias.setdefault(alias, []).append(str(dim.id))
+        if not by_alias:
+            return
+        # Prefer the longest, unambiguous mention. Generic aliases such as
+        # “城市” often map to several dimensions and must not be guessed.
+        for alias in sorted(by_alias, key=len, reverse=True):
+            ids = list(dict.fromkeys(by_alias[alias]))
+            if len(ids) == 1:
+                slots["dimensions"] = ids
+                slots["notes"] = list(dict.fromkeys(
+                    list(slots.get("notes") or [])
+                    + [f"从问题文本补充维度：{alias}。"]
+                ))
+                return
+
+    def _salvage_explicit_time(self, question: str, slots: dict) -> None:
+        """Honor an explicit Chinese half-year/month phrase over model drift."""
+        text = str(question or "")
+        half = re.search(r"(\d{4})\s*年\s*(上半年|下半年)", text)
+        if half:
+            year = int(half.group(1))
+            if half.group(2) == "上半年":
+                start, end = date(year, 1, 1), date(year, 7, 1)
+            else:
+                start, end = date(year, 7, 1), date(year + 1, 1, 1)
+            slots["time"] = {"start": start, "end": end}
+            slots["notes"] = list(dict.fromkeys(
+                list(slots.get("notes") or []) + [f"按问题文本补充时间：{year}年{half.group(2)}。"]
+            ))
+            return
+        month = re.search(r"(\d{4})\s*年\s*([一二三四五六七八九十\d]{1,2})\s*月", text)
+        if not month:
+            return
+        year = int(month.group(1))
+        raw_month = month.group(2)
+        numerals = {
+            "一": 1, "二": 2, "三": 3, "四": 4, "五": 5,
+            "六": 6, "七": 7, "八": 8, "九": 9, "十": 10,
+        }
+        number = int(raw_month) if raw_month.isdigit() else numerals.get(raw_month, 0)
+        if number < 1 or number > 12:
+            return
+        start = date(year, number, 1)
+        end = date(year + (number // 12), (number % 12) + 1, 1)
+        slots["time"] = {"start": start, "end": end}
+        slots["notes"] = list(dict.fromkeys(
+            list(slots.get("notes") or []) + [f"按问题文本补充时间：{year}年{number}月。"]
+        ))
+
+    def _salvage_metric_intent(self, question: str, slots: dict) -> None:
+        """Recover a customer-count metric when the parser keeps the prior metric."""
+        text = str(question or "")
+        if not re.search(r"客户数|买家数|购买客户|多少个客户|多少位客户|去重客户", text):
+            return
+        if "销售额" in text or "金额" in text:
+            return
+        current_id = slots.get("metric")
+        current = self.sem.metrics.get(str(current_id)) if current_id else None
+        if current is not None:
+            current_name = f"{current.name} {current.id}"
+            if "客户数" in current_name or "买家数" in current_name or "客户人数" in current_name:
+                return
+        candidates = []
+        for metric in self.sem.metrics.values():
+            raw = metric.raw or {}
+            names = " ".join([
+                metric.id,
+                str(raw.get("name_zh") or ""),
+                *[str(x) for x in (raw.get("synonyms") or [])],
+            ])
+            if any(token in names for token in ("客户数", "买家数", "客户人数", "购买客户")):
+                if metric.type in {"aggregate", "entity_count"}:
+                    candidates.append(metric)
+        if not candidates:
+            return
+        preferred = next(
+            (m for m in candidates if str((m.raw or {}).get("name_zh") or "") == "客户数"),
+            candidates[0],
+        )
+        slots["metric"] = preferred.id
+        slots["metric_spec"] = None
+        slots["metric_source"] = "documented"
+        slots["ratio_numerator"] = None
+        slots["ratio_denominator"] = None
+        # Keep the source metric's business scope (for example delivered
+        # orders) when switching to a customer/order count metric whose own
+        # scope is empty. This prevents “delivered sales top3” from becoming
+        # “all-status customers”.
+        current_scope = dict((current.raw or {}).get("scope") or {}) if current else {}
+        new_scope = dict((preferred.raw or {}).get("scope") or {})
+        if current_scope and not new_scope:
+            filters = dict(slots.get("filters") or {})
+            for column, value in current_scope.items():
+                for dim in self.sem.dimensions.values():
+                    if str((dim.raw or {}).get("column") or "") == str(column):
+                        filters.setdefault(
+                            dim.id, {"op": "eq", "value": value}
+                        )
+                        break
+            slots["filters"] = filters
+        slots["notes"] = list(dict.fromkeys(
+            list(slots.get("notes") or [])
+            + [f"按问题文本切换指标为：{preferred.name}。"]
+        ))
+
     def _memory_payload(self, state: SessionState, *,
                         allow_llm: bool = True) -> dict | None:
         if self.memory_compressor is None:
@@ -938,6 +1096,22 @@ class Controller:
             }))
             events.append(("result.presented", {"result_id": None}))
             return events
+        boundary = self._cross_field_boundary(original)
+        if boundary:
+            events.append(("intent.classified", {
+                "intent_type": "unsupported",
+                "tier": "B",
+                "confidence": 0.9,
+                "rewritten_question": original,
+                "context_action": "new",
+            }))
+            events.append(("answer.composed", {
+                "text": boundary,
+                "result_id": None,
+                "status": "refused",
+            }))
+            events.append(("result.presented", {"result_id": None}))
+            return events
         if rw.kind == "lookup" and self.sem.parser == "ecommerce":
             if not self.sem.capabilities.get("member_list", True):
                 events.append(("error.raised", {
@@ -983,6 +1157,9 @@ class Controller:
         self._apply_reference_focus(result, conversation_context, original)
         apply_context_action(result, conversation_context, self._last_user_text(state))
         self._drop_spurious_inherited_time(result, original, conversation_context)
+        self._salvage_dimensions(original, result.slots)
+        self._salvage_explicit_time(original, result.slots)
+        self._salvage_metric_intent(original, result.slots)
         self._normalize_entity_ratio_slots(result.slots, original)
         self._apply_sample_threshold(result.slots, original)
         self._salvage_derived_filter(original, result.slots)
@@ -1591,6 +1768,9 @@ class Controller:
             slots["time"] = anchor["time"]
         self._normalize_entity_ratio_slots(slots, question)
         self._apply_sample_threshold(slots, question)
+        self._salvage_dimensions(question, slots)
+        self._salvage_explicit_time(question, slots)
+        self._salvage_metric_intent(question, slots)
         return slots, anchor
 
     def _inject_anchor_filter(self, slots_payload: dict, question: str,
