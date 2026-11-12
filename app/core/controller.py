@@ -750,7 +750,10 @@ class Controller:
                 start, end = date(year, 1, 1), date(year, 7, 1)
             else:
                 start, end = date(year, 7, 1), date(year + 1, 1, 1)
-            slots["time"] = {"start": start, "end": end}
+            slots["time"] = {
+                "start": start.isoformat(),
+                "end": end.isoformat(),
+            }
             slots["notes"] = list(dict.fromkeys(
                 list(slots.get("notes") or []) + [f"按问题文本补充时间：{year}年{half.group(2)}。"]
             ))
@@ -769,7 +772,10 @@ class Controller:
             return
         start = date(year, number, 1)
         end = date(year + (number // 12), (number % 12) + 1, 1)
-        slots["time"] = {"start": start, "end": end}
+        slots["time"] = {
+            "start": start.isoformat(),
+            "end": end.isoformat(),
+        }
         slots["notes"] = list(dict.fromkeys(
             list(slots.get("notes") or []) + [f"按问题文本补充时间：{year}年{number}月。"]
         ))
