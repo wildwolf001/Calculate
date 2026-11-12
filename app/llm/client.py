@@ -29,6 +29,10 @@ class LLMTruncated(LLMError):
     """The model stopped at max_tokens; the output must not be treated as complete."""
 
 
+class LLMTimeout(LLMError):
+    """The provider did not answer within the configured timeout."""
+
+
 def extract_json(text: str) -> dict:
     """Extract the first JSON object; tolerates markdown fences and prose."""
     if not text:
@@ -114,6 +118,11 @@ class LLMClient:
                 {"role": "user", "content": user},
             ],
         }
+        if self.provider == "qwen":
+            # Structured parsing does not need the model's hidden reasoning
+            # phase. Leaving it on makes a 5.7k-token schema prompt take
+            # 20-46s before a single JSON object is emitted.
+            payload["enable_thinking"] = False
         try:
             with httpx.Client(timeout=self.timeout) as client:
                 resp = client.post(
@@ -131,7 +140,11 @@ class LLMClient:
                 error=f"{type(exc).__name__}: {exc}",
                 duration_ms=int((time.perf_counter() - started) * 1000),
             )
+            if isinstance(exc, getattr(httpx, "TimeoutException", ())) or "Timeout" in type(exc).__name__:
+                raise LLMTimeout(f"LLM 超时: {type(exc).__name__}: {exc}") from exc
             raise LLMError(f"LLM 调用失败: {type(exc).__name__}: {exc}") from exc
+        if resp.status_code in {408, 504}:
+            raise LLMTimeout(f"LLM 超时: 网关返回 {resp.status_code}")
         if resp.status_code >= 400:
             detail = resp.text[:500]
             log_event(logger, "llm.call_failed", stage=stage, model=self.model,
@@ -186,6 +199,8 @@ class LLMClient:
                       provider=self.provider,
                       error=f"{type(exc).__name__}: {exc}",
                       duration_ms=int((time.perf_counter() - started) * 1000))
+            if "Timeout" in type(exc).__name__:
+                raise LLMTimeout(f"LLM 超时: {type(exc).__name__}: {exc}") from exc
             raise LLMError(f"LLM 调用失败: {type(exc).__name__}: {exc}") from exc
 
         stop_reason = getattr(resp, "stop_reason", None)

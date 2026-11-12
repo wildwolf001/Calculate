@@ -70,6 +70,7 @@ from app.domain.rewrite import rewrite
 from app.domain.semantic.loader import SemanticLayer, SemanticError
 from app.llm.rule_parser import RuleParser
 from app.llm.analyze import LLMAnalysisWriter
+from app.llm.client import LLMTimeout, LLMTruncated, LLMUnavailable
 from app.tools.harness import ToolHarness, ToolResult
 
 SMALLTALK_TEXT = (
@@ -344,9 +345,16 @@ class Controller:
         return data
 
     def _call_with_retry(self, stage: str, fn, state: SessionState, events: list):
-        """One retry with an llm.retry event; re-raises on second failure."""
+        """One retry with an llm.retry event; re-raises on second failure.
+
+        Timeouts and unavailable/truncated providers are not retried: retrying
+        a 46s timeout turns a bad first attempt into a 90s turn. Let the
+        deterministic parser/fallback handle those immediately.
+        """
         try:
             return fn()
+        except (LLMTimeout, LLMUnavailable, LLMTruncated):
+            raise
         except Exception as exc:
             if state.policy.can_retry(stage):
                 events.append(("llm.retry", {"stage": stage, "attempt": 1, "reason": str(exc)}))

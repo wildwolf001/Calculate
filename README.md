@@ -13,7 +13,7 @@
 - 口径治理：支持草稿确认、发布、版本历史、文档解析和发布就绪检查。
 - 语义发布：发布期生成实体注册表和实体计数指标；运行时优先使用已发布语义，必要时可基于已发布列构造 AVG/SUM 等派生指标（标为推断口径），模型始终不写 SQL。
 - 模型卡：发布期把 catalog / profile / semantic 合成 `model_card.json`（表角色、粒度、主键、列类型/角色/单位/描述、外键、指标 operand、时间轴），brief、类型校验和管理页共用这一份契约。
-- 模型配置：右上角齿轮可切换 DeepSeek（Anthropic 兼容）与 Qwen（OpenAI 兼容），填写模型名、Base URL、API Key 并测试连接；配置存本机 `data/runtime/llm_config.json`，页面只回显掩码，不显示明文 Key。
+- 模型配置：右上角齿轮可切换 DeepSeek（Anthropic 兼容）与 Qwen（OpenAI 兼容），填写模型名、Base URL、API Key 并测试连接；配置存本机 `data/runtime/llm_config.json`，页面只回显掩码，不显示明文 Key；Qwen 结构化解析默认关闭 thinking 以降低延迟。
 - 解析上下文：brief v2 采用 schema 优先、按问题选相关表、分段预算，不再从尾部截断；`GET /api/datasets/{id}/brief?q=` 可预览解析器实际看到的内容。
 - 指标选择：resolver 只在“度量类型匹配”时做词面兜底，LLM 已选且问题完整命名了平均值/金额等度量时不会被“延迟订单”这类分组词覆盖。
 - 拒绝与澄清：预测/利润等越界问题直接说明“数据不能做什么、能看哪些历史口径”；“卖得怎么样”这类模糊问题先确认范围，不自动生成整份经营报告。
