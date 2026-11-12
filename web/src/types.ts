@@ -158,6 +158,33 @@ export type ChartType =
 
 export type ChartSort = 'source_order' | 'value_desc' | 'category_asc' | 'time_asc'
 
+export interface LLMProviderPreset {
+  label: string
+  protocol: string
+  base_url: string
+  model: string
+}
+
+export interface LLMConfig {
+  provider: string
+  protocol: string
+  label: string
+  model: string
+  base_url: string
+  enabled: boolean
+  has_api_key: boolean
+  api_key_masked: string
+  source: string
+  presets: Record<string, LLMProviderPreset>
+}
+
+export interface LLMTestResult {
+  ok: boolean
+  provider: string
+  model: string
+  sample: string
+}
+
 export interface ChartSpec {
   recommended: ChartType
   alternatives: ChartType[]
@@ -251,7 +278,7 @@ export interface Meta {
   metrics: MetricMeta[]
   dimensions: { id: string; name: string }[]
   quality: { id: string; severity: string; title: string; count: number }[]
-  llm: { enabled: boolean; model?: string | null; base_url?: string | null }
+  llm: { enabled: boolean; provider?: string; model?: string | null; base_url?: string | null }
   limits: { max_rows: number }
 }
 

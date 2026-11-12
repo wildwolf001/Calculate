@@ -21,15 +21,14 @@ from app.api.schemas import (
 from app.api.sse import event_stream
 from app.config.settings import (
     DEFAULT_DATASET_ID,
-    LLM_BASE_URL,
-    LLM_ENABLED,
-    LLM_MODEL,
     MAX_ROW_LIMIT,
     TRASH_DIR,
 )
 from app.core.session import SessionService
 from app.datasets.publish import PublishError, publish_dataset
 from app.datasets.registry import DatasetError
+from app.llm.client import LLMClient
+from app.llm.runtime_config import PRESETS, load_config, public_config, save_config
 from app.domain.analysis import analysis_hints, module_catalog
 from app.domain.executor import warehouse_version
 from app.llm.schema_card import build_schema_card
@@ -84,12 +83,81 @@ def meta(request: Request, dataset_id: str | None = None):
             for c in quality.get("checks", [])
         ],
         "llm": {
-            "enabled": LLM_ENABLED,
-            "model": LLM_MODEL if LLM_ENABLED else None,
-            "base_url": LLM_BASE_URL if LLM_ENABLED else None,
+            "enabled": public_config()["enabled"],
+            "provider": public_config()["provider"],
+            "model": public_config()["model"] if public_config()["enabled"] else None,
+            "base_url": public_config()["base_url"] if public_config()["enabled"] else None,
         },
         "limits": {"max_rows": MAX_ROW_LIMIT},
         "warehouse": str(ctx.warehouse),
+    }
+
+
+def _invalidate_llm_controllers(service: SessionService) -> None:
+    if service.registry is None:
+        return
+    for info in service.registry.list():
+        service.invalidate_dataset(info.dataset_id)
+
+
+@router.get("/llm/config")
+def get_llm_config():
+    return public_config()
+
+
+@router.put("/llm/config")
+def put_llm_config(body: dict, request: Request):
+    try:
+        config = save_config(body)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    service = get_service(request)
+    _invalidate_llm_controllers(service)
+    return config
+
+
+@router.post("/llm/test")
+def test_llm_config(body: dict | None = None):
+    body = body or {}
+    current = load_config()
+    provider = str(body.get("provider") or current["provider"]).lower()
+    if provider not in PRESETS:
+        raise HTTPException(status_code=400, detail=f"未知模型提供方: {provider}")
+    preset = PRESETS[provider]
+    api_key = (
+        str(body.get("api_key")).strip()
+        if isinstance(body.get("api_key"), str) and body.get("api_key").strip()
+        else ""
+    )
+    if not api_key and provider == current.get("provider"):
+        api_key = current.get("api_key", "")
+    if not api_key:
+        raise HTTPException(status_code=400, detail="请先填写 API Key")
+    client = LLMClient(
+        api_key=api_key,
+        base_url=str(body.get("base_url") or preset["base_url"]),
+        model=str(body.get("model") or preset["model"]),
+        provider=provider,
+        enabled=True,
+        timeout=20.0,
+    )
+    try:
+        text = client.complete_text(
+            "你只需要确认连接可用。",
+            "请只回复 OK。",
+            max_tokens=16,
+            stage="llm.test",
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"连接失败：{type(exc).__name__}: {str(exc)[:300]}",
+        )
+    return {
+        "ok": True,
+        "provider": provider,
+        "model": client.model,
+        "sample": text[:80],
     }
 
 

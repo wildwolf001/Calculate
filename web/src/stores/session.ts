@@ -236,6 +236,14 @@ export const useSessionStore = defineStore('session', {
         /* non-critical */
       }
     },
+    async refreshMeta() {
+      if (!this.datasetId) return
+      try {
+        this.meta = await getMeta(this.datasetId)
+      } catch {
+        /* non-critical */
+      }
+    },
     async switchDataset(datasetId: string) {
       if (this.busy || this.switching || !datasetId || datasetId === this.datasetId) return
       const sequence = ++this.switchSeq

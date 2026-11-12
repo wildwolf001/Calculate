@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import MarkdownBody from './MarkdownBody.vue'
+import ModelConfigModal from './ModelConfigModal.vue'
 import { useSessionStore } from '../stores/session'
 
 const store = useSessionStore()
 const input = ref('')
 const box = ref<HTMLTextAreaElement | null>(null)
 const msgs = ref<HTMLElement | null>(null)
+const modelConfigOpen = ref(false)
 
 const sessionLabel = computed(() =>
   store.sessionId ? store.sessionId.slice(-6).toUpperCase() : '—',
@@ -25,6 +27,12 @@ function onKeydown(e: KeyboardEvent) {
     e.preventDefault()
     send()
   }
+}
+
+function onModelConfigSaved() {
+  modelConfigOpen.value = false
+  void store.refreshMeta()
+  store.setToast('模型配置已更新，下一轮对话生效')
 }
 
 async function onDatasetChange(e: Event) {
@@ -144,6 +152,7 @@ function roleLabel(role: string) {
           </span>
         </span>
         <span class="session-right">
+          <button class="llm-config-btn" title="配置模型与 API Key" @click="modelConfigOpen = true">⚙</button>
           <span class="llm-hint">{{ store.meta?.llm.enabled ? '模型在线' : '离线规则' }}</span>
           <span>SESSION {{ sessionLabel }}</span>
           <span class="sbtns">
@@ -298,5 +307,10 @@ function roleLabel(role: string) {
         <span>只读 · 不写库</span>
       </div>
     </div>
+    <ModelConfigModal
+      :open="modelConfigOpen"
+      @close="modelConfigOpen = false"
+      @saved="onModelConfigSaved"
+    />
   </aside>
 </template>

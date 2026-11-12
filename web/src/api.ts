@@ -8,6 +8,8 @@ import type {
   HistoryItem,
   HistoryResponse,
   JobStatus,
+  LLMConfig,
+  LLMTestResult,
   Meta,
   ResultArtifact,
   SessionSummary,
@@ -38,6 +40,30 @@ export async function createSession(datasetId?: string): Promise<string> {
 export async function getMeta(datasetId?: string): Promise<Meta> {
   const query = datasetId ? `?dataset_id=${encodeURIComponent(datasetId)}` : ''
   return json<Meta>(await fetch(`${BASE}/api/meta${query}`))
+}
+
+export async function getLLMConfig(): Promise<LLMConfig> {
+  return json<LLMConfig>(await fetch(`${BASE}/api/llm/config`))
+}
+
+export async function saveLLMConfig(body: Record<string, any>): Promise<LLMConfig> {
+  return json<LLMConfig>(
+    await fetch(`${BASE}/api/llm/config`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+  )
+}
+
+export async function testLLMConfig(body: Record<string, any>): Promise<LLMTestResult> {
+  return json<LLMTestResult>(
+    await fetch(`${BASE}/api/llm/test`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+  )
 }
 
 export async function listDatasets(): Promise<{ datasets: DatasetSummary[]; default: string }> {

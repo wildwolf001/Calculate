@@ -14,6 +14,7 @@ from app.llm.client import LLMClient
 from app.llm.analyze import LLMAnalysisWriter
 from app.llm.compose_answer import LLMComposer
 from app.llm.parse_intent import LLMIntentParser
+from app.llm.runtime_config import public_config
 
 
 def build_controller(ctx: DatasetContext, store: EventStore,
@@ -69,9 +70,10 @@ def build_service(store: EventStore | None = None, with_trace: bool = True,
 
 
 def llm_status() -> dict:
-    client = LLMClient()
+    cfg = public_config()
     return {
-        "enabled": client.available,
-        "model": client.model,
-        "base_url": client.base_url,
+        "enabled": cfg["enabled"],
+        "provider": cfg["provider"],
+        "model": cfg["model"],
+        "base_url": cfg["base_url"],
     }
