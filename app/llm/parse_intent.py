@@ -384,6 +384,7 @@ class LLMIntentParser:
         "metric", "dimensions", "time", "filters", "having", "compare",
         "comparison", "order_by", "limit", "nested", "entity_count", "intent", "unresolved", "notes",
         "coverage_period", "ratio_numerator", "ratio_denominator", "time_axis",
+        "ratio_numerator_min_events", "ratio_denominator_min_events",
         "share", "limit_per_group", "metric_expr", "metric_source",
     }
 
@@ -498,6 +499,26 @@ class LLMIntentParser:
                     raise IntentParseError(f"未知指标: {rid}")
             metric = ratio_numerator
 
+        def _positive_int(value, name: str) -> int | None:
+            if value is None or value == "":
+                return None
+            try:
+                number = int(value)
+            except (TypeError, ValueError) as exc:
+                raise IntentParseError(f"{name} 必须是整数") from exc
+            if number < 1:
+                raise IntentParseError(f"{name} 必须 >= 1")
+            return number
+
+        ratio_numerator_min_events = _positive_int(
+            raw_slots.get("ratio_numerator_min_events"),
+            "ratio_numerator_min_events",
+        )
+        ratio_denominator_min_events = _positive_int(
+            raw_slots.get("ratio_denominator_min_events"),
+            "ratio_denominator_min_events",
+        )
+
         dims = raw_slots.get("dimensions") or []
         if not isinstance(dims, list):
             raise IntentParseError("dimensions 必须是数组")
@@ -596,6 +617,8 @@ class LLMIntentParser:
             ),
             "ratio_numerator": ratio_numerator,
             "ratio_denominator": ratio_denominator,
+            "ratio_numerator_min_events": ratio_numerator_min_events,
+            "ratio_denominator_min_events": ratio_denominator_min_events,
             "dimensions": dims,
             "time": time,
             "time_axis": time_axis,

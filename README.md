@@ -489,7 +489,7 @@ docs/images/     README 截图
 当前基线：
 
 ```text
-365 passed / 0 failed / 104 skipped
+366 passed / 0 failed / 104 skipped
 ```
 
 说明：

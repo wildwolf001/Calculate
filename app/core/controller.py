@@ -520,6 +520,37 @@ class Controller:
         re.I,
     )
 
+    def _apply_reference_focus(self, result, context: dict | None,
+                               question: str) -> None:
+        """Bind “其中/这些/该…” to the active result's entity list.
+
+        The parser may label a result-reference turn as a brand-new query. The
+        deterministic focus projection still knows the previous grouped result,
+        so use it rather than dropping the dimension and time scope.
+        """
+        if context is None or result.intent_type not in {"query", "lookup"}:
+            return
+        focus = context.get("focus") or {}
+        dimension = focus.get("entity_dimension")
+        values = list(focus.get("values") or [])
+        if not dimension or not values:
+            return
+        if not re.search(r"其中|这些|上述|该|这个|那些", str(question or "")):
+            return
+        if result.context_action in {None, "new"}:
+            result.context_action = "reference_result"
+        slots = result.slots
+        if not slots.get("dimensions"):
+            slots["dimensions"] = [dimension]
+        filters = dict(slots.get("filters") or {})
+        if dimension not in filters:
+            filters[dimension] = {"op": "in", "value": values}
+        slots["filters"] = filters
+        slots["notes"] = list(dict.fromkeys(
+            list(slots.get("notes") or [])
+            + [f"引用当前结果中的 {dimension} 成员范围。"]
+        ))
+
     def _apply_sample_threshold(self, slots: dict, question: str) -> None:
         """Keep an explicit per-group sample threshold even if the LLM omits it.
 
@@ -777,7 +808,7 @@ class Controller:
         r"\d{4}\s*年|\d{1,2}\s*月|本月|上月|今年|去年|上半年|下半年|近|最近|同比|环比|Q[1-4]",
         re.I,
     )
-    _TIME_ANAPHORA_RE = re.compile(r"这个|上述|这些|该|同样|那|再按|前面|刚才|上面")
+    _TIME_ANAPHORA_RE = re.compile(r"这个|上述|这些|其中|该|同样|那|再按|前面|刚才|上面")
 
     def _clear_spurious_time_slots(self, slots: dict, question: str,
                                   conversation_context: dict | None) -> bool:
@@ -949,6 +980,7 @@ class Controller:
             }))
             return events
 
+        self._apply_reference_focus(result, conversation_context, original)
         apply_context_action(result, conversation_context, self._last_user_text(state))
         self._drop_spurious_inherited_time(result, original, conversation_context)
         self._normalize_entity_ratio_slots(result.slots, original)
@@ -1375,7 +1407,7 @@ class Controller:
             return None
         # Root parses often label sibling follow-ups as "new" even when the
         # wording points at the previous result ("该品类", "这个城市").
-        referential = bool(re.search(r"该|这个|这些|上述|上一|前一个", question or ""))
+        referential = bool(re.search(r"该|这个|这些|那个|上述|上一|前一个", question or ""))
         if action not in {"inherit", "refine", "reference_result"} and not referential:
             return None
         for anchor in reversed(anchors):
@@ -1453,7 +1485,13 @@ class Controller:
             return
         filters = dict(slots_payload.get("filters") or {})
         dimension = anchor["dimension"]
-        if dimension and dimension not in filters:
+        existing = filters.get(dimension) if dimension else None
+        existing_value = existing.get("value") if isinstance(existing, dict) else existing
+        placeholder = any(
+            token in str(existing_value or "")
+            for token in ("最高", "最低", "该", "这个", "那个", "上述", "上一年")
+        )
+        if dimension and (existing is None or placeholder):
             filters[dimension] = {"op": "eq", "value": anchor["value"]}
             slots_payload["filters"] = filters
         # A local parse may mark "该品类" unresolved before it sees the anchor.
