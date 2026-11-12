@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 import traceback
 from dataclasses import replace
 from typing import AsyncIterator
@@ -199,15 +200,15 @@ class Controller:
             }, trace_id=trace_id)
 
         final = self.store.replay(session_id)
-        memory = self._memory_payload(final)
+        memory = self._memory_payload(final, allow_llm=False)
         if memory:
-            # Memory is durable state, not a user-facing stream event. Keeping
-            # it out of SSE avoids leaking internal summaries into the answer
-            # stream while still making it available to the next turn.
+            # Fast deterministic memory is available immediately; the model
+            # summary is refreshed after the stream completes.
             self.store.append(
                 session_id, "memory.compressed", memory,
                 trace_id=trace_id,
             )
+        self._schedule_memory_compression(session_id, final, trace_id)
         yield self.store.append(session_id, "turn.completed",
                                 {"status": final.status.value, "turn": turn},
                                 trace_id=trace_id)
@@ -511,7 +512,8 @@ class Controller:
         re.I,
     )
 
-    def _memory_payload(self, state: SessionState) -> dict | None:
+    def _memory_payload(self, state: SessionState, *,
+                        allow_llm: bool = True) -> dict | None:
         if self.memory_compressor is None:
             return None
         user = next(
@@ -544,6 +546,7 @@ class Controller:
                 recent_messages=state.messages[-8:],
                 turn=state.turn,
                 pending=state.pending,
+                allow_llm=allow_llm,
             )
         except Exception as exc:
             log_event(
@@ -555,6 +558,32 @@ class Controller:
             return None
         payload["turn"] = state.turn
         return payload
+
+    def _schedule_memory_compression(self, session_id: str, state: SessionState,
+                                    trace_id: str) -> None:
+        """Run semantic compression after the answer without blocking the stream."""
+        if self.memory_compressor is None:
+            return
+        if state.turn < 2 or not getattr(self.memory_compressor, "available", False):
+            return
+        if not any(m.get("role") == "assistant" for m in state.messages):
+            return
+
+        def run() -> None:
+            try:
+                payload = self._memory_payload(state, allow_llm=True)
+                if payload:
+                    self.store.append(
+                        session_id, "memory.compressed", payload,
+                        trace_id=trace_id,
+                    )
+            except Exception as exc:
+                log_event(
+                    logger, "memory.background_failed",
+                    error=f"{type(exc).__name__}: {exc}",
+                )
+
+        threading.Thread(target=run, name=f"memory-{session_id}", daemon=True).start()
 
     def _schema_join_explanation(self, question: str) -> str | None:
         """Answer a schema/join grain question without treating it as a query.

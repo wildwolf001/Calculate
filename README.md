@@ -23,7 +23,7 @@
 - 来源可追溯：发布只记录 `confirmed_at/confirmed_by`，不修改 `provenance`；重建只恢复人工或文档口径，机器草稿会重新生成。
 - 能力单一来源：发布时按 join 图计算每个指标可安全拆分的维度并写回 `supported_grain`，运行时不再与 YAML 白名单并存。
 - 上下文编译：从事件日志确定性提取当前结果、筛选范围、实体焦点和最近轮次，再交给语义解析器。
-- 语义记忆：每轮回答后生成 `memory.compressed`（摘要/主题/实体/未决问题/scope digest），供下一轮 parser 和 composer 使用；摘要只做提示，执行 scope 仍由 typed slots 决定。
+- 语义记忆：每轮回答后生成 `memory.compressed`（摘要/主题/实体/未决问题/scope digest），供下一轮 parser 和 composer 使用；确定性摘要即时可用，LLM 摘要后台刷新，不阻塞回答；执行 scope 仍由 typed slots 决定。
 - 数据质量提示：缺失值、空列、负值、覆盖不足等问题不会阻止可计算查询，但会在答案中明确标注。
 - 覆盖诊断：按完整自然月序列检查缺失月份，并区分窗口边缘缺失、内部断档与零业务量。
 - 比率排名样本量：比率类排名多取几行，按最小分母（`MIN_RATIO_DENOMINATOR`，默认 5）区分小样本异常值与稳定结论；答案先给样本充足组，小样本行保留在结果表。

@@ -77,6 +77,10 @@ class MemoryCompressor:
         self.client = client
         self.sem = sem
 
+    @property
+    def available(self) -> bool:
+        return bool(self.client is not None and getattr(self.client, "available", False))
+
     def _available(self) -> bool:
         return bool(self.client is not None and getattr(self.client, "available", False))
 
@@ -162,9 +166,10 @@ class MemoryCompressor:
 
     def compress(self, *, previous: dict | None, question: str, answer: str,
                  plan, artifact, recent_messages: list[dict],
-                 turn: int = 0, pending: dict | None = None) -> dict:
+                 turn: int = 0, pending: dict | None = None,
+                 allow_llm: bool = True) -> dict:
         seed = self._deterministic(previous, question, answer, plan, artifact)
-        if not self._available():
+        if not allow_llm or not self.available:
             return seed
         # Compress with the model when the conversation is already longer than
         # a couple of turns. The first turn needs no summary; later turns do.
