@@ -330,6 +330,56 @@ def plan_from_ir(ir: QueryIR, sem: SemanticLayer) -> QueryPlan:
             entity=entity_count.entity, min_orders=entity_count.min_events
         )
 
+    having: list[HavingSpec] = []
+    for item in ir.having:
+        spec = item if isinstance(item, HavingSpec) else HavingSpec.model_validate(item)
+        # A HAVING produced from an explicit "至少/最多 N" is a hard
+        # constraint. Only an explicitly optional one may be dropped by
+        # recovery.
+        if spec.required is None:
+            spec = spec.model_copy(update={"required": True})
+        if spec.metric not in {"order_count", "value", metric.id}:
+            # Ratio plans expose the denominator as order_count. The model
+            # sometimes emits a descriptive pseudo-metric such as
+            # "m_llm_已送达订单数"; bind it to the real aggregate instead of
+            # dropping the user's threshold.
+            if metric.type == "ratio" and any(
+                token in spec.metric for token in ("订单数", "笔数", "样本", "order")
+            ):
+                spec = spec.model_copy(update={"metric": "order_count"})
+                notes.append(
+                    f"HAVING 字段「{spec.metric}」已绑定到比率分母 order_count。"
+                )
+        having.append(spec)
+
+    ratio_numerator = ir.ratio_numerator
+    ratio_denominator = ir.ratio_denominator
+    ratio_numerator_min = ir.ratio_numerator_min_events
+    ratio_denominator_min = ir.ratio_denominator_min_events
+    if metric.type == "entity_count" and ratio_denominator:
+        denominator_metric = None
+        try:
+            denominator_metric = sem.metric(ratio_denominator)
+        except Exception:
+            pass
+        if denominator_metric is None or denominator_metric.type != "entity_count":
+            # For an entity-count ratio, the valid denominator is the same
+            # entity metric with a lower event threshold, not a different
+            # customer/order count metric.
+            ratio_denominator = metric.id
+            ratio_denominator_min = max(1, int(ratio_denominator_min or 1))
+            notes.append(
+                "实体占比的分母已绑定到同一 entity_count 指标；"
+                "仅改变 min_events，保持 entity/scope/time 一致。"
+            )
+        if ratio_numerator_min is None:
+            ratio_numerator_min = int(
+                (entity_count.min_events if entity_count else None)
+                or nested.min_orders if nested else 1
+            )
+        if ratio_denominator_min is None:
+            ratio_denominator_min = 1
+
     return QueryPlan(
         plan_id=(
             f"p_{metric.id}_over_{ir.ratio_denominator}"
@@ -338,16 +388,15 @@ def plan_from_ir(ir: QueryIR, sem: SemanticLayer) -> QueryPlan:
         metric=metric.id,
         metric_spec=derived_spec,
         metric_source=ir.metric_source or ("inferred" if derived_spec else None),
-        ratio_numerator=ir.ratio_numerator,
-        ratio_denominator=ir.ratio_denominator,
+        ratio_numerator=ratio_numerator,
+        ratio_denominator=ratio_denominator,
+        ratio_numerator_min_events=ratio_numerator_min,
+        ratio_denominator_min_events=ratio_denominator_min,
         dimensions=dims,
         time=time,
         time_axis=ir.time_axis,
         filters=_filters(ir.filters),
-        having=[
-            item if isinstance(item, HavingSpec) else HavingSpec.model_validate(item)
-            for item in ir.having
-        ],
+        having=having,
         ratio_grain=metric.raw.get("ratio_grain") if metric.type == "ratio" else None,
         nested=nested,
         entity_count=entity_count,

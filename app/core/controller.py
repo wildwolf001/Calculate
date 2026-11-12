@@ -520,6 +520,127 @@ class Controller:
         re.I,
     )
 
+    def _apply_sample_threshold(self, slots: dict, question: str) -> None:
+        """Keep an explicit per-group sample threshold even if the LLM omits it.
+
+        This is deliberately narrow: it only applies to a grouped ratio query
+        with an explicit "至少 N 笔/单/次" phrase. The aggregate is the ratio
+        denominator (`order_count`), not a made-up metric.
+        """
+        if slots.get("having"):
+            return
+        dims = slots.get("dimensions") or []
+        if not dims:
+            return
+        metric_id = slots.get("metric") or slots.get("ratio_numerator")
+        if not metric_id:
+            return
+        try:
+            metric = self.sem.metric(str(metric_id))
+        except Exception:
+            return
+        if metric.type != "ratio":
+            return
+        match = re.search(
+            r"(?:至少|不少于|最少|超过|大于)\s*([0-9一二三四五六七八九十百两]+)\s*(?:笔|单|次)",
+            str(question or ""),
+        )
+        if not match:
+            return
+        raw = match.group(1)
+        numerals = {
+            "一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5,
+            "六": 6, "七": 7, "八": 8, "九": 9, "十": 10,
+        }
+        try:
+            value = int(raw) if raw.isdigit() else numerals.get(raw, 0)
+        except ValueError:
+            value = 0
+        if value <= 0:
+            return
+        slots["having"] = [{
+            "metric": "order_count",
+            "op": "gte",
+            "value": value,
+            "required": True,
+        }]
+        slots["notes"] = list(dict.fromkeys(
+            list(slots.get("notes") or [])
+            + [f"从问题文本补充样本阈值：已送达订单数 >= {value}。"]
+        ))
+
+    def _normalize_entity_ratio_slots(self, slots: dict,
+                                      question: str = "") -> None:
+        """Bind an entity-count numerator to a same-entity denominator.
+
+        Parsers often choose a generic customer/order count for "占同期...
+        比例" even though the numerator is an entity_count metric. That is a
+        scope mismatch. For entity ratios the valid denominator is the same
+        entity metric with a lower event threshold; do that deterministically
+        instead of hardcoding a question or dataset field.
+        """
+        numerator_id = slots.get("ratio_numerator") or slots.get("metric")
+        denominator_id = slots.get("ratio_denominator")
+        if not numerator_id:
+            return
+        try:
+            numerator = self.sem.metric(str(numerator_id))
+        except Exception:
+            return
+        if numerator.type != "entity_count":
+            return
+        if not denominator_id:
+            # The parser often treats "占同期自然客户的比例" as a plain
+            # entity-count query. If the question explicitly asks for a
+            # ratio, bind the denominator to the same entity metric at the
+            # base threshold instead of answering the numerator alone.
+            if re.search(r"占|占比|比例|份额|比重|share", str(question or "")):
+                denominator_id = numerator.id
+            else:
+                return
+        try:
+            denominator = self.sem.metric(str(denominator_id))
+        except Exception:
+            return
+        if denominator.type == "entity_count" and str(denominator.id) == str(numerator.id):
+            pass
+        elif denominator.type == "entity_count":
+            # A different entity must be handled by capability validation;
+            # do not silently swap it.
+            return
+        else:
+            # Ordinary customer/order counts have a different entity/scope.
+            # Use the same entity metric at min_events=1.
+            denominator_id = numerator.id
+        slots["ratio_numerator"] = numerator.id
+        slots["ratio_denominator"] = denominator_id
+        if not slots.get("ratio_numerator_min_events"):
+            entity = slots.get("entity_count")
+            if isinstance(entity, dict) and entity.get("min_events"):
+                slots["ratio_numerator_min_events"] = int(entity["min_events"])
+            elif isinstance(slots.get("nested"), dict):
+                slots["ratio_numerator_min_events"] = int(
+                    slots["nested"].get("min_orders") or 1
+                )
+        slots["ratio_denominator_min_events"] = 1
+        slots["notes"] = list(dict.fromkeys(
+            list(slots.get("notes") or [])
+            + ["实体占比的分母已绑定到同一 entity_count 指标（min_events=1）。"]
+        ))
+
+    def _normalize_entity_ratio_ir(self, ir: QueryIR,
+                                   question: str = "") -> QueryIR:
+        data = ir.as_dict()
+        self._normalize_entity_ratio_slots(data, question)
+        return replace(
+            ir,
+            ratio_numerator=data.get("ratio_numerator"),
+            ratio_denominator=data.get("ratio_denominator"),
+            ratio_numerator_min_events=data.get("ratio_numerator_min_events"),
+            ratio_denominator_min_events=data.get("ratio_denominator_min_events"),
+            notes=tuple(data.get("notes") or []),
+        )
+
     def _memory_payload(self, state: SessionState, *,
                         allow_llm: bool = True) -> dict | None:
         if self.memory_compressor is None:
@@ -830,6 +951,8 @@ class Controller:
 
         apply_context_action(result, conversation_context, self._last_user_text(state))
         self._drop_spurious_inherited_time(result, original, conversation_context)
+        self._normalize_entity_ratio_slots(result.slots, original)
+        self._apply_sample_threshold(result.slots, original)
         self._salvage_derived_filter(original, result.slots)
         self._salvage_time_axis(original, result.slots)
         self._salvage_share(original, result.slots)
@@ -1320,6 +1443,8 @@ class Controller:
         slots = dict(getattr(parsed, "slots", None) or {})
         if not slots.get("metric") and not slots.get("metric_spec"):
             return None, anchor
+        self._normalize_entity_ratio_slots(slots, question)
+        self._apply_sample_threshold(slots, question)
         return slots, anchor
 
     def _inject_anchor_filter(self, slots_payload: dict, question: str,
@@ -2757,6 +2882,7 @@ class Controller:
     def _handle_planning(self, state: SessionState) -> list[tuple[str, dict]]:
         slots = Slots.model_validate(state.slots.model_dump())
         ir = state.ir or QueryIR.from_slots(slots)
+        ir = self._normalize_entity_ratio_ir(ir, self._last_user_text(state))
         if (
             not ir.limit_per_group
             and len(ir.dimensions) >= 2

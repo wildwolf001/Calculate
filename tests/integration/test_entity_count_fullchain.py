@@ -11,6 +11,10 @@ import duckdb
 from app.core.controller import Controller
 from app.core.event_store import EventStore
 from app.domain.resolver import RuleGrounder
+from app.domain.pipeline import execute_prepared, prepare
+from app.domain.plan import EntityCountSpec
+from app.domain.planner import plan_from_ir
+from app.domain.query.ir import QueryIR
 from app.domain.semantic.loader import Dimension, Metric, SemanticLayer, expand_entities
 from app.llm.compose_answer import TemplateComposer
 from app.llm.parse_intent import LLMIntentParser
@@ -321,6 +325,42 @@ def test_llm_order_metric_is_corrected_for_entity_question(tmp_path):
     assert created["metric"] == "entity_count_customers"
     assert created["entity_count"] == {"entity": "自然客户", "min_events": 2}
     assert not any(e.type == "plan.repaired" for e in events)
+
+
+def test_entity_ratio_uses_same_entity_metric_at_different_thresholds(tmp_path):
+    sem, _dim_values_path = _ecommerce_env(tmp_path)
+    entity_metric = next(m.id for m in sem.metrics.values() if m.type == "entity_count")
+    plan = plan_from_ir(QueryIR(
+        metric=entity_metric,
+        ratio_numerator=entity_metric,
+        ratio_denominator="order_count",
+        ratio_numerator_min_events=2,
+        ratio_denominator_min_events=1,
+        entity_count=EntityCountSpec(entity="自然客户", min_events=2),
+        time={"start": "2025-01-01", "end": "2025-07-09"},
+    ), sem)
+    assert plan.ratio_denominator == entity_metric
+    compiled, _ = prepare(plan, sem)
+    result = execute_prepared(compiled, db_path=str(tmp_path / "warehouse.duckdb"))
+    assert result.rows == [[2, 4, 0.5]]
+
+
+def test_entity_ratio_with_group_dimension(tmp_path):
+    sem, _dim_values_path = _ecommerce_env(tmp_path)
+    entity_metric = next(m.id for m in sem.metrics.values() if m.type == "entity_count")
+    plan = plan_from_ir(QueryIR(
+        metric=entity_metric,
+        dimensions=("segment",),
+        ratio_numerator=entity_metric,
+        ratio_denominator="order_count",
+        ratio_numerator_min_events=2,
+        ratio_denominator_min_events=1,
+        entity_count=EntityCountSpec(entity="自然客户", min_events=2),
+        time={"start": "2025-01-01", "end": "2025-07-09"},
+    ), sem)
+    compiled, _ = prepare(plan, sem)
+    result = execute_prepared(compiled, db_path=str(tmp_path / "warehouse.duckdb"))
+    assert result.rows == [["新客", 1, 2, 0.5], ["老客", 1, 2, 0.5]]
 
 
 def test_group_filter_with_dimensions_still_uses_having(tmp_path):

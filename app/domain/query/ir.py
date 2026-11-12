@@ -32,6 +32,8 @@ class QueryIR:
     metric_source: str | None = None
     ratio_numerator: str | None = None
     ratio_denominator: str | None = None
+    ratio_numerator_min_events: int | None = None
+    ratio_denominator_min_events: int | None = None
     dimensions: tuple[str, ...] = ()
     filters: dict[str, Any] = field(default_factory=dict)
     time: dict[str, Any] | None = None
@@ -71,6 +73,14 @@ class QueryIR:
             ratio_denominator=(
                 str(data["ratio_denominator"]) if data.get("ratio_denominator") else None
             ),
+            ratio_numerator_min_events=(
+                int(data["ratio_numerator_min_events"])
+                if data.get("ratio_numerator_min_events") is not None else None
+            ),
+            ratio_denominator_min_events=(
+                int(data["ratio_denominator_min_events"])
+                if data.get("ratio_denominator_min_events") is not None else None
+            ),
             dimensions=tuple(str(item) for item in (data.get("dimensions") or [])),
             filters={str(k): _dump(v) for k, v in (data.get("filters") or {}).items()},
             time=_dump(data.get("time")),
@@ -109,6 +119,8 @@ class QueryIR:
             "metric_source": self.metric_source,
             "ratio_numerator": self.ratio_numerator,
             "ratio_denominator": self.ratio_denominator,
+            "ratio_numerator_min_events": self.ratio_numerator_min_events,
+            "ratio_denominator_min_events": self.ratio_denominator_min_events,
             "dimensions": list(self.dimensions),
             "filters": self.filters,
             "time": self.time,

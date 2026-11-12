@@ -498,6 +498,10 @@ class _Builder:
             raise SemanticError("指标比率的分子和分母 scope 不一致")
         if (numerator.raw.get("time_via") or "") != (denominator.raw.get("time_via") or ""):
             raise SemanticError("指标比率的分子和分母时间轴不一致")
+        if numerator.type == "entity_count" or denominator.type == "entity_count":
+            if numerator.type != "entity_count" or denominator.type != "entity_count":
+                raise SemanticError("实体计数占比需要两边都是 entity_count 指标")
+            return self._compile_entity_ratio(numerator, denominator)
         self.metric = numerator
         dims = self._dims_select()
         num_sql = self._metric_sql(numerator)
@@ -525,6 +529,127 @@ class _Builder:
             {"metric_ratio": [numerator_id, denominator_id]},
         )
 
+
+    def _compile_entity_ratio(self, numerator, denominator) -> Compiled:
+        """Ratio of the same entity population at two event thresholds.
+
+        This is not a row-level ratio: the denominator is a separate entity
+        aggregate over the same fact/entity/scope/time. Keeping two CTEs makes
+        the threshold difference explicit and prevents reusing the numerator
+        row set.
+        """
+        entity = numerator.raw.get("entity")
+        count_orders = numerator.raw.get("count_orders")
+        if not entity or not count_orders:
+            raise SemanticError(f"实体指标 {numerator.id} 定义不完整")
+        if (
+            entity != denominator.raw.get("entity")
+            or count_orders != denominator.raw.get("count_orders")
+        ):
+            raise SemanticError("实体占比的分子和分母必须使用同一 entity 与事件计数")
+        numerator_min = int(
+            self.plan.ratio_numerator_min_events
+            or numerator.raw.get("min_orders")
+            or 1
+        )
+        denominator_min = int(
+            self.plan.ratio_denominator_min_events
+            or denominator.raw.get("min_orders")
+            or 1
+        )
+        dims = list(self.plan.dimensions)
+        dim_cols = [
+            f"{self._dim_column(dim)} AS {_q(dim)}" for dim in dims
+        ]
+        if dims:
+            group_by = ", ".join(str(i) for i in range(1, len(dims) + 2))
+            outer_dims = ", ".join(_q(dim) for dim in dims)
+            outer_group = ", ".join(str(i) for i in range(1, len(dims) + 1))
+            dim_join = " AND ".join(
+                f"num.{_q(dim)} = den.{_q(dim)}" for dim in dims
+            )
+            select_dims = ", ".join(f"num.{_q(dim)}" for dim in dims)
+            ctes = []
+            for alias, threshold in (("num_entity", numerator_min), ("den_entity", denominator_min)):
+                ctes.append(
+                    "\n".join([
+                        f"{alias} AS (",
+                        "  SELECT " + ", ".join(
+                            dim_cols + [
+                                f"{self.phys(entity)} AS {_q('_entity')}",
+                                f"{count_orders} AS {_q('_n')}",
+                            ]
+                        ),
+                        "  " + self._from_clause().replace("\n", "\n  "),
+                        "  " + self._where_clause().replace("\n", "\n  "),
+                        f"  GROUP BY {group_by}",
+                        ")",
+                    ])
+                )
+            filtered = [
+                f"num_filtered AS (SELECT {outer_dims}, COUNT(*) AS {_q('n')} "
+                f"FROM num_entity WHERE {_q('_n')} >= {self.p(numerator_min)} "
+                f"GROUP BY {outer_group})",
+                f"den_filtered AS (SELECT {outer_dims}, COUNT(*) AS {_q('d')} "
+                f"FROM den_entity WHERE {_q('_n')} >= {self.p(denominator_min)} "
+                f"GROUP BY {outer_group})",
+            ]
+            sql = "\n".join([
+                "WITH " + ",\n".join(ctes + filtered),
+                f"SELECT {select_dims}, "
+                f"num.{_q('n')} AS {_q('numerator')}, "
+                f"den.{_q('d')} AS {_q('denominator')}, "
+                f"num.{_q('n')} / NULLIF(den.{_q('d')}, 0) AS {_q('value')}",
+                "FROM num_filtered num",
+                f"JOIN den_filtered den ON {dim_join}",
+            ])
+            order = self._order_clause(set(dims) | {"value"})
+            if order:
+                sql += "\n" + order
+            sql += f"\nLIMIT {int(self.plan.limit)}"
+            return self._finalize(
+                sql,
+                dims + ["numerator", "denominator", "value"],
+                {
+                    "entity_ratio": [numerator.id, denominator.id],
+                    "numerator_min_events": numerator_min,
+                    "denominator_min_events": denominator_min,
+                },
+            )
+
+        ctes = []
+        for alias, threshold in (("num_entity", numerator_min), ("den_entity", denominator_min)):
+            ctes.append(
+                "\n".join([
+                    f"{alias} AS (",
+                    f"  SELECT {self.phys(entity)} AS {_q('_entity')}, "
+                    f"{count_orders} AS {_q('_n')}",
+                    "  " + self._from_clause().replace("\n", "\n  "),
+                    "  " + self._where_clause().replace("\n", "\n  "),
+                    "  GROUP BY 1",
+                    ")",
+                ])
+            )
+        sql = "\n".join([
+            "WITH " + ",\n".join(ctes),
+            "SELECT COUNT(*) AS numerator,",
+            "       (SELECT COUNT(*) FROM den_entity "
+            f"WHERE {_q('_n')} >= {self.p(denominator_min)}) AS denominator,",
+            f"       COUNT(*) * 1.0 / NULLIF((SELECT COUNT(*) FROM den_entity "
+            f"WHERE {_q('_n')} >= {self.p(denominator_min)}), 0) AS value",
+            "FROM num_entity",
+            f"WHERE {_q('_n')} >= {self.p(numerator_min)}",
+            "LIMIT 1",
+        ])
+        return self._finalize(
+            sql,
+            ["numerator", "denominator", "value"],
+            {
+                "entity_ratio": [numerator.id, denominator.id],
+                "numerator_min_events": numerator_min,
+                "denominator_min_events": denominator_min,
+            },
+        )
 
     def _compile_cross_fact_ratio(self, numerator, denominator) -> Compiled:
         from app.domain.semantic.graph import common_grain_table

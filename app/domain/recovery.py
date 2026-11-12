@@ -49,7 +49,7 @@ def candidates_for_failure(plan: QueryPlan, sem: SemanticLayer,
         clone.degraded_reason = detail.get("reason")
         candidates.append(RepairCandidate(clone, action, detail))
 
-    if plan.having:
+    if plan.having and not any(spec.required for spec in plan.having):
         clone = plan.model_copy(deep=True)
         clone.having = []
         add(clone, "drop_having", {

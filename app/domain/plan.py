@@ -27,6 +27,7 @@ class HavingSpec(BaseModel):
     metric: str
     op: Literal["gte", "lte", "gt", "lt", "eq"] = "gte"
     value: float
+    required: bool | None = None
 
 
 class OrderSpec(BaseModel):
@@ -73,6 +74,8 @@ class QueryPlan(BaseModel):
     ratio_grain: str | None = None
     ratio_numerator: str | None = None
     ratio_denominator: str | None = None
+    ratio_numerator_min_events: int | None = None
+    ratio_denominator_min_events: int | None = None
     nested: NestedSpec | None = None
     entity_count: EntityCountSpec | None = None
     order_by: list[OrderSpec] = Field(default_factory=list)

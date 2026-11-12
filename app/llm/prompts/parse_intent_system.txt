@@ -25,6 +25,8 @@ $schema_card
     "metric_source": "documented | user | inferred",
     "ratio_numerator": "metric_id 或 null（仅 A/B 比率）",
     "ratio_denominator": "metric_id 或 null（仅 A/B 比率）",
+    "ratio_numerator_min_events": "整数或 null（仅 entity_count 比率；如 2）",
+    "ratio_denominator_min_events": "整数或 null（仅 entity_count 比率；如同口径 1）",
     "dimensions": ["dimension_id"],
     "time": {"start": "YYYY-MM-DD", "end": "YYYY-MM-DD"} 或 null,
     "time_axis": "t_xxx.cNN（时间轴 ref，默认 null）",
@@ -101,6 +103,7 @@ $schema_card
    “在<分组>中……订单不少于N笔/至少N笔”才是分组过滤，填 having=[{"metric":"order_count","op":"gte","value":N}]，并给出分组维度。
 8.2 “占比/份额/比重”用 share=true，并且必须同时给出分组维度；比率指标不要用 share。
 8.3 “A 除以 B / A 占 B 的比例 / 每 B 的 A”时，metric=A，ratio_numerator=A，ratio_denominator=B；两者必须都是 schema 中已定义的指标，否则留 null 并写入 unresolved。不要臆造未定义指标。
+8.3.1 如果 A 是 entity_count 指标（例如“完成至少2笔已送达订单的自然客户”），分母应优先使用同一个 entity_count 指标，只把阈值改成 1：ratio_numerator=该指标，ratio_denominator=同一指标，ratio_numerator_min_events=N，ratio_denominator_min_events=1。不要用统计口径不同的“客户数/订单数”替代。
 8.1 “每个X最好的Y/每组前N/各城市排名第一”这类问题：dimensions 同时给出分组维度和排名维度，order_by=value desc，limit_per_group=1（或 N），limit 设为 200；不要只给一个维度。
 8.4 没有已发布指标、但列明显支持聚合时（例如“平均评分”），用 metric_expr 组合：operand 必须是 schema 中真实存在的 table.column；有文档口径时优先用已定义指标，不要用 metric_expr 覆盖它。
 8.5 如果 schema 结尾出现“检索候选（确定性 resolver）”，优先使用其中标记 [selected] 的 metric；候选都不适用时才选其他指标，并说明原因。不要自己组合两个 scope 不一致的指标来表达一个已发布比率。

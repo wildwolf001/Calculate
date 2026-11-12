@@ -85,6 +85,19 @@ def display_spec(plan: QueryPlan, sem: SemanticLayer, result: ResultSet) -> dict
     for dim in plan.dimensions:
         add(dim, sem.dimension(dim).raw.get("name_zh", dim), "text")
 
+    if plan.ratio_denominator and metric.type != "ratio":
+        ratio_label = f"{label}占比"
+        add("numerator", "分子", "int")
+        add("denominator", "分母", "int")
+        add("value", ratio_label, "percent")
+        add("order_count", "订单数", "int", show=False)
+        return {
+            "columns": cols,
+            "metric_name": ratio_label,
+            "unit": "%",
+            "provenance": plan.metric_source or "documented",
+        }
+
     if plan.compare or plan.comparison:
         add("current", "本期", "metric")
         add("baseline", "基期", "metric")
@@ -119,6 +132,11 @@ def stabilize_ratio_ranking(plan: QueryPlan, result: ResultSet,
     if not plan.dimensions or not plan.order_by:
         return None
     if plan.compare or plan.comparison:
+        return None
+    # When the user supplied an explicit sample-size threshold, that threshold
+    # is the ranking policy. Do not promote a larger-denominator row over a
+    # lower-rate row that already satisfies the user's constraint.
+    if any(spec.required for spec in (plan.having or [])):
         return None
     if not any(getattr(item, "field", None) == "value" for item in plan.order_by):
         return None

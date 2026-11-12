@@ -48,6 +48,8 @@ class Slots(BaseModel):
     metric_source: str | None = None
     ratio_numerator: str | None = None
     ratio_denominator: str | None = None
+    ratio_numerator_min_events: int | None = None
+    ratio_denominator_min_events: int | None = None
     dimensions: list[str] = Field(default_factory=list)
     time: TimeRange | None = None
     time_axis: str | None = None

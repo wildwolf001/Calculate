@@ -44,6 +44,13 @@ def test_drop_dimension_removes_one_dimension_at_a_time():
     assert [c.plan.dimensions for c in dim_candidates] == [["d1"], ["d2"]]
 
 
+def test_required_having_is_never_dropped():
+    plan = _plan()
+    plan.having[0].required = True
+    candidates = candidates_for_failure(plan, _sem())
+    assert "drop_having" not in {candidate.action for candidate in candidates}
+
+
 def test_repair_marks_degraded_reason():
     candidates = candidates_for_failure(_plan(), _sem())
     assert all(candidate.plan.degraded_reason for candidate in candidates)
